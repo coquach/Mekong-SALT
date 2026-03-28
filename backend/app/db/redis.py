@@ -1,6 +1,10 @@
 """Redis connection placeholder for future caching and workers."""
 
+import json
 import logging
+from typing import Any
+
+from fastapi import Request
 
 from redis.asyncio import Redis, from_url
 
@@ -32,9 +36,36 @@ class RedisManager:
             logger.exception("Redis ping failed")
             return False
 
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        """Get a JSON document from Redis if available."""
+        try:
+            payload = await self.client.get(key)
+        except Exception:
+            logger.exception("Redis get failed for key %s", key)
+            return None
+        if payload is None:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            logger.warning("Redis payload for key %s was not valid JSON", key)
+            return None
+
+    async def set_json(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
+        """Store a JSON document in Redis with expiration."""
+        try:
+            await self.client.set(key, json.dumps(value), ex=ttl_seconds)
+        except Exception:
+            logger.exception("Redis set failed for key %s", key)
+
     async def close(self) -> None:
         """Close the Redis connection if it was created."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+
+
+def get_redis_manager(request: Request) -> RedisManager | None:
+    """Return the shared Redis manager when lifespan has attached it."""
+    return getattr(request.app.state, "redis", None)
 

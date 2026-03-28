@@ -16,8 +16,11 @@ from app.schemas.knowledge import (
 from app.schemas.region import RegionCreate, RegionRead
 from app.schemas.risk import (
     AlertEventCreate,
+    AlertEvaluationResponse,
     AlertEventRead,
+    RiskCurrentResponse,
     RiskAssessmentCreate,
+    RiskEvaluationFilters,
     RiskAssessmentRead,
 )
 from app.schemas.sensor import (
@@ -36,6 +39,7 @@ __all__ = [
     "ActionExecutionRead",
     "ActionPlanCreate",
     "ActionPlanRead",
+    "AlertEvaluationResponse",
     "AlertEventCreate",
     "AlertEventRead",
     "DecisionLogCreate",
@@ -46,7 +50,9 @@ __all__ = [
     "KnowledgeDocumentRead",
     "RegionCreate",
     "RegionRead",
+    "RiskCurrentResponse",
     "RiskAssessmentCreate",
+    "RiskEvaluationFilters",
     "RiskAssessmentRead",
     "SensorReadingCollection",
     "SensorReadingCreate",

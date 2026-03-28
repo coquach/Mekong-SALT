@@ -79,6 +79,29 @@ class SensorReadingRepository(AsyncRepository[SensorReading]):
         )
         return result.first()
 
+    async def get_previous_for_station(
+        self,
+        station_id: UUID,
+        *,
+        before_recorded_at: datetime,
+        exclude_reading_id: UUID | None = None,
+    ) -> SensorReading | None:
+        """Return the previous reading before a known reading timestamp."""
+        statement = (
+            select(SensorReading)
+            .where(
+                SensorReading.station_id == station_id,
+                SensorReading.recorded_at < before_recorded_at,
+            )
+            .order_by(desc(SensorReading.recorded_at), desc(SensorReading.created_at))
+            .options(selectinload(SensorReading.station))
+            .limit(1)
+        )
+        if exclude_reading_id is not None:
+            statement = statement.where(SensorReading.id != exclude_reading_id)
+        result = await self.session.scalars(statement)
+        return result.first()
+
     async def list_history_for_station(
         self, station_id, *, limit: int = 100
     ) -> Sequence[SensorReading]:

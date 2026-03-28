@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
 
     redis_url: str = "redis://localhost:6379/0"
+    external_context_cache_ttl_seconds: int = 600
+    weather_snapshot_freshness_minutes: int = 30
+    risk_rule_version: str = "v1"
+    open_meteo_weather_base_url: str = "https://api.open-meteo.com/v1/forecast"
+    open_meteo_marine_base_url: str = "https://marine-api.open-meteo.com/v1/marine"
 
     llm_provider: Literal["gemini", "ollama"] = "gemini"
     gemini_api_key: SecretStr | None = None

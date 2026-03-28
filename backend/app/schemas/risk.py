@@ -9,6 +9,8 @@ from pydantic import Field
 
 from app.models.enums import AlertStatus, RiskLevel, TrendDirection
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
+from app.schemas.sensor import SensorReadingRead
+from app.schemas.weather import WeatherSnapshotRead
 
 
 class RiskAssessmentBase(ORMBaseSchema):
@@ -57,3 +59,29 @@ class AlertEventCreate(AlertEventBase):
 class AlertEventRead(EntityReadSchema, AlertEventBase):
     """Schema for returning an alert event."""
 
+
+class RiskEvaluationFilters(ORMBaseSchema):
+    """Input filters for current risk and alert evaluation."""
+
+    station_id: UUID | None = None
+    station_code: str | None = None
+    region_id: UUID | None = None
+    region_code: str | None = None
+
+
+class RiskCurrentResponse(ORMBaseSchema):
+    """Response payload for a current risk evaluation."""
+
+    assessment: RiskAssessmentRead
+    reading: SensorReadingRead
+    weather_snapshot: WeatherSnapshotRead | None = None
+
+
+class AlertEvaluationResponse(ORMBaseSchema):
+    """Response payload for alert evaluation."""
+
+    assessment: RiskAssessmentRead
+    reading: SensorReadingRead
+    weather_snapshot: WeatherSnapshotRead | None = None
+    alert: AlertEventRead | None = None
+    alert_created: bool
