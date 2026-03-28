@@ -21,7 +21,10 @@ from app.schemas.risk import (
     RiskAssessmentRead,
 )
 from app.schemas.sensor import (
+    SensorReadingCollection,
     SensorReadingCreate,
+    SensorReadingHistoryFilters,
+    SensorReadingIngestRequest,
     SensorReadingRead,
     SensorStationCreate,
     SensorStationRead,
@@ -45,7 +48,10 @@ __all__ = [
     "RegionRead",
     "RiskAssessmentCreate",
     "RiskAssessmentRead",
+    "SensorReadingCollection",
     "SensorReadingCreate",
+    "SensorReadingHistoryFilters",
+    "SensorReadingIngestRequest",
     "SensorReadingRead",
     "SensorStationCreate",
     "SensorStationRead",

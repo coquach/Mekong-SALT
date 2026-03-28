@@ -3,7 +3,7 @@
 import pytest
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_health_endpoint_returns_standard_envelope(client):
     response = await client.get("/api/v1/health")
 
