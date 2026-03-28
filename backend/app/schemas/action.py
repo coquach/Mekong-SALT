@@ -1,12 +1,14 @@
 """Schemas for plans and executions."""
 
 from datetime import datetime
-from typing import Any
+from decimal import Decimal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import Field
 
 from app.models.enums import ActionPlanStatus, ActionType, ExecutionStatus
+from app.schemas.decision import DecisionLogRead
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
 
 
@@ -55,3 +57,41 @@ class ActionExecutionCreate(ActionExecutionBase):
 class ActionExecutionRead(EntityReadSchema, ActionExecutionBase):
     """Schema for returning an action execution."""
 
+
+class SimulatedExecutionRequest(ORMBaseSchema):
+    """Request payload for safe simulated execution."""
+
+    action_plan_id: UUID
+
+
+class FeedbackEvaluation(ORMBaseSchema):
+    """Feedback summary after simulated execution."""
+
+    status: Literal["improved", "not_improved", "no_change", "insufficient_new_observation"]
+    baseline_salinity_dsm: Decimal | None = None
+    latest_salinity_dsm: Decimal | None = None
+    delta_dsm: Decimal | None = None
+    summary: str
+
+
+class SimulatedExecutionResponse(ORMBaseSchema):
+    """Response payload for simulated execution flow."""
+
+    plan: ActionPlanRead
+    executions: list[ActionExecutionRead]
+    feedback: FeedbackEvaluation
+    decision_logs: list[DecisionLogRead]
+
+
+class ActionLogEntry(ORMBaseSchema):
+    """Combined execution and decision log entry."""
+
+    execution: ActionExecutionRead
+    decision_log: DecisionLogRead | None = None
+
+
+class ActionLogCollection(ORMBaseSchema):
+    """Collection payload for action log queries."""
+
+    items: list[ActionLogEntry]
+    count: int

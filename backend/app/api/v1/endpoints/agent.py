@@ -6,12 +6,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.responses import success_response
 from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import get_db_session
-from app.schemas.action import ActionPlanRead
+from app.schemas.action import (
+    ActionExecutionRead,
+    ActionPlanRead,
+    SimulatedExecutionRequest,
+    SimulatedExecutionResponse,
+)
 from app.schemas.agent import AgentPlanRequest, AgentPlanResponse
 from app.schemas.common import SuccessResponse
+from app.schemas.decision import DecisionLogRead
 from app.schemas.risk import RiskAssessmentRead
 from app.schemas.sensor import SensorReadingRead
 from app.schemas.weather import WeatherSnapshotRead
+from app.services.agent_execution_service import execute_simulated_plan
 from app.services.agent_planning_service import generate_agent_plan
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -47,5 +54,39 @@ async def generate_plan_endpoint(
     return success_response(
         request=request,
         message="Agent-assisted plan generated successfully.",
+        data=response_payload,
+    )
+
+
+@router.post(
+    "/execute-simulated",
+    response_model=SuccessResponse[SimulatedExecutionResponse],
+    summary="Execute a validated plan using safe simulated actions only",
+)
+async def execute_simulated_plan_endpoint(
+    payload: SimulatedExecutionRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Execute a validated action plan in simulated mode and log the results."""
+    bundle = await execute_simulated_plan(
+        session,
+        payload=payload,
+    )
+    response_payload = SimulatedExecutionResponse(
+        plan=ActionPlanRead.model_validate(bundle.plan),
+        executions=[
+            ActionExecutionRead.model_validate(execution)
+            for execution in bundle.executions
+        ],
+        feedback=bundle.feedback,
+        decision_logs=[
+            DecisionLogRead.model_validate(decision_log)
+            for decision_log in bundle.decision_logs
+        ],
+    )
+    return success_response(
+        request=request,
+        message="Simulated execution completed successfully.",
         data=response_payload,
     )

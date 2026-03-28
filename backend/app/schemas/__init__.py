@@ -1,10 +1,15 @@
 """Pydantic schema package."""
 
 from app.schemas.action import (
+    ActionLogCollection,
+    ActionLogEntry,
     ActionExecutionCreate,
     ActionExecutionRead,
     ActionPlanCreate,
     ActionPlanRead,
+    FeedbackEvaluation,
+    SimulatedExecutionRequest,
+    SimulatedExecutionResponse,
 )
 from app.schemas.agent import (
     AgentPlanRequest,
@@ -44,6 +49,8 @@ from app.schemas.weather import WeatherSnapshotCreate, WeatherSnapshotRead
 __all__ = [
     "ActionExecutionCreate",
     "ActionExecutionRead",
+    "ActionLogCollection",
+    "ActionLogEntry",
     "ActionPlanCreate",
     "ActionPlanRead",
     "AgentPlanRequest",
@@ -55,6 +62,7 @@ __all__ = [
     "DecisionLogRead",
     "EmbeddedChunkCreate",
     "EmbeddedChunkRead",
+    "FeedbackEvaluation",
     "KnowledgeDocumentCreate",
     "KnowledgeDocumentRead",
     "GeneratedActionPlan",
@@ -73,7 +81,8 @@ __all__ = [
     "SensorReadingRead",
     "SensorStationCreate",
     "SensorStationRead",
+    "SimulatedExecutionRequest",
+    "SimulatedExecutionResponse",
     "WeatherSnapshotCreate",
     "WeatherSnapshotRead",
 ]
-
