@@ -46,7 +46,11 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["gemini", "ollama"] = "gemini"
     gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-2.5-flash"
     ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:8b"
+    llm_temperature: float = 0.2
+    llm_request_timeout_seconds: int = 30
 
 
 @lru_cache(maxsize=1)

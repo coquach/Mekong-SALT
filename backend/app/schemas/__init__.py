@@ -6,6 +6,13 @@ from app.schemas.action import (
     ActionPlanCreate,
     ActionPlanRead,
 )
+from app.schemas.agent import (
+    AgentPlanRequest,
+    AgentPlanResponse,
+    GeneratedActionPlan,
+    PlanStep,
+    PlanValidationResult,
+)
 from app.schemas.decision import DecisionLogCreate, DecisionLogRead
 from app.schemas.knowledge import (
     EmbeddedChunkCreate,
@@ -39,6 +46,8 @@ __all__ = [
     "ActionExecutionRead",
     "ActionPlanCreate",
     "ActionPlanRead",
+    "AgentPlanRequest",
+    "AgentPlanResponse",
     "AlertEvaluationResponse",
     "AlertEventCreate",
     "AlertEventRead",
@@ -48,6 +57,9 @@ __all__ = [
     "EmbeddedChunkRead",
     "KnowledgeDocumentCreate",
     "KnowledgeDocumentRead",
+    "GeneratedActionPlan",
+    "PlanStep",
+    "PlanValidationResult",
     "RegionCreate",
     "RegionRead",
     "RiskCurrentResponse",

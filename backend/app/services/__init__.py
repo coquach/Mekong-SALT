@@ -1,5 +1,6 @@
 """Service layer package."""
 
+from app.services.agent_planning_service import generate_agent_plan
 from app.services.health_service import get_health_status
 from app.services.risk_service import evaluate_alerts, evaluate_current_risk
 from app.services.sensor_service import (
@@ -9,6 +10,7 @@ from app.services.sensor_service import (
 )
 
 __all__ = [
+    "generate_agent_plan",
     "get_health_status",
     "evaluate_alerts",
     "evaluate_current_risk",
