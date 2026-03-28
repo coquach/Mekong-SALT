@@ -1,0 +1,51 @@
+"""Application settings management."""
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Environment-driven application settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    app_name: str = "Mekong-SALT Backend"
+    app_env: Literal["development", "test", "staging", "production"] = "development"
+    app_debug: bool = False
+    app_version: str = "0.1.0"
+    app_host: str = "0.0.0.0"
+    app_port: int = 8000
+    api_v1_prefix: str = "/api/v1"
+    log_level: str = "INFO"
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+    database_url: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/mekong_salt"
+    )
+    database_echo: bool = False
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+
+    redis_url: str = "redis://localhost:6379/0"
+
+    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    gemini_api_key: SecretStr | None = None
+    ollama_base_url: str = "http://localhost:11434"
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return a cached settings instance."""
+    return Settings()
+

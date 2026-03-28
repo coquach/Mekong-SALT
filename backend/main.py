@@ -1,13 +1,5 @@
-from fastapi import FastAPI
+"""Compatibility entrypoint for local development and Docker."""
 
-app = FastAPI()
+from app.main import app
 
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: str | None = None):
-    return {"item_id": item_id, "q": q}
+__all__ = ["app"]
