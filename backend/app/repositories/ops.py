@@ -52,3 +52,10 @@ class ActionOutcomeRepository(AsyncRepository[ActionOutcome]):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, ActionOutcome)
+
+    async def list_recent(self, *, limit: int = 100) -> list[ActionOutcome]:
+        """Return recent outcomes for FE reporting views."""
+        result = await self.session.scalars(
+            select(ActionOutcome).order_by(desc(ActionOutcome.recorded_at), desc(ActionOutcome.created_at)).limit(limit)
+        )
+        return list(result.all())

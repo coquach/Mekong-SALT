@@ -71,7 +71,7 @@ curl http://localhost:8000/api/v1/health
 
 1. Ingest a sensor reading: `POST /api/v1/sensors/ingest`
 2. Evaluate risk: `GET /api/v1/risk/current`
-3. Create plan: `POST /api/v1/agent/plan`
+3. Run one goal cycle to create plan: `POST /api/v1/goals/{goal_id}/run-once`
 4. Approve plan: `POST /api/v1/approvals/plans/{plan_id}`
 5. Execute (mock): `POST /api/v1/agent/execute-simulated`
 6. Watch dashboard: `GET /api/v1/dashboard/summary` or `GET /api/v1/dashboard/stream`

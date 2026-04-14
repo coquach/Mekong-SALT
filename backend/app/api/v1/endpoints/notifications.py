@@ -1,5 +1,7 @@
 """Notification endpoints."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +9,7 @@ from app.core.responses import success_response
 from app.db.session import get_db_session
 from app.schemas.common import SuccessResponse
 from app.schemas.notification import NotificationCollection, NotificationCreate, NotificationRead
-from app.services.notification_service import create_notification, list_notifications
+from app.services.notification_service import create_notification, list_notifications, mark_notification_read
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -45,5 +47,24 @@ async def list_notification_endpoint(
             items=[NotificationRead.model_validate(notification) for notification in notifications],
             count=len(notifications),
         ),
+    )
+
+
+@router.patch("/{notification_id}/read", response_model=SuccessResponse[NotificationRead])
+async def mark_notification_read_endpoint(
+    notification_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Mark notification as read for FE list semantics."""
+    notification = await mark_notification_read(
+        session,
+        notification_id=notification_id,
+        actor_name="operator",
+    )
+    return success_response(
+        request=request,
+        message="Notification marked as read successfully.",
+        data=NotificationRead.model_validate(notification),
     )
 

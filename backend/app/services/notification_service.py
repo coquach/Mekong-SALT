@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from http import HTTPStatus
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import AppException
 from app.models.enums import AuditEventType, NotificationChannel, NotificationStatus
 from app.models.notification import Notification
 from app.repositories.ops import NotificationRepository
@@ -80,4 +82,39 @@ async def create_execution_alert_notifications(
 async def list_notifications(session: AsyncSession, *, limit: int = 100) -> list[Notification]:
     """List recent notifications."""
     return await NotificationRepository(session).list_recent(limit=limit)
+
+
+async def mark_notification_read(
+    session: AsyncSession,
+    *,
+    notification_id: UUID,
+    actor_name: str = "operator",
+) -> Notification:
+    """Mark a notification as read via payload flag until a dedicated column exists."""
+    notification = await NotificationRepository(session).get(notification_id)
+    if notification is None:
+        raise AppException(
+            status_code=HTTPStatus.NOT_FOUND,
+            code="notification_not_found",
+            message=f"Notification '{notification_id}' was not found.",
+        )
+
+    # Phase 1 compatibility: keep schema stable and annotate read state in payload.
+    payload = dict(notification.payload or {})
+    payload["read"] = True
+    payload["read_at"] = datetime.now(UTC).isoformat()
+    notification.payload = payload
+
+    await write_audit_log(
+        session,
+        event_type=AuditEventType.NOTIFICATION,
+        actor_name=actor_name,
+        incident_id=notification.incident_id,
+        action_execution_id=notification.execution_id,
+        summary="Notification marked as read.",
+        payload={"notification_id": str(notification.id)},
+    )
+    await session.commit()
+    await session.refresh(notification)
+    return notification
 

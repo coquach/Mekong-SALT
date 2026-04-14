@@ -1,9 +1,4 @@
-"""Sensor ingestion and query endpoints.
-
-Legacy note:
-`/sensors/latest` and `/sensors/history` remain available during FE migration.
-New FE-facing read routes are exposed under `/readings/*`.
-"""
+"""FE-facing reading query endpoints (Phase 1 facade)."""
 
 from datetime import datetime
 from uuid import UUID
@@ -17,43 +12,17 @@ from app.schemas.common import SuccessResponse
 from app.schemas.sensor import (
     SensorReadingCollection,
     SensorReadingHistoryFilters,
-    SensorReadingIngestRequest,
     SensorReadingRead,
 )
 from app.services.sensor_service import (
-    ingest_sensor_reading,
     list_latest_sensor_readings,
     list_sensor_reading_history,
 )
 
-router = APIRouter(prefix="/sensors", tags=["sensors"])
+router = APIRouter(prefix="/readings", tags=["readings"])
 
 
-@router.post(
-    "/ingest",
-    response_model=SuccessResponse[SensorReadingRead],
-    summary="Ingest a sensor reading",
-)
-async def ingest_reading(
-    payload: SensorReadingIngestRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Validate and persist a single sensor reading."""
-    reading = await ingest_sensor_reading(session, payload)
-    return success_response(
-        request=request,
-        message="Sensor reading ingested successfully.",
-        data=SensorReadingRead.model_validate(reading),
-        status_code=201,
-    )
-
-
-@router.get(
-    "/latest",
-    response_model=SuccessResponse[SensorReadingCollection],
-    summary="Get latest sensor readings",
-)
+@router.get("/latest", response_model=SuccessResponse[SensorReadingCollection])
 async def get_latest_readings(
     request: Request,
     station_id: UUID | None = Query(default=None),
@@ -65,7 +34,8 @@ async def get_latest_readings(
     limit: int = Query(default=100, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return the latest reading per station for the given filters."""
+    """Return latest reading per station under FE-friendly `/readings` namespace."""
+    # Phase 1 facade: reuse existing sensor service logic to avoid duplicating business rules.
     filters = SensorReadingHistoryFilters(
         station_id=station_id,
         station_code=station_code,
@@ -82,16 +52,12 @@ async def get_latest_readings(
     )
     return success_response(
         request=request,
-        message="Latest sensor readings retrieved successfully.",
+        message="Latest readings retrieved successfully.",
         data=payload,
     )
 
 
-@router.get(
-    "/history",
-    response_model=SuccessResponse[SensorReadingCollection],
-    summary="Get sensor reading history",
-)
+@router.get("/history", response_model=SuccessResponse[SensorReadingCollection])
 async def get_reading_history(
     request: Request,
     station_id: UUID | None = Query(default=None),
@@ -103,7 +69,7 @@ async def get_reading_history(
     limit: int = Query(default=100, ge=1, le=1000),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return historical readings filtered by station, region, and time window."""
+    """Return historical readings under FE-friendly `/readings` namespace."""
     filters = SensorReadingHistoryFilters(
         station_id=station_id,
         station_code=station_code,
@@ -120,6 +86,6 @@ async def get_reading_history(
     )
     return success_response(
         request=request,
-        message="Sensor reading history retrieved successfully.",
+        message="Reading history retrieved successfully.",
         data=payload,
     )

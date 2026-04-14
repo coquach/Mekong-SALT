@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, time
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +14,7 @@ from app.models.incident import Incident
 from app.models.notification import Notification
 from app.models.risk import RiskAssessment
 from app.models.sensor import SensorReading
-from app.schemas.dashboard import DashboardSummary
+from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
 
 
 async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
@@ -66,3 +66,30 @@ async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
         latest_station_code=latest_reading.station.code if latest_reading is not None and latest_reading.station is not None else None,
         simulated_executions_today=int(simulated_executions_today or 0),
     )
+
+
+async def get_dashboard_timeline(session: AsyncSession, *, limit: int = 72) -> DashboardTimeline:
+    """Return recent risk assessments as a chart-friendly timeline."""
+    assessments = list(
+        (
+            await session.scalars(
+                select(RiskAssessment)
+                .options(selectinload(RiskAssessment.station))
+                .order_by(desc(RiskAssessment.assessed_at), desc(RiskAssessment.created_at))
+                .limit(limit)
+            )
+        ).all()
+    )
+
+    # Oldest -> newest ordering is easier for FE chart rendering.
+    assessments.reverse()
+    items = [
+        DashboardTimelineItem(
+            assessed_at=assessment.assessed_at,
+            station_code=assessment.station.code if assessment.station is not None else None,
+            risk_level=assessment.risk_level.value,
+            salinity_dsm=str(assessment.salinity_dsm) if assessment.salinity_dsm is not None else None,
+        )
+        for assessment in assessments
+    ]
+    return DashboardTimeline(items=items, count=len(items))

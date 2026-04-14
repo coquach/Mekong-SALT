@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.responses import success_response
 from app.db.session import AsyncSessionFactory, get_db_session
 from app.schemas.common import SuccessResponse
-from app.schemas.dashboard import DashboardSummary
-from app.services.dashboard_service import get_dashboard_summary
+from app.schemas.dashboard import DashboardSummary, DashboardTimeline
+from app.services.dashboard_service import get_dashboard_summary, get_dashboard_timeline
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -28,6 +28,20 @@ async def dashboard_summary(
     return success_response(
         request=request,
         message="Dashboard summary retrieved successfully.",
+        data=payload,
+    )
+
+
+@router.get("/timeline", response_model=SuccessResponse[DashboardTimeline])
+async def dashboard_timeline(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Return a compact timeline series for FE dashboard charts."""
+    payload = await get_dashboard_timeline(session)
+    return success_response(
+        request=request,
+        message="Dashboard timeline retrieved successfully.",
         data=payload,
     )
 
