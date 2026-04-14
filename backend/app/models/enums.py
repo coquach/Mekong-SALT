@@ -42,6 +42,9 @@ class ActionPlanStatus(str, Enum):
 
     DRAFT = "draft"
     VALIDATED = "validated"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
     SIMULATED = "simulated"
     CLOSED = "closed"
 
@@ -49,6 +52,11 @@ class ActionPlanStatus(str, Enum):
 class ActionType(str, Enum):
     """Allowed simulated action types for the MVP."""
 
+    CLOSE_GATE = "close_gate"
+    OPEN_GATE = "open_gate"
+    START_PUMP = "start_pump"
+    STOP_PUMP = "stop_pump"
+    SEND_ALERT = "send_alert"
     NOTIFY_FARMERS = "notify-farmers"
     WAIT_SAFE_WINDOW = "wait-safe-window"
     CLOSE_GATE_SIMULATED = "close-gate-simulated"
@@ -78,4 +86,55 @@ class DecisionActorType(str, Enum):
     SYSTEM = "system"
     OPERATOR = "operator"
     AGENT = "agent"
+
+
+class IncidentStatus(str, Enum):
+    """Incident lifecycle states."""
+
+    OPEN = "open"
+    INVESTIGATING = "investigating"
+    PENDING_PLAN = "pending_plan"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    EXECUTING = "executing"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+
+class ApprovalDecision(str, Enum):
+    """Human approval decisions for action plans."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class NotificationChannel(str, Enum):
+    """Supported notification channels."""
+
+    DASHBOARD = "dashboard"
+    SMS_MOCK = "sms_mock"
+    ZALO_MOCK = "zalo_mock"
+    EMAIL_MOCK = "email_mock"
+
+
+class NotificationStatus(str, Enum):
+    """Notification delivery states."""
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
+class AuditEventType(str, Enum):
+    """Common audit event categories."""
+
+    AUTH = "auth"
+    INGESTION = "ingestion"
+    RISK = "risk"
+    INCIDENT = "incident"
+    PLAN = "plan"
+    APPROVAL = "approval"
+    EXECUTION = "execution"
+    NOTIFICATION = "notification"
+    KNOWLEDGE = "knowledge"
 

@@ -124,7 +124,7 @@ async def test_agent_plan_endpoint_persists_validated_plan(
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    assert body["data"]["plan"]["status"] == ActionPlanStatus.VALIDATED.value
+    assert body["data"]["plan"]["status"] == ActionPlanStatus.PENDING_APPROVAL.value
     assert body["data"]["plan"]["model_provider"] == "stub-provider"
     assert body["data"]["plan"]["validation_result"]["is_valid"] is True
     assert len(body["data"]["plan"]["plan_steps"]) == 2

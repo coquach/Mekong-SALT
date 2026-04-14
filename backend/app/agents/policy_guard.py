@@ -7,6 +7,9 @@ from app.schemas.agent import GeneratedActionPlan, PlanValidationResult
 
 POLICY_VERSION = "v1"
 CRITICAL_MITIGATION_ACTIONS = {
+    ActionType.CLOSE_GATE,
+    ActionType.START_PUMP,
+    ActionType.STOP_PUMP,
     ActionType.CLOSE_GATE_SIMULATED,
     ActionType.START_PUMP_SIMULATED,
 }
@@ -37,7 +40,7 @@ def validate_generated_plan(
             )
 
     if risk_level in {RiskLevel.DANGER, RiskLevel.CRITICAL}:
-        if ActionType.NOTIFY_FARMERS not in action_types:
+        if not ({ActionType.NOTIFY_FARMERS, ActionType.SEND_ALERT} & action_types):
             warnings.append(
                 "High-risk plan should notify farmers or local operators promptly."
             )

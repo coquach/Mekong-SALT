@@ -114,3 +114,5 @@ async def seeded_sensor_data(db_session: AsyncSession) -> dict[str, object]:
         "now": now,
     }
 
+
+

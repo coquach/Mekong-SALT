@@ -13,11 +13,11 @@ from app.schemas.agent import GeneratedActionPlan, PlanStep
 
 def validate_execution_plan(plan: ActionPlan) -> list[PlanStep]:
     """Ensure a persisted plan is safe to execute in simulated mode."""
-    if plan.status is not ActionPlanStatus.VALIDATED:
+    if plan.status is not ActionPlanStatus.APPROVED:
         raise AppException(
             status_code=HTTPStatus.BAD_REQUEST,
-            code="action_plan_not_validated",
-            message="Only validated plans can be executed in simulated mode.",
+            code="action_plan_not_approved",
+            message="Only human-approved plans can be executed in simulated mode.",
         )
     if plan.risk_assessment is None:
         raise AppException(

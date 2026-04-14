@@ -131,7 +131,7 @@ async def test_execute_simulated_rejects_draft_plan(
 
     assert execute_response.status_code == 400
     body = execute_response.json()
-    assert body["error"]["code"] == "action_plan_not_validated"
+    assert body["error"]["code"] == "action_plan_not_approved"
 
 
 @pytest.mark.asyncio
@@ -165,7 +165,13 @@ async def test_execute_simulated_persists_executions_feedback_and_logs(
 
     plan_body = plan_response.json()["data"]["plan"]
     plan_id = plan_body["id"]
-    assert plan_body["status"] == ActionPlanStatus.VALIDATED.value
+    assert plan_body["status"] == ActionPlanStatus.PENDING_APPROVAL.value
+
+    approval_response = await client.post(
+        f"/api/v1/approvals/plans/{plan_id}",
+        json={"decision": "approved", "comment": "test approval"},
+    )
+    assert approval_response.status_code == 200
 
     follow_up_reading = SensorReading(
         station_id=seeded_sensor_data["station_a"].id,

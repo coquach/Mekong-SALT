@@ -52,8 +52,12 @@ class SensorReadingBase(ORMBaseSchema):
     recorded_at: datetime
     salinity_dsm: Decimal
     water_level_m: Decimal
+    wind_speed_mps: Decimal | None = None
+    wind_direction_deg: int | None = None
+    flow_rate_m3s: Decimal | None = None
     temperature_c: Decimal | None = None
     battery_level_pct: Decimal | None = None
+    source: str = Field(default="simulator", max_length=100)
     context_payload: dict[str, Any] | None = None
 
 
@@ -74,9 +78,32 @@ class SensorReadingIngestRequest(ORMBaseSchema):
     recorded_at: datetime
     salinity_dsm: Decimal
     water_level_m: Decimal
+    wind_speed_mps: Decimal | None = None
+    wind_direction_deg: int | None = None
+    flow_rate_m3s: Decimal | None = None
     temperature_c: Decimal | None = None
     battery_level_pct: Decimal | None = None
+    source: str = Field(default="simulator", max_length=100)
     context_payload: dict[str, Any] | None = None
+
+
+class SensorStationUpdate(ORMBaseSchema):
+    """Partial station update request."""
+
+    name: str | None = Field(default=None, max_length=255)
+    station_type: str | None = Field(default=None, max_length=100)
+    status: StationStatus | None = None
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    location_description: str | None = None
+    station_metadata: dict[str, Any] | None = None
+
+
+class SensorStationCollection(ORMBaseSchema):
+    """Collection wrapper for station query responses."""
+
+    items: list[SensorStationRead]
+    count: int
 
 
 class SensorReadingHistoryFilters(ORMBaseSchema):

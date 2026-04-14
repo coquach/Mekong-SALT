@@ -47,6 +47,7 @@ class SensorStation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     risk_assessments = relationship("RiskAssessment", back_populates="station")
+    incidents = relationship("Incident", back_populates="station")
 
 
 class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -67,8 +68,12 @@ class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     salinity_dsm: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     water_level_m: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    wind_speed_mps: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    wind_direction_deg: Mapped[int | None] = mapped_column(nullable=True)
+    flow_rate_m3s: Mapped[Decimal | None] = mapped_column(Numeric(8, 3), nullable=True)
     temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     battery_level_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, default="simulator")
     context_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     station = relationship("SensorStation", back_populates="readings")

@@ -30,10 +30,20 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
         """Return a plan with its assessment eagerly loaded."""
         result = await self.session.scalars(
             select(ActionPlan)
-            .options(selectinload(ActionPlan.risk_assessment))
+            .options(
+                selectinload(ActionPlan.risk_assessment),
+                selectinload(ActionPlan.incident),
+            )
             .where(ActionPlan.id == plan_id)
         )
         return result.first()
+
+    async def list_recent(self, *, limit: int = 100) -> list[ActionPlan]:
+        """Return recent action plans."""
+        result = await self.session.scalars(
+            select(ActionPlan).order_by(desc(ActionPlan.created_at)).limit(limit)
+        )
+        return list(result.all())
 
 
 class ActionExecutionRepository(AsyncRepository[ActionExecution]):
@@ -60,3 +70,10 @@ class ActionExecutionRepository(AsyncRepository[ActionExecution]):
             statement = statement.where(ActionExecution.plan_id == plan_id)
         result = await self.session.scalars(statement.limit(limit))
         return list(result.all())
+
+    async def get_by_idempotency_key(self, key: str) -> ActionExecution | None:
+        """Load an execution by idempotency key."""
+        result = await self.session.scalars(
+            select(ActionExecution).where(ActionExecution.idempotency_key == key)
+        )
+        return result.first()

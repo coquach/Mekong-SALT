@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.execution_policy import validate_execution_plan
 from app.core.exceptions import AppException
 from app.models.action import ActionExecution, ActionPlan
+from app.models.audit import ActionOutcome
 from app.models.decision import DecisionLog
-from app.models.enums import ActionPlanStatus, DecisionActorType, ExecutionStatus
+from app.models.enums import ActionPlanStatus, ActionType, AuditEventType, DecisionActorType, ExecutionStatus, IncidentStatus
 from app.repositories.action import ActionExecutionRepository, ActionPlanRepository
 from app.repositories.decision import DecisionLogRepository
+from app.repositories.ops import ActionOutcomeRepository
 from app.repositories.region import RegionRepository
 from app.repositories.sensor import SensorReadingRepository
 from app.schemas.action import (
@@ -25,6 +27,8 @@ from app.schemas.action import (
     FeedbackEvaluation,
     SimulatedExecutionRequest,
 )
+from app.services.audit_service import write_audit_log
+from app.services.notification_service import create_execution_alert_notifications
 
 
 @dataclass(slots=True)
@@ -35,17 +39,44 @@ class SimulatedExecutionBundle:
     executions: list[ActionExecution]
     feedback: FeedbackEvaluation
     decision_logs: list[DecisionLog]
+    outcomes: list[ActionOutcome]
+    idempotent_replay: bool = False
 
 
 async def execute_simulated_plan(
     session: AsyncSession,
     *,
     payload: SimulatedExecutionRequest,
+    actor_name: str = "operator",
 ) -> SimulatedExecutionBundle:
     """Execute a validated plan in simulated mode only."""
     plan_repo = ActionPlanRepository(session)
     execution_repo = ActionExecutionRepository(session)
     decision_repo = DecisionLogRepository(session)
+    outcome_repo = ActionOutcomeRepository(session)
+
+    if payload.idempotency_key is not None:
+        existing = await execution_repo.get_by_idempotency_key(payload.idempotency_key)
+        if existing is not None:
+            plan = await plan_repo.get_with_assessment(payload.action_plan_id)
+            if plan is None:
+                raise AppException(
+                    status_code=HTTPStatus.NOT_FOUND,
+                    code="action_plan_not_found",
+                    message=f"Action plan '{payload.action_plan_id}' was not found.",
+                )
+            feedback = FeedbackEvaluation(
+                status="insufficient_new_observation",
+                summary="Execution was returned from an existing idempotency key.",
+            )
+            return SimulatedExecutionBundle(
+                plan=plan,
+                executions=[existing],
+                feedback=feedback,
+                decision_logs=[],
+                outcomes=[],
+                idempotent_replay=True,
+            )
 
     plan = await plan_repo.get_with_assessment(payload.action_plan_id)
     if plan is None:
@@ -59,6 +90,9 @@ async def execute_simulated_plan(
     now = datetime.now(UTC)
     executions: list[ActionExecution] = []
     decision_logs: list[DecisionLog] = []
+    outcomes: list[ActionOutcome] = []
+    if plan.incident is not None:
+        plan.incident.status = IncidentStatus.EXECUTING
 
     for step in steps:
         execution = ActionExecution(
@@ -77,9 +111,25 @@ async def execute_simulated_plan(
                 "rationale": step.rationale,
                 "simulated": True,
             },
+            idempotency_key=(
+                payload.idempotency_key
+                if payload.idempotency_key is not None and step.step_index == 1
+                else f"{payload.idempotency_key}:{step.step_index}"
+                if payload.idempotency_key is not None
+                else payload.idempotency_key
+            ),
+            requested_by=actor_name,
         )
         await execution_repo.add(execution)
         executions.append(execution)
+
+        if step.action_type in {ActionType.SEND_ALERT, ActionType.NOTIFY_FARMERS}:
+            await create_execution_alert_notifications(
+                session,
+                incident_id=plan.incident_id,
+                execution_id=execution.id,
+                message=step.instructions,
+            )
 
         decision_log = DecisionLog(
             region_id=plan.region_id,
@@ -101,8 +151,39 @@ async def execute_simulated_plan(
         )
         await decision_repo.add(decision_log)
         decision_logs.append(decision_log)
+        await write_audit_log(
+            session,
+            event_type=AuditEventType.EXECUTION,
+            actor_name=actor_name,
+            region_id=plan.region_id,
+            incident_id=plan.incident_id,
+            action_plan_id=plan.id,
+            action_execution_id=execution.id,
+            summary=f"Simulated action executed: {step.action_type.value}.",
+            payload=execution.result_payload,
+        )
 
     feedback = await _evaluate_feedback(session, plan)
+    if executions:
+        outcome = ActionOutcome(
+            execution_id=executions[-1].id,
+            recorded_at=datetime.now(UTC),
+            pre_metrics={
+                "baseline_salinity_dsm": str(feedback.baseline_salinity_dsm)
+                if feedback.baseline_salinity_dsm is not None
+                else None,
+            },
+            post_metrics={
+                "latest_salinity_dsm": str(feedback.latest_salinity_dsm)
+                if feedback.latest_salinity_dsm is not None
+                else None,
+                "delta_dsm": str(feedback.delta_dsm) if feedback.delta_dsm is not None else None,
+            },
+            status=feedback.status,
+            summary=feedback.summary,
+        )
+        await outcome_repo.add(outcome)
+        outcomes.append(outcome)
     feedback_log = DecisionLog(
         region_id=plan.region_id,
         risk_assessment_id=plan.risk_assessment_id,
@@ -120,12 +201,16 @@ async def execute_simulated_plan(
     decision_logs.append(feedback_log)
 
     plan.status = ActionPlanStatus.SIMULATED
+    if plan.incident is not None:
+        plan.incident.status = IncidentStatus.RESOLVED if feedback.status == "improved" else IncidentStatus.EXECUTING
     await session.commit()
 
     for execution in executions:
         await session.refresh(execution)
     for decision_log in decision_logs:
         await session.refresh(decision_log)
+    for outcome in outcomes:
+        await session.refresh(outcome)
     await session.refresh(plan)
 
     return SimulatedExecutionBundle(
@@ -133,6 +218,7 @@ async def execute_simulated_plan(
         executions=executions,
         feedback=feedback,
         decision_logs=decision_logs,
+        outcomes=outcomes,
     )
 
 
@@ -241,6 +327,11 @@ async def _evaluate_feedback(
 def _build_execution_summary(action_type) -> str:
     """Return a fixed summary for each simulated action type."""
     summaries = {
+        "close_gate": "Mock gate close command accepted.",
+        "open_gate": "Mock gate open command accepted.",
+        "start_pump": "Mock pump start command accepted.",
+        "stop_pump": "Mock pump stop command accepted.",
+        "send_alert": "Mock stakeholder alert sent.",
         "notify-farmers": "Simulated advisory notification sent to farmers.",
         "wait-safe-window": "Simulated wait window applied pending safer intake conditions.",
         "close-gate-simulated": "Simulated temporary gate closure scenario completed.",

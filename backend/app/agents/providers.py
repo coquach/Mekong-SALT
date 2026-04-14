@@ -30,6 +30,70 @@ class PlanProvider(ABC):
         """Generate a structured plan for the given objective and context."""
 
 
+class MockProvider(PlanProvider):
+    """Deterministic planner for local demos and tests."""
+
+    name = "mock"
+
+    async def generate_plan(
+        self,
+        *,
+        objective: str,
+        context: dict[str, Any],
+    ) -> GeneratedActionPlan:
+        """Generate a structured plan without calling an external LLM."""
+        assessment = context.get("assessment") or {}
+        risk_level = assessment.get("risk_level", "warning")
+        mitigation_action = (
+            "close_gate"
+            if risk_level in {"danger", "critical"}
+            else "send_alert"
+        )
+        return GeneratedActionPlan.model_validate(
+            {
+                "objective": objective,
+                "summary": "Coordinate salinity response with operator approval before any simulated action.",
+                "context_summary": "Latest sensor, weather, and rules context were assembled for the incident.",
+                "risk_summary": assessment.get("summary", "Salinity risk requires operator review."),
+                "confidence_score": 0.76,
+                "assumptions": [
+                    "Sensor readings are recent enough for MVP planning.",
+                    "All device actions are simulated and require human approval.",
+                ],
+                "reasoning_summary": "Threshold risk and recent trend suggest prompt notification and simulated mitigation.",
+                "steps": [
+                    {
+                        "step_index": 1,
+                        "action_type": "send_alert",
+                        "priority": 1,
+                        "title": "Send operator and farmer alert",
+                        "instructions": "Notify dashboard, SMS mock, Zalo mock, and email mock recipients.",
+                        "rationale": "Stakeholders need an immediate advisory before changing intake behavior.",
+                        "simulated": True,
+                    },
+                    {
+                        "step_index": 2,
+                        "action_type": mitigation_action,
+                        "priority": 2,
+                        "title": "Simulate hydraulic mitigation",
+                        "instructions": "Run the mock execution pathway and record the outcome.",
+                        "rationale": "MVP execution must remain simulated until operators approve hardware integration.",
+                        "simulated": True,
+                    },
+                    {
+                        "step_index": 3,
+                        "action_type": "stop_pump",
+                        "priority": 3,
+                        "title": "Confirm safe intake pause",
+                        "instructions": "Simulate a temporary pump stop if intake salinity remains elevated.",
+                        "rationale": "A conservative intake pause can reduce exposure during salinity peaks.",
+                        "simulated": True,
+                    },
+                ],
+            }
+        )
+
+
 class GeminiProvider(PlanProvider):
     """Gemini provider using the Google GenAI SDK."""
 
@@ -152,6 +216,8 @@ def get_plan_provider(provider_name: str | None = None) -> PlanProvider:
     """Resolve the configured planning provider implementation."""
     settings = get_settings()
     resolved = provider_name or settings.llm_provider
+    if resolved == "mock":
+        return MockProvider()
     if resolved == "gemini":
         return GeminiProvider()
     if resolved == "ollama":
@@ -170,8 +236,9 @@ def _build_plan_prompt(*, objective: str, context: dict[str, Any]) -> str:
         "Generate a salinity response plan for Mekong-SALT.\n"
         "Requirements:\n"
         "- Use only simulated or informational actions.\n"
-        "- Allowed action types: notify-farmers, wait-safe-window, "
-        "close-gate-simulated, start-pump-simulated.\n"
+        "- Allowed action types: send_alert, notify-farmers, wait-safe-window, "
+        "close_gate, open_gate, start_pump, stop_pump, close-gate-simulated, start-pump-simulated.\n"
+        "- All actions are simulated in MVP and require human approval before execution.\n"
         "- Keep the plan practical for an MVP decision-support system.\n"
         "- Return 2 to 5 ordered steps.\n"
         "- Every step must include action_type, title, instructions, rationale, and simulated=true.\n"

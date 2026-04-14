@@ -1,14 +1,21 @@
 # Mekong-SALT Backend
 
-Phase 1 provides the backend foundation only:
+Backend MVP scope includes:
 
-- FastAPI bootstrap with structured `app/` modules
+- FastAPI modular monolith with versioned APIs
 - environment-based config with Pydantic v2 settings
-- async SQLAlchemy and Redis placeholders
+- async SQLAlchemy + Redis integration
+- auth and simple RBAC (admin/supervisor/operator/viewer)
+- sensor ingestion + risk evaluation + incident creation
+- AI planning orchestration (mock + provider abstractions)
+- approval workflow and simulated execution
+- notifications (dashboard + SMS/Zalo/email mock)
+- audit logging and outcomes
+- dashboard summary + SSE stream
 - shared logging, middleware, exceptions, and response envelope
-- Alembic baseline for PostgreSQL + pgvector
+- Alembic migrations for PostgreSQL + pgvector
 - Docker Compose local infrastructure for PostgreSQL and Redis
-- basic smoke test and seed script
+- seed script with demo data
 
 ## Local setup
 
@@ -52,8 +59,19 @@ alembic upgrade head
 python scripts/seed.py
 ```
 
+Authentication is disabled for MVP demo.
+
 ## Sample curl
 
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
+
+## Demo flow (MVP)
+
+1. Ingest a sensor reading: `POST /api/v1/sensors/ingest`
+2. Evaluate risk: `GET /api/v1/risk/current`
+3. Create plan: `POST /api/v1/agent/plan`
+4. Approve plan: `POST /api/v1/approvals/plans/{plan_id}`
+5. Execute (mock): `POST /api/v1/agent/execute-simulated`
+6. Watch dashboard: `GET /api/v1/dashboard/summary` or `GET /api/v1/dashboard/stream`

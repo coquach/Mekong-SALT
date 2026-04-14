@@ -10,11 +10,15 @@ from app.core.logging import configure_logging
 from app.db.session import AsyncSessionFactory, close_database_engine
 from app.models import (
     ActionExecution,
+    Approval,
+    AuditLog,
     ActionPlan,
     AlertEvent,
     DecisionLog,
     EmbeddedChunk,
+    Incident,
     KnowledgeDocument,
+    Notification,
     Region,
     RiskAssessment,
     SensorReading,
@@ -22,10 +26,15 @@ from app.models import (
     WeatherSnapshot,
 )
 from app.models.enums import (
+    ApprovalDecision,
+    AuditEventType,
     ActionPlanStatus,
     ActionType,
     DecisionActorType,
     ExecutionStatus,
+    IncidentStatus,
+    NotificationChannel,
+    NotificationStatus,
     RiskLevel,
     StationStatus,
     TrendDirection,
@@ -100,6 +109,7 @@ async def run_seed() -> None:
             water_level_m=Decimal("1.62"),
             temperature_c=Decimal("29.40"),
             battery_level_pct=Decimal("88.00"),
+            source="simulator",
             context_payload={"source": "simulated-sensor", "quality": "good"},
         )
         reading_b = SensorReading(
@@ -109,6 +119,7 @@ async def run_seed() -> None:
             water_level_m=Decimal("1.25"),
             temperature_c=Decimal("29.10"),
             battery_level_pct=Decimal("91.50"),
+            source="simulator",
             context_payload={"source": "simulated-sensor", "quality": "good"},
         )
         session.add_all([reading_a, reading_b])
@@ -159,40 +170,102 @@ async def run_seed() -> None:
         session.add(alert)
         await session.flush()
 
+        incident = Incident(
+            region_id=region.id,
+            station_id=station_a.id,
+            risk_assessment_id=risk.id,
+            title="Danger salinity incident at Go Cong East Intake",
+            description="Salinity exceeds irrigation tolerance and needs supervised response.",
+            severity=RiskLevel.DANGER,
+            status=IncidentStatus.APPROVED,
+            source="seed",
+            evidence={"risk_assessment_id": str(risk.id), "alert_id": str(alert.id)},
+            opened_at=now - timedelta(minutes=14),
+            acknowledged_at=now - timedelta(minutes=12),
+            created_by="seed",
+        )
+        session.add(incident)
+        await session.flush()
+
         plan = ActionPlan(
             region_id=region.id,
             risk_assessment_id=risk.id,
-            status=ActionPlanStatus.VALIDATED,
+            incident_id=incident.id,
+            status=ActionPlanStatus.APPROVED,
             objective="Reduce saline water intake during the active high-risk window.",
             generated_by="phase-2-seed",
+            model_provider="mock",
             summary="Notify stakeholders, pause intake, and simulate gate closure until safer conditions return.",
             assumptions={
-                "crop_profile": region.crop_profile,
-                "tide_window_minutes": 90,
+                "items": [
+                    "Operators are available for approval.",
+                    "All actions are mock/simulated for the hackathon MVP.",
+                ]
             },
             plan_steps=[
-                {"step": 1, "action": ActionType.NOTIFY_FARMERS.value, "reason": "Warn field operators immediately."},
-                {"step": 2, "action": ActionType.WAIT_SAFE_WINDOW.value, "reason": "Avoid intake during peak salinity."},
-                {"step": 3, "action": ActionType.CLOSE_GATE_SIMULATED.value, "reason": "Simulate protective gate closure."},
+                {
+                    "step_index": 1,
+                    "action_type": ActionType.SEND_ALERT.value,
+                    "priority": 1,
+                    "title": "Send stakeholder alert",
+                    "instructions": "Notify operators and farmers through mock channels.",
+                    "rationale": "Stakeholders need immediate advisory before operational changes.",
+                    "simulated": True,
+                },
+                {
+                    "step_index": 2,
+                    "action_type": ActionType.CLOSE_GATE.value,
+                    "priority": 2,
+                    "title": "Simulate intake gate closure",
+                    "instructions": "Run the mock close_gate execution for the primary intake.",
+                    "rationale": "Reducing intake during high salinity can reduce exposure.",
+                    "simulated": True,
+                },
             ],
-            validation_result={"approved": True, "policy": "simulated-actions-only"},
+            validation_result={"is_valid": True, "policy": "simulated-actions-only"},
         )
         session.add(plan)
+        await session.flush()
+
+        approval = Approval(
+            plan_id=plan.id,
+            decided_by_name="supervisor",
+            decision=ApprovalDecision.APPROVED,
+            comment="Seeded approval for local demo flow.",
+            decided_at=now - timedelta(minutes=11),
+        )
+        session.add(approval)
         await session.flush()
 
         execution = ActionExecution(
             plan_id=plan.id,
             region_id=region.id,
-            action_type=ActionType.CLOSE_GATE_SIMULATED,
+            action_type=ActionType.CLOSE_GATE,
             status=ExecutionStatus.SUCCEEDED,
             simulated=True,
-            step_index=3,
+            step_index=2,
             started_at=now - timedelta(minutes=10),
             completed_at=now - timedelta(minutes=8),
             result_summary="Simulated gate closure completed.",
             result_payload={"estimated_effect": "reduced saline inflow", "confidence": "medium"},
+            idempotency_key="seed-close-gate-001",
+            requested_by="supervisor",
         )
         session.add(execution)
+        await session.flush()
+
+        notification = Notification(
+            incident_id=incident.id,
+            execution_id=execution.id,
+            channel=NotificationChannel.DASHBOARD,
+            status=NotificationStatus.SENT,
+            recipient="dashboard",
+            subject="Seed salinity response",
+            message="Mock dashboard notification for seeded response plan.",
+            payload={"mock": True},
+            sent_at=now - timedelta(minutes=8),
+        )
+        session.add(notification)
         await session.flush()
 
         document = KnowledgeDocument(
@@ -239,6 +312,20 @@ async def run_seed() -> None:
             store_as_memory=False,
         )
         session.add(decision_log)
+
+        audit_log = AuditLog(
+            event_type=AuditEventType.EXECUTION,
+            actor_name="supervisor",
+            actor_role="supervisor",
+            region_id=region.id,
+            incident_id=incident.id,
+            action_plan_id=plan.id,
+            action_execution_id=execution.id,
+            occurred_at=now - timedelta(minutes=7),
+            summary="Seeded approved plan and simulated execution.",
+            payload={"notification_id": str(notification.id), "approval_id": str(approval.id)},
+        )
+        session.add(audit_log)
 
         await session.commit()
 

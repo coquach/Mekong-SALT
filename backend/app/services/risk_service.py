@@ -21,6 +21,7 @@ from app.repositories.risk import AlertEventRepository, RiskAssessmentRepository
 from app.repositories.sensor import SensorReadingRepository, SensorStationRepository
 from app.schemas.risk import RiskEvaluationFilters
 from app.services.external_context_service import get_or_fetch_weather_snapshot
+from app.services.incident_service import ensure_incident_for_assessment
 from app.services.risk_engine import RiskEvaluationInput, evaluate_risk, should_create_alert
 
 
@@ -108,6 +109,8 @@ async def evaluate_current_risk(
     await assessment_repo.add(assessment)
     await session.commit()
     await session.refresh(assessment)
+    await ensure_incident_for_assessment(session, assessment)
+    await session.commit()
 
     return RiskEvaluationBundle(
         assessment=assessment,

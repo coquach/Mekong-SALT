@@ -20,8 +20,9 @@ class AgentPlanRequest(ORMBaseSchema):
     station_code: str | None = None
     region_id: UUID | None = None
     region_code: str | None = None
+    incident_id: UUID | None = None
     objective: str | None = Field(default=None, max_length=255)
-    provider: Literal["gemini", "ollama"] | None = None
+    provider: Literal["mock", "gemini", "ollama"] | None = None
 
 
 class PlanStep(ORMBaseSchema):
@@ -29,6 +30,7 @@ class PlanStep(ORMBaseSchema):
 
     step_index: int = Field(ge=1, le=20)
     action_type: ActionType
+    priority: int = Field(default=1, ge=1, le=5)
     title: str = Field(max_length=255)
     instructions: str
     rationale: str
@@ -40,7 +42,11 @@ class GeneratedActionPlan(ORMBaseSchema):
 
     objective: str = Field(max_length=255)
     summary: str
+    context_summary: str | None = None
+    risk_summary: str | None = None
+    confidence_score: float = Field(default=0.7, ge=0.0, le=1.0)
     assumptions: list[str] = Field(default_factory=list)
+    reasoning_summary: str | None = None
     steps: list[PlanStep] = Field(min_length=1, max_length=10)
 
 

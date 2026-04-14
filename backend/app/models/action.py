@@ -31,6 +31,12 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    incident_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("incidents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[ActionPlanStatus] = mapped_column(
         enum_type(ActionPlanStatus, "action_plan_status"),
         nullable=False,
@@ -47,12 +53,19 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     region = relationship("Region", back_populates="action_plans")
     risk_assessment = relationship("RiskAssessment", back_populates="action_plans")
+    incident = relationship("Incident", back_populates="action_plans")
+    approvals = relationship(
+        "Approval",
+        back_populates="action_plan",
+        cascade="all, delete-orphan",
+    )
     executions = relationship(
         "ActionExecution",
         back_populates="action_plan",
         cascade="all, delete-orphan",
     )
     decision_logs = relationship("DecisionLog", back_populates="action_plan")
+    audit_logs = relationship("AuditLog", back_populates="action_plan")
 
 
 class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -88,7 +101,16 @@ class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     result_summary: Mapped[str | None] = mapped_column(Text(), nullable=True)
     result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
+    requested_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     action_plan = relationship("ActionPlan", back_populates="executions")
     region = relationship("Region", back_populates="action_executions")
     decision_logs = relationship("DecisionLog", back_populates="action_execution")
+    notifications = relationship("Notification", back_populates="execution")
+    outcomes = relationship(
+        "ActionOutcome",
+        back_populates="execution",
+        cascade="all, delete-orphan",
+    )
+    audit_logs = relationship("AuditLog", back_populates="action_execution")

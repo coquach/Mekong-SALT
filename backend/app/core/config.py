@@ -44,13 +44,14 @@ class Settings(BaseSettings):
     open_meteo_weather_base_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_marine_base_url: str = "https://marine-api.open-meteo.com/v1/marine"
 
-    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    llm_provider: Literal["mock", "gemini", "ollama"] = "mock"
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-2.5-flash"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
     llm_temperature: float = 0.2
     llm_request_timeout_seconds: int = 30
+
 
 
 @lru_cache(maxsize=1)

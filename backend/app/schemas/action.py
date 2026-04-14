@@ -17,6 +17,7 @@ class ActionPlanBase(ORMBaseSchema):
 
     region_id: UUID
     risk_assessment_id: UUID
+    incident_id: UUID | None = None
     status: ActionPlanStatus = ActionPlanStatus.DRAFT
     objective: str = Field(max_length=255)
     generated_by: str = Field(default="system", max_length=100)
@@ -48,6 +49,8 @@ class ActionExecutionBase(ORMBaseSchema):
     completed_at: datetime | None = None
     result_summary: str | None = None
     result_payload: dict[str, Any] | None = None
+    idempotency_key: str | None = Field(default=None, max_length=120)
+    requested_by: str | None = Field(default=None, max_length=255)
 
 
 class ActionExecutionCreate(ActionExecutionBase):
@@ -62,6 +65,13 @@ class SimulatedExecutionRequest(ORMBaseSchema):
     """Request payload for safe simulated execution."""
 
     action_plan_id: UUID
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+
+class ExecutionSimulateRequest(ORMBaseSchema):
+    """Request payload when the plan ID is carried in the route path."""
+
+    idempotency_key: str | None = Field(default=None, max_length=120)
 
 
 class FeedbackEvaluation(ORMBaseSchema):
@@ -81,6 +91,7 @@ class SimulatedExecutionResponse(ORMBaseSchema):
     executions: list[ActionExecutionRead]
     feedback: FeedbackEvaluation
     decision_logs: list[DecisionLogRead]
+    idempotent_replay: bool = False
 
 
 class ActionLogEntry(ORMBaseSchema):

@@ -32,6 +32,13 @@ class SensorStationRepository(AsyncRepository[SensorStation]):
         )
         return result.all()
 
+    async def list_active(self, *, limit: int = 100) -> Sequence[SensorStation]:
+        """List stations for station-management APIs."""
+        result = await self.session.scalars(
+            select(SensorStation).order_by(SensorStation.code).limit(limit)
+        )
+        return result.all()
+
 
 class SensorReadingRepository(AsyncRepository[SensorReading]):
     """Sensor reading query helpers."""
