@@ -167,6 +167,7 @@ async def run_goal_once(
                 else None
             ),
             plan=ActionPlanRead.model_validate(bundle.plan_bundle.plan),
+            agent_run_id=getattr(bundle.plan_bundle, "run_id", None),
         ),
     )
     return success_response(

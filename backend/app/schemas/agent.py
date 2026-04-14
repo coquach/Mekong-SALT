@@ -67,3 +67,4 @@ class AgentPlanResponse(ORMBaseSchema):
     reading: SensorReadingRead
     weather_snapshot: WeatherSnapshotRead | None = None
     plan: ActionPlanRead
+    agent_run_id: UUID | None = None

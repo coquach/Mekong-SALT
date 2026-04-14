@@ -63,4 +63,5 @@ class Incident(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     action_plans = relationship("ActionPlan", back_populates="incident")
     notifications = relationship("Notification", back_populates="incident")
     audit_logs = relationship("AuditLog", back_populates="incident")
+    agent_runs = relationship("AgentRun", back_populates="incident")
 

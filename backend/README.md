@@ -92,3 +92,20 @@ Data constraints are enforced at both API and database levels:
 - `critical_threshold_dsm > warning_threshold_dsm`
 - `evaluation_interval_minutes >= 1`
 - `is_active` is required and controls whether run-once is allowed.
+
+## Agent Runs + Observation Snapshots (Phase 3)
+
+- `agent_runs`: one record per risk/plan run with `status`, `trigger_source`, `payload`, and decision `trace`.
+- `observation_snapshots`: pre-decision observation payload linked 1:1 to `agent_runs`.
+
+Trace APIs:
+
+- `GET /api/v1/agent/runs`: list recent runs.
+- `GET /api/v1/agent/runs/{run_id}`: inspect one run with snapshot and decision trace.
+
+Compatibility and trace fields:
+
+- Legacy `POST /api/v1/agent/plan` is available again for existing clients.
+- `GET /api/v1/risk/current` returns `agent_run_id`.
+- `POST /api/v1/alerts/evaluate` returns `agent_run_id`.
+- Plan generation responses include `agent_run_id` when available.

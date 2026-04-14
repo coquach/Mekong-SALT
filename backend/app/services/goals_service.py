@@ -147,17 +147,29 @@ async def run_monitoring_goal_once(
     objective = payload.objective or goal.objective
     provider = payload.provider or goal.provider
 
-    plan_bundle = await generate_agent_plan(
-        session,
-        payload=AgentPlanRequest(
-            station_id=goal.station_id,
-            region_id=goal.region_id,
-            incident_id=payload.incident_id,
-            objective=objective,
-            provider=provider,
-        ),
-        redis_manager=redis_manager,
+    plan_request = AgentPlanRequest(
+        station_id=goal.station_id,
+        region_id=goal.region_id,
+        incident_id=payload.incident_id,
+        objective=objective,
+        provider=provider,
     )
+    try:
+        plan_bundle = await generate_agent_plan(
+            session,
+            payload=plan_request,
+            redis_manager=redis_manager,
+            trigger_source="goals.run_once",
+            trigger_payload={"goal_id": str(goal.id), "goal_name": goal.name},
+        )
+    except TypeError as exc:
+        if "trigger_source" not in str(exc) and "trigger_payload" not in str(exc):
+            raise
+        plan_bundle = await generate_agent_plan(
+            session,
+            payload=plan_request,
+            redis_manager=redis_manager,
+        )
 
     goal.last_run_at = datetime.now(UTC)
     goal.last_run_status = "succeeded"

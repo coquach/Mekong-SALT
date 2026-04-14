@@ -61,6 +61,7 @@ from app.schemas.sensor import (
     SensorStationRead,
     SensorStationUpdate,
 )
+from app.schemas.trace import AgentRunCollection, AgentRunRead, ObservationSnapshotRead
 from app.schemas.weather import WeatherSnapshotCreate, WeatherSnapshotRead
 
 __all__ = [
@@ -126,6 +127,9 @@ __all__ = [
     "SensorStationUpdate",
     "SimulatedExecutionRequest",
     "SimulatedExecutionResponse",
+    "AgentRunCollection",
+    "AgentRunRead",
+    "ObservationSnapshotRead",
     "WeatherSnapshotCreate",
     "WeatherSnapshotRead",
 ]

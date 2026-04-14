@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from http import HTTPStatus
+from typing import Any
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +25,11 @@ from app.schemas.risk import RiskEvaluationFilters
 from app.services.external_context_service import get_or_fetch_weather_snapshot
 from app.services.incident_service import ensure_incident_for_assessment
 from app.services.risk_engine import RiskEvaluationInput, evaluate_risk, should_create_alert
+from app.services.agent_trace_service import (
+    capture_observation_snapshot,
+    finish_agent_run,
+    start_agent_run,
+)
 
 
 @dataclass(slots=True)
@@ -32,6 +39,7 @@ class RiskEvaluationBundle:
     assessment: RiskAssessment
     reading: SensorReading
     weather_snapshot: WeatherSnapshot | None
+    run_id: UUID | None = None
 
 
 @dataclass(slots=True)
@@ -43,6 +51,7 @@ class AlertEvaluationBundle:
     weather_snapshot: WeatherSnapshot | None
     alert: AlertEvent | None
     alert_created: bool
+    run_id: UUID | None = None
 
 
 async def evaluate_current_risk(
@@ -50,6 +59,8 @@ async def evaluate_current_risk(
     *,
     filters: RiskEvaluationFilters,
     redis_manager: RedisManager | None,
+    trigger_source: str = "risk.current",
+    trigger_payload: dict[str, Any] | None = None,
 ) -> RiskEvaluationBundle:
     """Evaluate and persist the current deterministic risk for a target reading."""
     region_repo = RegionRepository(session)
@@ -64,59 +75,178 @@ async def evaluate_current_risk(
             message=f"Region '{reading.station.region_id}' was not found.",
         )
 
-    previous_reading = await reading_repo.get_previous_for_station(
-        reading.station_id,
-        before_recorded_at=reading.recorded_at,
-        exclude_reading_id=reading.id,
-    )
-    weather_snapshot = await get_or_fetch_weather_snapshot(
+    run = await start_agent_run(
         session,
-        region=region,
-        station=reading.station,
-        redis_manager=redis_manager,
-    )
-
-    evaluation = evaluate_risk(
-        RiskEvaluationInput(
-            salinity_dsm=reading.salinity_dsm,
-            previous_salinity_dsm=(
-                previous_reading.salinity_dsm if previous_reading is not None else None
-            ),
-            wind_speed_mps=(
-                weather_snapshot.wind_speed_mps if weather_snapshot is not None else None
-            ),
-            tide_level_m=(
-                weather_snapshot.tide_level_m if weather_snapshot is not None else None
-            ),
-        )
-    )
-
-    assessment = RiskAssessment(
+        run_type="risk_evaluation",
+        trigger_source=trigger_source,
+        payload={
+            "filters": filters.model_dump(mode="json"),
+            "trigger_payload": trigger_payload or {},
+        },
         region_id=region.id,
         station_id=reading.station_id,
-        based_on_reading_id=reading.id,
-        based_on_weather_id=weather_snapshot.id if weather_snapshot is not None else None,
-        assessed_at=datetime.now(UTC),
-        risk_level=evaluation.risk_level,
-        salinity_dsm=reading.salinity_dsm,
-        trend_direction=evaluation.trend_direction,
-        trend_delta_dsm=evaluation.trend_delta_dsm,
-        rule_version=get_settings().risk_rule_version,
-        summary=evaluation.summary,
-        rationale=evaluation.rationale,
     )
-    assessment_repo = RiskAssessmentRepository(session)
-    await assessment_repo.add(assessment)
-    await session.commit()
-    await session.refresh(assessment)
-    await ensure_incident_for_assessment(session, assessment)
-    await session.commit()
 
-    return RiskEvaluationBundle(
-        assessment=assessment,
-        reading=reading,
-        weather_snapshot=weather_snapshot,
-    )
+    try:
+        previous_reading = await reading_repo.get_previous_for_station(
+            reading.station_id,
+            before_recorded_at=reading.recorded_at,
+            exclude_reading_id=reading.id,
+        )
+        weather_snapshot = await get_or_fetch_weather_snapshot(
+            session,
+            region=region,
+            station=reading.station,
+            redis_manager=redis_manager,
+        )
+
+        evaluation = evaluate_risk(
+            RiskEvaluationInput(
+                salinity_dsm=reading.salinity_dsm,
+                previous_salinity_dsm=(
+                    previous_reading.salinity_dsm if previous_reading is not None else None
+                ),
+                wind_speed_mps=(
+                    weather_snapshot.wind_speed_mps if weather_snapshot is not None else None
+                ),
+                tide_level_m=(
+                    weather_snapshot.tide_level_m if weather_snapshot is not None else None
+                ),
+            )
+        )
+
+        assessment = RiskAssessment(
+            region_id=region.id,
+            station_id=reading.station_id,
+            based_on_reading_id=reading.id,
+            based_on_weather_id=weather_snapshot.id if weather_snapshot is not None else None,
+            assessed_at=datetime.now(UTC),
+            risk_level=evaluation.risk_level,
+            salinity_dsm=reading.salinity_dsm,
+            trend_direction=evaluation.trend_direction,
+            trend_delta_dsm=evaluation.trend_delta_dsm,
+            rule_version=get_settings().risk_rule_version,
+            summary=evaluation.summary,
+            rationale=evaluation.rationale,
+        )
+        assessment_repo = RiskAssessmentRepository(session)
+        await assessment_repo.add(assessment)
+
+        await capture_observation_snapshot(
+            session,
+            run=run,
+            source="risk.pre_incident_decision",
+            payload={
+                "reading": {
+                    "id": str(reading.id),
+                    "recorded_at": reading.recorded_at.isoformat(),
+                    "salinity_dsm": str(reading.salinity_dsm),
+                    "water_level_m": str(reading.water_level_m),
+                },
+                "previous_reading": (
+                    {
+                        "id": str(previous_reading.id),
+                        "recorded_at": previous_reading.recorded_at.isoformat(),
+                        "salinity_dsm": str(previous_reading.salinity_dsm),
+                    }
+                    if previous_reading is not None
+                    else None
+                ),
+                "weather_snapshot": (
+                    {
+                        "id": str(weather_snapshot.id),
+                        "observed_at": weather_snapshot.observed_at.isoformat(),
+                        "wind_speed_mps": (
+                            str(weather_snapshot.wind_speed_mps)
+                            if weather_snapshot.wind_speed_mps is not None
+                            else None
+                        ),
+                        "tide_level_m": (
+                            str(weather_snapshot.tide_level_m)
+                            if weather_snapshot.tide_level_m is not None
+                            else None
+                        ),
+                    }
+                    if weather_snapshot is not None
+                    else None
+                ),
+                "evaluation": {
+                    "risk_level": evaluation.risk_level.value,
+                    "trend_direction": evaluation.trend_direction.value,
+                    "trend_delta_dsm": (
+                        str(evaluation.trend_delta_dsm)
+                        if evaluation.trend_delta_dsm is not None
+                        else None
+                    ),
+                    "summary": evaluation.summary,
+                    "rationale": evaluation.rationale,
+                },
+            },
+            region_id=region.id,
+            station_id=reading.station_id,
+            reading_id=reading.id,
+            weather_snapshot_id=weather_snapshot.id if weather_snapshot is not None else None,
+        )
+
+        incident_decision = await ensure_incident_for_assessment(session, assessment)
+
+        finish_agent_run(
+            run,
+            status="succeeded",
+            trace={
+                "incident_decision": {
+                    "decision": incident_decision.decision,
+                    "reason": incident_decision.reason,
+                    "incident_id": (
+                        str(incident_decision.incident.id)
+                        if incident_decision.incident is not None
+                        else None
+                    ),
+                },
+                "plan_decision": {
+                    "decision": "not_applicable",
+                    "reason": "Risk evaluation run does not generate action plans.",
+                },
+                "assessment": {
+                    "risk_assessment_id": str(assessment.id),
+                    "risk_level": assessment.risk_level.value,
+                },
+            },
+            risk_assessment_id=assessment.id,
+            incident_id=(
+                incident_decision.incident.id
+                if incident_decision.incident is not None
+                else None
+            ),
+        )
+
+        await session.commit()
+        await session.refresh(assessment)
+
+        return RiskEvaluationBundle(
+            assessment=assessment,
+            reading=reading,
+            weather_snapshot=weather_snapshot,
+            run_id=run.id,
+        )
+    except Exception as exc:
+        finish_agent_run(
+            run,
+            status="failed",
+            trace={
+                "incident_decision": {
+                    "decision": "not_decided",
+                    "reason": str(exc),
+                },
+                "plan_decision": {
+                    "decision": "not_applicable",
+                    "reason": "Risk evaluation run does not generate action plans.",
+                },
+            },
+            error_message=str(exc),
+        )
+        await session.commit()
+        raise
 
 
 async def evaluate_alerts(
@@ -130,6 +260,8 @@ async def evaluate_alerts(
         session,
         filters=filters,
         redis_manager=redis_manager,
+        trigger_source="alerts.evaluate",
+        trigger_payload={"mode": "alert_evaluation"},
     )
     if not should_create_alert(risk_bundle.assessment.risk_level):
         return AlertEvaluationBundle(
@@ -138,6 +270,7 @@ async def evaluate_alerts(
             weather_snapshot=risk_bundle.weather_snapshot,
             alert=None,
             alert_created=False,
+            run_id=risk_bundle.run_id,
         )
 
     alert_repo = AlertEventRepository(session)
@@ -152,6 +285,7 @@ async def evaluate_alerts(
             weather_snapshot=risk_bundle.weather_snapshot,
             alert=existing_alert,
             alert_created=False,
+            run_id=risk_bundle.run_id,
         )
 
     alert = AlertEvent(
@@ -173,6 +307,7 @@ async def evaluate_alerts(
         weather_snapshot=risk_bundle.weather_snapshot,
         alert=alert,
         alert_created=True,
+        run_id=risk_bundle.run_id,
     )
 
 

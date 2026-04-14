@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
 from uuid import UUID
@@ -17,6 +18,15 @@ from app.schemas.incident import IncidentCreate, IncidentUpdate
 from app.services.audit_service import write_audit_log
 
 INCIDENT_RISK_LEVELS = {RiskLevel.WARNING, RiskLevel.DANGER, RiskLevel.CRITICAL}
+
+
+@dataclass(slots=True)
+class IncidentDecisionResult:
+    """Decision outcome for incident creation or reuse."""
+
+    incident: Incident | None
+    decision: str
+    reason: str
 
 
 async def create_incident(
@@ -59,22 +69,34 @@ async def ensure_incident_for_assessment(
     assessment: RiskAssessment,
     *,
     actor_name: str = "risk-engine",
-) -> Incident | None:
+) -> IncidentDecisionResult:
     """Create or reuse an active incident for a significant risk assessment."""
     if assessment.risk_level not in INCIDENT_RISK_LEVELS:
-        return None
+        return IncidentDecisionResult(
+            incident=None,
+            decision="skipped",
+            reason=f"Risk level '{assessment.risk_level.value}' is below incident threshold.",
+        )
 
     repo = IncidentRepository(session)
     if assessment.id is not None:
         existing = await repo.get_open_for_assessment(assessment.id)
         if existing is not None:
-            return existing
+            return IncidentDecisionResult(
+                incident=existing,
+                decision="existing",
+                reason="Open incident already linked to this risk assessment.",
+            )
     existing = await repo.get_open_by_region_and_severity(
         assessment.region_id,
         assessment.risk_level,
     )
     if existing is not None:
-        return existing
+        return IncidentDecisionResult(
+            incident=existing,
+            decision="existing",
+            reason="Open incident with same region and severity already exists.",
+        )
 
     incident = Incident(
         region_id=assessment.region_id,
@@ -105,7 +127,11 @@ async def ensure_incident_for_assessment(
         summary=f"Incident opened from risk assessment {assessment.id}.",
         payload=incident.evidence,
     )
-    return incident
+    return IncidentDecisionResult(
+        incident=incident,
+        decision="created",
+        reason="Risk level meets threshold and no active matching incident exists.",
+    )
 
 
 async def list_incidents(

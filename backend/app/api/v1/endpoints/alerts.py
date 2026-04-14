@@ -51,6 +51,7 @@ async def evaluate_alert_endpoint(
             else None
         ),
         alert_created=bundle.alert_created,
+        agent_run_id=bundle.run_id,
     )
     return success_response(
         request=request,

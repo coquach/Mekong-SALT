@@ -79,6 +79,8 @@ class AgentPlanningWorkflow:
             self._session,
             filters=state["filters"],
             redis_manager=self._redis_manager,
+            trigger_source="agent.plan.workflow",
+            trigger_payload={"workflow": "langgraph_planning"},
         )
         return {"risk_bundle": bundle}
 

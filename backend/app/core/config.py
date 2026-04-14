@@ -1,17 +1,22 @@
 """Application settings management."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILE = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Environment-driven application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -51,6 +56,37 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1:8b"
     llm_temperature: float = 0.2
     llm_request_timeout_seconds: int = 30
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        """Accept Neon/Postgres URLs and convert them for SQLAlchemy asyncpg."""
+        if not value:
+            return value
+
+        url = str(value)
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+        parsed = urlsplit(url)
+        query_pairs = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+        # Neon URLs often include libpq options. asyncpg expects "ssl=require"
+        # and does not need channel_binding in the SQLAlchemy URL.
+        sslmode = query_pairs.pop("sslmode", None)
+        query_pairs.pop("channel_binding", None)
+        if sslmode and "ssl" not in query_pairs:
+            query_pairs["ssl"] = "require"
+
+        # Neon pooler hosts run behind PgBouncer, so disable asyncpg prepared
+        # statement caching unless the operator explicitly configured it.
+        hostname = parsed.hostname or ""
+        if "-pooler." in hostname and "prepared_statement_cache_size" not in query_pairs:
+            query_pairs["prepared_statement_cache_size"] = "0"
+
+        return urlunsplit(parsed._replace(query=urlencode(query_pairs)))
 
 
 

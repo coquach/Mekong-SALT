@@ -1,6 +1,7 @@
 """Repository package for persistence abstractions."""
 
 from app.repositories.action import ActionExecutionRepository, ActionPlanRepository
+from app.repositories.agent_run import AgentRunRepository, ObservationSnapshotRepository
 from app.repositories.approval import ApprovalRepository
 from app.repositories.base import AsyncRepository
 from app.repositories.decision import DecisionLogRepository
@@ -16,6 +17,7 @@ __all__ = [
     "AlertEventRepository",
     "ActionPlanRepository",
     "ActionExecutionRepository",
+    "AgentRunRepository",
     "ApprovalRepository",
     "AsyncRepository",
     "AuditLogRepository",
@@ -24,6 +26,7 @@ __all__ = [
     "IncidentRepository",
     "MonitoringGoalRepository",
     "NotificationRepository",
+    "ObservationSnapshotRepository",
     "RegionRepository",
     "RiskAssessmentRepository",
     "SensorReadingRepository",

@@ -33,3 +33,5 @@ class Region(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     incidents = relationship("Incident", back_populates="region")
     audit_logs = relationship("AuditLog", back_populates="region")
     monitoring_goals = relationship("MonitoringGoal", back_populates="region")
+    agent_runs = relationship("AgentRun", back_populates="region")
+    observation_snapshots = relationship("ObservationSnapshot", back_populates="region")

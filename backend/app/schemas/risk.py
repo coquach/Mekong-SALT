@@ -75,6 +75,7 @@ class RiskCurrentResponse(ORMBaseSchema):
     assessment: RiskAssessmentRead
     reading: SensorReadingRead
     weather_snapshot: WeatherSnapshotRead | None = None
+    agent_run_id: UUID | None = None
 
 
 class AlertEvaluationResponse(ORMBaseSchema):
@@ -85,3 +86,4 @@ class AlertEvaluationResponse(ORMBaseSchema):
     weather_snapshot: WeatherSnapshotRead | None = None
     alert: AlertEventRead | None = None
     alert_created: bool
+    agent_run_id: UUID | None = None

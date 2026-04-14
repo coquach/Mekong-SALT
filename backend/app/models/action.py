@@ -66,6 +66,7 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     decision_logs = relationship("DecisionLog", back_populates="action_plan")
     audit_logs = relationship("AuditLog", back_populates="action_plan")
+    agent_runs = relationship("AgentRun", back_populates="action_plan")
 
 
 class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):

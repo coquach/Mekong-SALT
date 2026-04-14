@@ -38,4 +38,5 @@ class WeatherSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     region = relationship("Region", back_populates="weather_snapshots")
     risk_assessments = relationship("RiskAssessment", back_populates="weather_snapshot")
+    observation_snapshots = relationship("ObservationSnapshot", back_populates="weather_snapshot")
 

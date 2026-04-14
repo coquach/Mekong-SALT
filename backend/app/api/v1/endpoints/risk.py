@@ -52,6 +52,7 @@ async def get_current_risk(
             if bundle.weather_snapshot is not None
             else None
         ),
+        agent_run_id=bundle.run_id,
     )
     return success_response(
         request=request,

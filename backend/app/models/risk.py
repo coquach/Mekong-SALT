@@ -71,6 +71,7 @@ class RiskAssessment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     action_plans = relationship("ActionPlan", back_populates="risk_assessment")
     decision_logs = relationship("DecisionLog", back_populates="risk_assessment")
     incidents = relationship("Incident", back_populates="risk_assessment")
+    agent_runs = relationship("AgentRun", back_populates="risk_assessment")
 
 
 class AlertEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):

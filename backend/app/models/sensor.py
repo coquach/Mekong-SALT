@@ -49,6 +49,8 @@ class SensorStation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     risk_assessments = relationship("RiskAssessment", back_populates="station")
     incidents = relationship("Incident", back_populates="station")
     monitoring_goals = relationship("MonitoringGoal", back_populates="station")
+    agent_runs = relationship("AgentRun", back_populates="station")
+    observation_snapshots = relationship("ObservationSnapshot", back_populates="station")
 
 
 class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -79,3 +81,4 @@ class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     station = relationship("SensorStation", back_populates="readings")
     risk_assessments = relationship("RiskAssessment", back_populates="reading")
+    observation_snapshots = relationship("ObservationSnapshot", back_populates="reading")

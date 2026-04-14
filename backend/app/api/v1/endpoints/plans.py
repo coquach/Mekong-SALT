@@ -190,6 +190,8 @@ async def regenerate_plan(
         session,
         payload=regen_payload,
         redis_manager=redis_manager,
+        trigger_source="plans.regenerate",
+        trigger_payload={"base_plan_id": str(plan_id)},
     )
     response_payload = AgentPlanResponse(
         assessment=RiskAssessmentRead.model_validate(bundle.risk_bundle.assessment),
@@ -200,6 +202,7 @@ async def regenerate_plan(
             else None
         ),
         plan=ActionPlanRead.model_validate(bundle.plan),
+        agent_run_id=bundle.run_id,
     )
     return success_response(
         request=request,
