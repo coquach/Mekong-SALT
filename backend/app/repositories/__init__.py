@@ -4,6 +4,7 @@ from app.repositories.action import ActionExecutionRepository, ActionPlanReposit
 from app.repositories.approval import ApprovalRepository
 from app.repositories.base import AsyncRepository
 from app.repositories.decision import DecisionLogRepository
+from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.incident import IncidentRepository
 from app.repositories.ops import ActionOutcomeRepository, AuditLogRepository, NotificationRepository
 from app.repositories.region import RegionRepository
@@ -21,6 +22,7 @@ __all__ = [
     "ActionOutcomeRepository",
     "DecisionLogRepository",
     "IncidentRepository",
+    "MonitoringGoalRepository",
     "NotificationRepository",
     "RegionRepository",
     "RiskAssessmentRepository",

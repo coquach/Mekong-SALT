@@ -23,6 +23,15 @@ from app.schemas.approval import ApprovalDecisionResponse, ApprovalRead, Approva
 from app.schemas.audit import ActionOutcomeRead, AuditLogCollection, AuditLogRead
 from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
 from app.schemas.decision import DecisionLogCreate, DecisionLogRead
+from app.schemas.goal import (
+    GoalRunOnceRequest,
+    GoalRunOnceResponse,
+    GoalThresholds,
+    MonitoringGoalCollection,
+    MonitoringGoalCreate,
+    MonitoringGoalRead,
+    MonitoringGoalUpdate,
+)
 from app.schemas.incident import IncidentCollection, IncidentCreate, IncidentRead, IncidentUpdate
 from app.schemas.knowledge import (
     EmbeddedChunkCreate,
@@ -78,6 +87,9 @@ __all__ = [
     "AlertEventRead",
     "DecisionLogCreate",
     "DecisionLogRead",
+    "GoalRunOnceRequest",
+    "GoalRunOnceResponse",
+    "GoalThresholds",
     "IncidentCollection",
     "IncidentCreate",
     "IncidentRead",
@@ -93,6 +105,10 @@ __all__ = [
     "GeneratedActionPlan",
     "PlanStep",
     "PlanValidationResult",
+    "MonitoringGoalCollection",
+    "MonitoringGoalCreate",
+    "MonitoringGoalRead",
+    "MonitoringGoalUpdate",
     "RegionCreate",
     "RegionRead",
     "RiskCurrentResponse",

@@ -71,7 +71,24 @@ curl http://localhost:8000/api/v1/health
 
 1. Ingest a sensor reading: `POST /api/v1/sensors/ingest`
 2. Evaluate risk: `GET /api/v1/risk/current`
-3. Run one goal cycle to create plan: `POST /api/v1/goals/{goal_id}/run-once`
-4. Approve plan: `POST /api/v1/approvals/plans/{plan_id}`
-5. Execute (mock): `POST /api/v1/agent/execute-simulated`
-6. Watch dashboard: `GET /api/v1/dashboard/summary` or `GET /api/v1/dashboard/stream`
+3. Create a monitoring goal: `POST /api/v1/goals`
+4. Run one goal cycle to create plan: `POST /api/v1/goals/{goal_id}/run-once`
+5. Update goal config: `PATCH /api/v1/goals/{goal_id}`
+6. List current goals: `GET /api/v1/goals`
+7. Approve plan: `POST /api/v1/approvals/plans/{plan_id}`
+8. Execute (mock): `POST /api/v1/agent/execute-simulated`
+9. Watch dashboard: `GET /api/v1/dashboard/summary` or `GET /api/v1/dashboard/stream`
+
+## Monitoring Goals (Phase 2)
+
+- `POST /api/v1/goals`: create goal with `thresholds`, `evaluation_interval_minutes`, and `is_active`.
+- `GET /api/v1/goals` and `GET /api/v1/goals/{goal_id}`: read goals.
+- `PATCH /api/v1/goals/{goal_id}`: update thresholds, interval, active flag, objective, target.
+- `DELETE /api/v1/goals/{goal_id}`: remove goal.
+- `POST /api/v1/goals/{goal_id}/run-once`: trigger one immediate cycle using persisted goal configuration.
+
+Data constraints are enforced at both API and database levels:
+
+- `critical_threshold_dsm > warning_threshold_dsm`
+- `evaluation_interval_minutes >= 1`
+- `is_active` is required and controls whether run-once is allowed.
