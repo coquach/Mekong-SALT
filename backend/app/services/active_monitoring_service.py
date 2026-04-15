@@ -180,11 +180,12 @@ async def run_monitoring_goal_cycle(
         plan=plan_bundle.plan,
         settings=resolved_settings,
     )
-    status = (
-        "succeeded_plan_executed"
-        if reactive_result.status == "executed"
-        else "succeeded_plan_created"
-    )
+    if reactive_result.status == "executed":
+        status = "succeeded_plan_executed"
+    elif reactive_result.status == "awaiting_human_approval":
+        status = "succeeded_pending_human"
+    else:
+        status = "succeeded_plan_created"
     await _mark_goal_cycle(
         session,
         goal,
@@ -199,6 +200,7 @@ async def run_monitoring_goal_cycle(
         incident=incident,
         plan_bundle=plan_bundle,
         reactive_result=reactive_result,
+        reason=reactive_result.reason,
     )
 
 

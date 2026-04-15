@@ -107,11 +107,11 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         mode="active",
         redis_manager=None,
     )
-    assert first.status == "succeeded_plan_executed"
+    assert first.status == "succeeded_pending_human"
     assert first.incident is not None
     assert first.plan_bundle is not None
     assert first.reactive_result is not None
-    assert first.reactive_result.status == "executed"
+    assert first.reactive_result.status == "awaiting_human_approval"
 
     second = await run_monitoring_goal_cycle(
         db_session,
@@ -128,13 +128,13 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         )
     ).all()
     assert len(plans) == 1
-    assert plans[0].status == ActionPlanStatus.SIMULATED
+    assert plans[0].status == ActionPlanStatus.PENDING_APPROVAL
 
     approvals = (await db_session.scalars(select(Approval))).all()
-    assert len(approvals) == 1
+    assert len(approvals) == 0
 
     executions = (await db_session.scalars(select(ActionExecution))).all()
-    assert len(executions) == 2
+    assert len(executions) == 0
 
 
 @pytest.mark.asyncio

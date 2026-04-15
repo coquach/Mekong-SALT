@@ -57,10 +57,10 @@ class _ValidatedPlanProvider:
                 ),
                 PlanStep(
                     step_index=2,
-                    action_type=ActionType.CLOSE_GATE_SIMULATED,
-                    title="Simulate gate closure",
-                    instructions="Model temporary gate closure.",
-                    rationale="Mitigate saline inflow in simulation.",
+                    action_type=ActionType.WAIT_SAFE_WINDOW,
+                    title="Wait for safe intake window",
+                    instructions="Delay intake until conditions are safer.",
+                    rationale="Low-risk auto-execution only allows informational/safe-window actions.",
                     simulated=True,
                 ),
             ],
@@ -95,8 +95,8 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
         return await _persist_stub_weather_snapshot(
             session,
             region_id=region.id,
-            wind_speed_mps="5.50",
-            tide_level_m="1.70",
+            wind_speed_mps="4.20",
+            tide_level_m="1.10",
         )
 
     monkeypatch.setattr(
@@ -111,7 +111,7 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     goal = MonitoringGoal(
         name="Reactive-Execution-Goal",
         region_id=seeded_sensor_data["region"].id,
-        station_id=seeded_sensor_data["station_a"].id,
+        station_id=seeded_sensor_data["station_b"].id,
         objective="Protect irrigation water quality",
         provider="mock",
         warning_threshold_dsm=Decimal("2.50"),
