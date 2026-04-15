@@ -93,7 +93,7 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         raise AssertionError("planning workflow must not call evaluate_current_risk when risk_bundle is precomputed")
 
     monkeypatch.setattr(
-        "app.agents.planning_graph.evaluate_current_risk",
+        "app.orchestration.planning_nodes.evaluate_current_risk",
         fail_if_planning_reassesses_risk,
     )
     monkeypatch.setattr(

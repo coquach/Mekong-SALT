@@ -15,7 +15,7 @@ from app.core.exceptions import AppException
 from app.models.action import ActionExecution, ActionPlan
 from app.models.audit import ActionOutcome
 from app.models.decision import DecisionLog
-from app.models.enums import ActionPlanStatus, ActionType, AuditEventType, DecisionActorType, ExecutionStatus, IncidentStatus
+from app.models.enums import ActionPlanStatus, ActionType, AuditEventType, ExecutionStatus, IncidentStatus
 from app.repositories.action import ActionExecutionRepository, ActionPlanRepository
 from app.repositories.decision import DecisionLogRepository
 from app.repositories.ops import ActionOutcomeRepository
@@ -27,6 +27,7 @@ from app.schemas.action import (
     FeedbackEvaluation,
     SimulatedExecutionRequest,
 )
+from app.services.internal_memory_service import build_execution_decision_log, build_feedback_decision_log
 from app.services.audit_service import write_audit_log
 from app.services.notification_service import create_execution_alert_notifications
 
@@ -131,23 +132,16 @@ async def execute_simulated_plan(
                 message=step.instructions,
             )
 
-        decision_log = DecisionLog(
+        decision_log = build_execution_decision_log(
             region_id=plan.region_id,
             risk_assessment_id=plan.risk_assessment_id,
             action_plan_id=plan.id,
             action_execution_id=execution.id,
             logged_at=now,
-            actor_type=DecisionActorType.AGENT,
-            actor_name="simulated-execution-engine",
-            summary=f"Simulated action executed: {step.action_type.value}",
-            outcome="simulated",
-            details={
-                "step_index": step.step_index,
-                "action_type": step.action_type.value,
-                "title": step.title,
-                "result_summary": execution.result_summary,
-            },
-            store_as_memory=False,
+            step_index=step.step_index,
+            action_type=step.action_type,
+            title=step.title,
+            result_summary=execution.result_summary,
         )
         await decision_repo.add(decision_log)
         decision_logs.append(decision_log)
@@ -184,18 +178,13 @@ async def execute_simulated_plan(
         )
         await outcome_repo.add(outcome)
         outcomes.append(outcome)
-    feedback_log = DecisionLog(
+    feedback_log = build_feedback_decision_log(
         region_id=plan.region_id,
         risk_assessment_id=plan.risk_assessment_id,
         action_plan_id=plan.id,
         action_execution_id=executions[-1].id if executions else None,
         logged_at=datetime.now(UTC),
-        actor_type=DecisionActorType.SYSTEM,
-        actor_name="feedback-evaluator",
-        summary="Simulated execution feedback evaluated.",
-        outcome=feedback.status,
-        details=feedback.model_dump(mode="json"),
-        store_as_memory=feedback.status == "improved",
+        feedback=feedback,
     )
     await decision_repo.add(feedback_log)
     decision_logs.append(feedback_log)
