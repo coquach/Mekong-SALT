@@ -229,7 +229,7 @@ async def _write_plan_audit(
         incident_id=plan.incident_id,
         action_plan_id=plan.id,
         summary=(
-            "AI plan generated and queued for human approval."
+            "AI plan generated and queued for reactive approval."
             if validation_result.is_valid
             else "AI plan generated but held as draft due to policy validation errors."
         ),
@@ -290,7 +290,7 @@ def _success_trace(
         "plan_decision": {
             "decision": "created" if validation_result.is_valid else "held_draft",
             "reason": (
-                "Policy validation passed; plan is pending approval."
+                "Policy validation passed; plan is pending reactive approval."
                 if validation_result.is_valid
                 else "Policy validation failed; plan remains draft."
             ),

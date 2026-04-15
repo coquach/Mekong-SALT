@@ -78,6 +78,14 @@ class RiskCurrentResponse(ORMBaseSchema):
     agent_run_id: UUID | None = None
 
 
+class RiskLatestResponse(ORMBaseSchema):
+    """Response payload for the latest persisted risk assessment."""
+
+    assessment: RiskAssessmentRead
+    reading: SensorReadingRead | None = None
+    weather_snapshot: WeatherSnapshotRead | None = None
+
+
 class AlertEvaluationResponse(ORMBaseSchema):
     """Response payload for alert evaluation."""
 

@@ -15,6 +15,7 @@ from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.goal import MonitoringGoal
 from app.models.incident import Incident
+from app.orchestration.reactive import ReactiveAdvanceResult, advance_plan_reactively
 from app.repositories.action import ActionPlanRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.schemas.agent import AgentPlanRequest
@@ -37,6 +38,7 @@ class MonitoringCycleResult:
     risk_bundle: RiskEvaluationBundle | None = None
     incident: Incident | None = None
     plan_bundle: AgentPlanBundle | None = None
+    reactive_result: ReactiveAdvanceResult | None = None
     existing_plan: ActionPlan | None = None
     reason: str | None = None
 
@@ -57,14 +59,17 @@ async def run_monitoring_goal_cycle(
     goal: MonitoringGoal,
     mode: MonitoringMode,
     redis_manager: RedisManager | None,
+    settings: Settings | None = None,
 ) -> MonitoringCycleResult:
-    """Run observe -> risk -> incident -> optional auto-plan for one goal.
+    """Run observe -> risk -> incident -> optional reactive plan execution for one goal.
 
     Dry-run still records deterministic risk and incident evidence so operators can
     inspect stability over time, but it deliberately skips autonomous plan creation.
-    Active mode may create one pending-approval plan when auto-plan is enabled and
-    no non-terminal plan already exists for the same incident.
+    Active mode creates one plan when auto-plan is enabled and no active/simulated plan
+    already exists for the same incident, then advances it through the reactive
+    approval/execution pipeline according to settings.
     """
+    resolved_settings = settings or get_settings()
     risk_bundle = await evaluate_current_risk(
         session,
         filters=RiskEvaluationFilters(
@@ -148,7 +153,7 @@ async def run_monitoring_goal_cycle(
             risk_bundle=risk_bundle,
             incident=incident,
             existing_plan=existing_plan,
-            reason="A non-terminal plan already exists for this incident.",
+            reason="A plan already exists for this incident.",
         )
 
     plan_bundle = await generate_agent_plan(
@@ -169,19 +174,30 @@ async def run_monitoring_goal_cycle(
             "source_incident_id": str(incident.id),
         },
     )
+    reactive_result = await advance_plan_reactively(
+        session,
+        plan=plan_bundle.plan,
+        settings=resolved_settings,
+    )
+    status = (
+        "succeeded_plan_executed"
+        if reactive_result.status == "executed"
+        else "succeeded_plan_created"
+    )
     await _mark_goal_cycle(
         session,
         goal,
-        status="succeeded_plan_created",
+        status=status,
         plan_id=plan_bundle.plan.id,
     )
     return MonitoringCycleResult(
         goal_id=goal.id,
         mode=mode,
-        status="succeeded_plan_created",
+        status=status,
         risk_bundle=risk_bundle,
         incident=incident,
         plan_bundle=plan_bundle,
+        reactive_result=reactive_result,
     )
 
 
@@ -228,6 +244,7 @@ async def run_due_monitoring_goals(
                     goal=goal,
                     mode=resolved_settings.active_monitoring_mode,
                     redis_manager=redis_manager,
+                    settings=resolved_settings,
                 )
             )
         except Exception as exc:

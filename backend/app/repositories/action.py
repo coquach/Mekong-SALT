@@ -47,12 +47,13 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
         return list(result.all())
 
     async def get_open_for_incident(self, incident_id: UUID) -> ActionPlan | None:
-        """Return an existing non-terminal plan for an incident, if one exists."""
+        """Return an existing plan that should suppress duplicate incident work."""
         active_statuses = {
             ActionPlanStatus.DRAFT,
             ActionPlanStatus.VALIDATED,
             ActionPlanStatus.PENDING_APPROVAL,
             ActionPlanStatus.APPROVED,
+            ActionPlanStatus.SIMULATED,
         }
         result = await self.session.scalars(
             select(ActionPlan)

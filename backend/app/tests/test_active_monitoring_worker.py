@@ -6,11 +6,12 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.models.action import ActionPlan
+from app.models.action import ActionExecution, ActionPlan
+from app.models.approval import Approval
 from app.models.goal import MonitoringGoal
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
-from app.models.enums import ActionType
+from app.models.enums import ActionPlanStatus, ActionType
 from app.services.active_monitoring_service import run_monitoring_goal_cycle
 
 
@@ -99,9 +100,11 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         mode="active",
         redis_manager=None,
     )
-    assert first.status == "succeeded_plan_created"
+    assert first.status == "succeeded_plan_executed"
     assert first.incident is not None
     assert first.plan_bundle is not None
+    assert first.reactive_result is not None
+    assert first.reactive_result.status == "executed"
 
     second = await run_monitoring_goal_cycle(
         db_session,
@@ -118,6 +121,13 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         )
     ).all()
     assert len(plans) == 1
+    assert plans[0].status == ActionPlanStatus.SIMULATED
+
+    approvals = (await db_session.scalars(select(Approval))).all()
+    assert len(approvals) == 1
+
+    executions = (await db_session.scalars(select(ActionExecution))).all()
+    assert len(executions) == 2
 
 
 @pytest.mark.asyncio

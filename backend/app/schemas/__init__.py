@@ -3,9 +3,7 @@
 from app.schemas.action import (
     ActionLogCollection,
     ActionLogEntry,
-    ActionExecutionCreate,
     ActionExecutionRead,
-    ActionPlanCreate,
     ActionPlanRead,
     ExecutionSimulateRequest,
     FeedbackEvaluation,
@@ -24,8 +22,6 @@ from app.schemas.audit import ActionOutcomeRead, AuditLogCollection, AuditLogRea
 from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
 from app.schemas.decision import DecisionLogCreate, DecisionLogRead
 from app.schemas.goal import (
-    GoalRunOnceRequest,
-    GoalRunOnceResponse,
     GoalThresholds,
     MonitoringGoalCollection,
     MonitoringGoalCreate,
@@ -46,6 +42,7 @@ from app.schemas.risk import (
     AlertEvaluationResponse,
     AlertEventRead,
     RiskCurrentResponse,
+    RiskLatestResponse,
     RiskAssessmentCreate,
     RiskEvaluationFilters,
     RiskAssessmentRead,
@@ -65,11 +62,9 @@ from app.schemas.trace import AgentRunCollection, AgentRunRead, ObservationSnaps
 from app.schemas.weather import WeatherSnapshotCreate, WeatherSnapshotRead
 
 __all__ = [
-    "ActionExecutionCreate",
     "ActionExecutionRead",
     "ActionLogCollection",
     "ActionLogEntry",
-    "ActionPlanCreate",
     "ActionPlanRead",
     "AgentPlanRequest",
     "AgentPlanResponse",
@@ -88,8 +83,6 @@ __all__ = [
     "AlertEventRead",
     "DecisionLogCreate",
     "DecisionLogRead",
-    "GoalRunOnceRequest",
-    "GoalRunOnceResponse",
     "GoalThresholds",
     "IncidentCollection",
     "IncidentCreate",
@@ -113,6 +106,7 @@ __all__ = [
     "RegionCreate",
     "RegionRead",
     "RiskCurrentResponse",
+    "RiskLatestResponse",
     "RiskAssessmentCreate",
     "RiskEvaluationFilters",
     "RiskAssessmentRead",

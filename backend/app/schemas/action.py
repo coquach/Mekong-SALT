@@ -28,10 +28,6 @@ class ActionPlanBase(ORMBaseSchema):
     validation_result: dict[str, Any] | None = None
 
 
-class ActionPlanCreate(ActionPlanBase):
-    """Schema for creating an action plan."""
-
-
 class ActionPlanRead(EntityReadSchema, ActionPlanBase):
     """Schema for returning an action plan."""
 
@@ -51,10 +47,6 @@ class ActionExecutionBase(ORMBaseSchema):
     result_payload: dict[str, Any] | None = None
     idempotency_key: str | None = Field(default=None, max_length=120)
     requested_by: str | None = Field(default=None, max_length=255)
-
-
-class ActionExecutionCreate(ActionExecutionBase):
-    """Schema for creating an action execution."""
 
 
 class ActionExecutionRead(EntityReadSchema, ActionExecutionBase):

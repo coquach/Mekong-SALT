@@ -17,7 +17,7 @@ def validate_execution_plan(plan: ActionPlan) -> list[PlanStep]:
         raise AppException(
             status_code=HTTPStatus.BAD_REQUEST,
             code="action_plan_not_approved",
-            message="Only human-approved plans can be executed in simulated mode.",
+            message="Only approved plans can be executed in simulated mode.",
         )
     if plan.risk_assessment is None:
         raise AppException(

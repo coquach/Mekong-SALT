@@ -1,10 +1,4 @@
-"""Agent planning endpoints.
-
-Legacy note:
-These `/agent/*` routes are kept for backward compatibility while FE migrates
-to the Phase 1 public facade under `/plans` and `/readings`.
-The legacy `POST /agent/plan` route is retained for compatibility.
-"""
+"""Agent observability endpoints."""
 
 from http import HTTPStatus
 from uuid import UUID
@@ -14,25 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.core.responses import success_response
-from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import get_db_session
 from app.repositories.action import ActionPlanRepository
 from app.repositories.agent_run import AgentRunRepository
-from app.schemas.action import (
-    ActionExecutionRead,
-    ActionPlanRead,
-    SimulatedExecutionRequest,
-    SimulatedExecutionResponse,
-)
-from app.schemas.agent import AgentPlanRequest, AgentPlanResponse
+from app.schemas.action import ActionPlanRead
 from app.schemas.common import SuccessResponse
-from app.schemas.decision import DecisionLogRead
-from app.schemas.risk import RiskAssessmentRead
-from app.schemas.sensor import SensorReadingRead
 from app.schemas.trace import AgentRunCollection, AgentRunRead, ObservationSnapshotRead
-from app.schemas.weather import WeatherSnapshotRead
-from app.services.agent_execution_service import execute_simulated_plan
-from app.services.agent_planning_service import generate_agent_plan
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -73,43 +54,6 @@ def _run_to_read_model(run) -> AgentRunRead:
             if run.observation_snapshot is not None
             else None
         ),
-    )
-
-
-@router.post(
-    "/plan",
-    response_model=SuccessResponse[AgentPlanResponse],
-    summary="Generate a plan from current observations (legacy-compatible)",
-)
-async def generate_plan_endpoint(
-    payload: AgentPlanRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_db_session),
-    redis_manager: RedisManager | None = Depends(get_redis_manager),
-):
-    """Generate and persist an AI plan from the requested scope."""
-    bundle = await generate_agent_plan(
-        session,
-        payload=payload,
-        redis_manager=redis_manager,
-        trigger_source="agent.plan.endpoint",
-        trigger_payload={"endpoint": "/api/v1/agent/plan"},
-    )
-    response_payload = AgentPlanResponse(
-        assessment=RiskAssessmentRead.model_validate(bundle.risk_bundle.assessment),
-        reading=SensorReadingRead.model_validate(bundle.risk_bundle.reading),
-        weather_snapshot=(
-            WeatherSnapshotRead.model_validate(bundle.risk_bundle.weather_snapshot)
-            if bundle.risk_bundle.weather_snapshot is not None
-            else None
-        ),
-        plan=ActionPlanRead.model_validate(bundle.plan),
-        agent_run_id=bundle.run_id,
-    )
-    return success_response(
-        request=request,
-        message="Plan generated successfully.",
-        data=response_payload,
     )
 
 
@@ -174,40 +118,4 @@ async def get_agent_run(
         request=request,
         message="Agent run retrieved successfully.",
         data=_run_to_read_model(run),
-    )
-
-
-@router.post(
-    "/execute-simulated",
-    response_model=SuccessResponse[SimulatedExecutionResponse],
-    summary="Execute a validated plan using safe simulated actions only",
-)
-async def execute_simulated_plan_endpoint(
-    payload: SimulatedExecutionRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Execute a validated action plan in simulated mode and log the results."""
-    bundle = await execute_simulated_plan(
-        session,
-        payload=payload,
-        actor_name="operator",
-    )
-    response_payload = SimulatedExecutionResponse(
-        plan=ActionPlanRead.model_validate(bundle.plan),
-        executions=[
-            ActionExecutionRead.model_validate(execution)
-            for execution in bundle.executions
-        ],
-        feedback=bundle.feedback,
-        decision_logs=[
-            DecisionLogRead.model_validate(decision_log)
-            for decision_log in bundle.decision_logs
-        ],
-        idempotent_replay=bundle.idempotent_replay,
-    )
-    return success_response(
-        request=request,
-        message="Simulated execution completed successfully.",
-        data=response_payload,
     )

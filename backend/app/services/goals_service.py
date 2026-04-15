@@ -1,31 +1,18 @@
-"""Monitoring goal services for CRUD and run-once orchestration."""
+"""Monitoring goal configuration services."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
 from http import HTTPStatus
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
-from app.db.redis import RedisManager
 from app.models.goal import MonitoringGoal
 from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.region import RegionRepository
 from app.repositories.sensor import SensorStationRepository
-from app.schemas.agent import AgentPlanRequest
-from app.schemas.goal import MonitoringGoalCreate, MonitoringGoalUpdate, GoalRunOnceRequest
-from app.services.agent_planning_service import AgentPlanBundle, generate_agent_plan
-
-
-@dataclass(slots=True)
-class MonitoringGoalRunOnceBundle:
-    """Aggregate payload returned from run-once execution."""
-
-    goal: MonitoringGoal
-    plan_bundle: AgentPlanBundle
+from app.schemas.goal import MonitoringGoalCreate, MonitoringGoalUpdate
 
 
 async def create_monitoring_goal(
@@ -127,65 +114,6 @@ async def delete_monitoring_goal(session: AsyncSession, goal_id: UUID) -> None:
     goal = await get_monitoring_goal(session, goal_id)
     await repo.delete(goal)
     await session.commit()
-
-
-async def run_monitoring_goal_once(
-    session: AsyncSession,
-    *,
-    goal_id: UUID,
-    payload: GoalRunOnceRequest,
-    redis_manager: RedisManager | None,
-) -> MonitoringGoalRunOnceBundle:
-    """Execute one planning cycle using persisted monitoring goal configuration."""
-    goal = await get_monitoring_goal(session, goal_id)
-    if not goal.is_active:
-        raise AppException(
-            status_code=HTTPStatus.CONFLICT,
-            code="monitoring_goal_inactive",
-            message=f"Monitoring goal '{goal_id}' is inactive and cannot be run.",
-        )
-
-    objective = payload.objective or goal.objective
-    provider = payload.provider or goal.provider
-
-    plan_request = AgentPlanRequest(
-        station_id=goal.station_id,
-        region_id=goal.region_id,
-        incident_id=payload.incident_id,
-        objective=objective,
-        provider=provider,
-    )
-    try:
-        plan_bundle = await generate_agent_plan(
-            session,
-            payload=plan_request,
-            redis_manager=redis_manager,
-            trigger_source="goals.run_once",
-            trigger_payload={"goal_id": str(goal.id), "goal_name": goal.name},
-        )
-    except TypeError as exc:
-        if "trigger_source" not in str(exc) and "trigger_payload" not in str(exc):
-            raise
-        plan_bundle = await generate_agent_plan(
-            session,
-            payload=plan_request,
-            redis_manager=redis_manager,
-        )
-
-    goal.last_run_at = datetime.now(UTC)
-    goal.last_run_status = "succeeded"
-    goal.last_run_plan_id = plan_bundle.plan.id
-    await session.commit()
-
-    refreshed_goal = await MonitoringGoalRepository(session).get_with_relations(goal.id)
-    if refreshed_goal is None:
-        raise AppException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            code="monitoring_goal_reload_failed",
-            message="Monitoring goal run completed but goal could not be reloaded.",
-        )
-
-    return MonitoringGoalRunOnceBundle(goal=refreshed_goal, plan_bundle=plan_bundle)
 
 
 async def _ensure_goal_name_is_unique(session: AsyncSession, name: str) -> None:

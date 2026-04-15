@@ -1,18 +1,15 @@
-"""Monitoring goals endpoints for CRUD and run-once execution."""
+"""Monitoring goal configuration endpoints."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.presenters.goals import goal_run_once_to_response, goal_to_read
+from app.api.v1.presenters.goals import goal_to_read
 from app.core.responses import success_response
-from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import get_db_session
 from app.schemas.common import SuccessResponse
 from app.schemas.goal import (
-    GoalRunOnceRequest,
-    GoalRunOnceResponse,
     MonitoringGoalCollection,
     MonitoringGoalCreate,
     MonitoringGoalRead,
@@ -23,7 +20,6 @@ from app.services.goals_service import (
     delete_monitoring_goal,
     get_monitoring_goal,
     list_monitoring_goals,
-    run_monitoring_goal_once,
     update_monitoring_goal,
 )
 
@@ -108,26 +104,4 @@ async def delete_goal(
         request=request,
         message="Monitoring goal deleted successfully.",
         data={"goal_id": str(goal_id)},
-    )
-
-
-@router.post("/{goal_id}/run-once", response_model=SuccessResponse[GoalRunOnceResponse])
-async def run_goal_once(
-    goal_id: UUID,
-    payload: GoalRunOnceRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_db_session),
-    redis_manager: RedisManager | None = Depends(get_redis_manager),
-):
-    """Run one planning cycle immediately using persisted goal configuration."""
-    bundle = await run_monitoring_goal_once(
-        session,
-        goal_id=goal_id,
-        payload=payload,
-        redis_manager=redis_manager,
-    )
-    return success_response(
-        request=request,
-        message="Goal run-once completed successfully.",
-        data=goal_run_once_to_response(bundle),
     )

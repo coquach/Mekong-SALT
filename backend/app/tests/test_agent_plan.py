@@ -7,7 +7,8 @@ from app.agents.policy_guard import validate_generated_plan
 from app.models.enums import ActionPlanStatus, ActionType, RiskLevel
 from app.models.weather import WeatherSnapshot
 import pytest
-from app.schemas.agent import GeneratedActionPlan, PlanStep
+from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanStep
+from app.services.agent_planning_service import generate_agent_plan
 
 
 async def _persist_stub_weather_snapshot(
@@ -65,8 +66,8 @@ def test_policy_guard_rejects_critical_plan_without_hydraulic_mitigation():
 
 
 @pytest.mark.asyncio
-async def test_agent_plan_endpoint_persists_validated_plan(
-    client, seeded_sensor_data, monkeypatch
+async def test_agent_planning_service_persists_validated_plan(
+    db_session, seeded_sensor_data, monkeypatch
 ):
     class StubProvider:
         name = "stub-provider"
@@ -113,26 +114,25 @@ async def test_agent_plan_endpoint_persists_validated_plan(
         lambda provider_name=None: StubProvider(),
     )
 
-    response = await client.post(
-        "/api/v1/agent/plan",
-        json={
-            "station_code": seeded_sensor_data["station_a"].code,
-            "objective": "Protect irrigation water quality",
-        },
+    bundle = await generate_agent_plan(
+        db_session,
+        payload=AgentPlanRequest(
+            station_code=seeded_sensor_data["station_a"].code,
+            objective="Protect irrigation water quality",
+        ),
+        redis_manager=None,
+        trigger_source="test.agent_plan.service",
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["success"] is True
-    assert body["data"]["plan"]["status"] == ActionPlanStatus.PENDING_APPROVAL.value
-    assert body["data"]["plan"]["model_provider"] == "stub-provider"
-    assert body["data"]["plan"]["validation_result"]["is_valid"] is True
-    assert len(body["data"]["plan"]["plan_steps"]) == 2
+    assert bundle.plan.status == ActionPlanStatus.PENDING_APPROVAL
+    assert bundle.plan.model_provider == "stub-provider"
+    assert bundle.plan.validation_result["is_valid"] is True
+    assert len(bundle.plan.plan_steps) == 2
 
 
 @pytest.mark.asyncio
-async def test_agent_plan_endpoint_persists_invalid_plan_as_draft(
-    client, seeded_sensor_data, monkeypatch
+async def test_agent_planning_service_persists_invalid_plan_as_draft(
+    db_session, seeded_sensor_data, monkeypatch
 ):
     class StubProvider:
         name = "stub-provider"
@@ -179,17 +179,16 @@ async def test_agent_plan_endpoint_persists_invalid_plan_as_draft(
         lambda provider_name=None: StubProvider(),
     )
 
-    response = await client.post(
-        "/api/v1/agent/plan",
-        json={
-            "station_code": seeded_sensor_data["station_a"].code,
-            "objective": "Protect irrigation water quality",
-        },
+    bundle = await generate_agent_plan(
+        db_session,
+        payload=AgentPlanRequest(
+            station_code=seeded_sensor_data["station_a"].code,
+            objective="Protect irrigation water quality",
+        ),
+        redis_manager=None,
+        trigger_source="test.agent_plan.service",
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["success"] is True
-    assert body["data"]["plan"]["status"] == ActionPlanStatus.DRAFT.value
-    assert body["data"]["plan"]["validation_result"]["is_valid"] is False
-    assert body["data"]["plan"]["validation_result"]["errors"]
+    assert bundle.plan.status == ActionPlanStatus.DRAFT
+    assert bundle.plan.validation_result["is_valid"] is False
+    assert bundle.plan.validation_result["errors"]

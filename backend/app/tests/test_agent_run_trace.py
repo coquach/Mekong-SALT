@@ -7,9 +7,13 @@ from uuid import uuid4
 import pytest
 
 from app.models.enums import ActionType, StationStatus
+from app.models.goal import MonitoringGoal
 from app.models.sensor import SensorReading, SensorStation
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
+from app.schemas.risk import RiskEvaluationFilters
+from app.services.active_monitoring_service import run_monitoring_goal_cycle
+from app.services.risk_service import evaluate_current_risk
 
 
 async def _persist_stub_weather_snapshot(
@@ -74,11 +78,13 @@ async def test_risk_run_trace_records_snapshot_and_incident_skip_reason(
         fake_weather_snapshot,
     )
 
-    response = await client.get("/api/v1/risk/current", params={"station_code": safe_station.code})
-
-    assert response.status_code == 200
-    body = response.json()
-    run_id = body["data"]["agent_run_id"]
+    bundle = await evaluate_current_risk(
+        db_session,
+        filters=RiskEvaluationFilters(station_code=safe_station.code),
+        redis_manager=None,
+        trigger_source="monitoring.worker.observe_risk",
+    )
+    run_id = bundle.run_id
     assert run_id is not None
 
     run_response = await client.get(f"/api/v1/agent/runs/{run_id}")
@@ -86,7 +92,7 @@ async def test_risk_run_trace_records_snapshot_and_incident_skip_reason(
     run_body = run_response.json()["data"]
 
     assert run_body["status"] == "succeeded"
-    assert run_body["trigger_source"] == "risk.current"
+    assert run_body["trigger_source"] == "monitoring.worker.observe_risk"
     assert run_body["trace"]["incident_decision"]["decision"] == "skipped"
     assert "below incident threshold" in run_body["trace"]["incident_decision"]["reason"]
     assert run_body["trace"]["plan_decision"]["decision"] == "not_applicable"
@@ -95,8 +101,9 @@ async def test_risk_run_trace_records_snapshot_and_incident_skip_reason(
 
 
 @pytest.mark.asyncio
-async def test_plan_run_trace_records_plan_decision_and_snapshot(
+async def test_monitoring_plan_run_trace_records_plan_decision_and_snapshot(
     client,
+    db_session,
     seeded_sensor_data,
     monkeypatch,
 ):
@@ -145,25 +152,38 @@ async def test_plan_run_trace_records_plan_decision_and_snapshot(
         lambda provider_name=None: StubProvider(),
     )
 
-    response = await client.post(
-        "/api/v1/agent/plan",
-        json={
-            "station_code": seeded_sensor_data["station_a"].code,
-            "objective": "Protect irrigation water quality",
-        },
+    goal = MonitoringGoal(
+        name="Trace-Reactive-Goal",
+        region_id=seeded_sensor_data["region"].id,
+        station_id=seeded_sensor_data["station_a"].id,
+        objective="Protect irrigation water quality",
+        provider="mock",
+        warning_threshold_dsm=Decimal("2.50"),
+        critical_threshold_dsm=Decimal("4.00"),
+        evaluation_interval_minutes=1,
+        auto_plan_enabled=True,
+        is_active=True,
     )
+    db_session.add(goal)
+    await db_session.commit()
+    await db_session.refresh(goal)
 
-    assert response.status_code == 200
-    body = response.json()["data"]
-    run_id = body["agent_run_id"]
-    plan_id = body["plan"]["id"]
+    result = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
+    )
+    assert result.plan_bundle is not None
+    run_id = result.plan_bundle.run_id
+    plan_id = str(result.plan_bundle.plan.id)
 
     run_response = await client.get(f"/api/v1/agent/runs/{run_id}")
     assert run_response.status_code == 200
     run_body = run_response.json()["data"]
 
     assert run_body["status"] == "succeeded"
-    assert run_body["trigger_source"] == "agent.plan.endpoint"
+    assert run_body["trigger_source"] == "monitoring.worker.auto_plan"
     assert run_body["trace"]["plan_decision"]["decision"] == "created"
     assert run_body["trace"]["plan_decision"]["action_plan_id"] == plan_id
     assert run_body["trace"]["incident_decision"]["decision"] in {"created", "existing", "provided"}

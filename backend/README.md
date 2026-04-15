@@ -8,8 +8,8 @@ Backend MVP scope includes:
 - authentication disabled for MVP demo
 - sensor ingestion + risk evaluation + incident creation
 - AI planning orchestration (mock + provider abstractions)
-- approval workflow and simulated execution
-- goal-driven active monitoring worker with Redis locks
+- reactive approval + simulated execution orchestration
+- goal-driven active monitoring worker with Redis locks enabled by default
 - notifications (dashboard + SMS/Zalo/email mock)
 - audit logging and outcomes
 - dashboard summary + SSE stream
@@ -42,10 +42,10 @@ docker compose up -d postgres redis
 
 ```
 
-The active monitoring worker is off by default. To run it inside the API
-process, set `ACTIVE_MONITORING_ENABLED=true`. Start with
-`ACTIVE_MONITORING_MODE=dry_run`, then switch to `active` only after the worker
-has completed stable cycles.
+The active monitoring worker is the default runtime path. When
+`ACTIVE_MONITORING_ENABLED=true` and `ACTIVE_MONITORING_MODE=active`, the API
+process continuously runs due monitoring goals and advances valid plans through
+reactive approval and simulated execution.
 
 Standalone worker:
 
@@ -79,34 +79,44 @@ Authentication is disabled for MVP demo.
 curl http://localhost:8000/api/v1/health
 ```
 
-## Demo flow (MVP)
+## Reactive Flow
 
 1. Ingest a sensor reading: `POST /api/v1/sensors/ingest`
-2. Evaluate risk: `GET /api/v1/risk/current`
-3. Create a monitoring goal: `POST /api/v1/goals`
-4. Run one goal cycle to create plan: `POST /api/v1/goals/{goal_id}/run-once`
-5. Update goal config: `PATCH /api/v1/goals/{goal_id}`
-6. List current goals: `GET /api/v1/goals`
-7. Approve plan: `POST /api/v1/approvals/plans/{plan_id}`
-8. Execute (mock): `POST /api/v1/agent/execute-simulated`
-9. Watch dashboard: `GET /api/v1/dashboard/summary` or `GET /api/v1/dashboard/stream`
+2. Create or update a monitoring goal: `POST /api/v1/goals`, `PATCH /api/v1/goals/{goal_id}`
+3. Worker observes due goals and runs `observe -> risk -> incident -> plan`
+4. Valid plans are approved by `reactive-monitoring`
+5. Approved plans execute through the simulated action engine
+6. Watch state: `GET /api/v1/dashboard/summary`, `GET /api/v1/dashboard/stream`, `GET /api/v1/risk/latest`, `GET /api/v1/plans`, `GET /api/v1/actions/logs`
 
-## Monitoring Goals (Phase 2)
+Manual trigger endpoints for risk evaluation, plan generation, approval, and
+action execution are no longer public API. The public API configures goals and
+reads state; the worker owns side-effecting decisions.
+
+## Folder Layout
+
+- `app/api`: versioned HTTP routes and response presenters.
+- `app/orchestration`: cross-domain workflows such as reactive plan advancement.
+- `app/services`: domain services for risk, planning, execution, goals, and incidents.
+- `app/repositories`: persistence queries around SQLAlchemy models.
+- `app/workers`: long-running background loops.
+- `app/agents`: provider adapters and policy/graph logic.
+- `app/schemas` and `app/models`: API contracts and persistence models.
+
+## Monitoring Goals
 
 - `POST /api/v1/goals`: create goal with `thresholds`, `evaluation_interval_minutes`, and `is_active`.
-- `auto_plan_enabled`: lets the worker create a pending-approval plan automatically in active mode.
+- `auto_plan_enabled`: lets the worker create a plan automatically in active mode.
 - `GET /api/v1/goals` and `GET /api/v1/goals/{goal_id}`: read goals.
 - `PATCH /api/v1/goals/{goal_id}`: update thresholds, interval, active flag, objective, target.
 - `DELETE /api/v1/goals/{goal_id}`: remove goal.
-- `POST /api/v1/goals/{goal_id}/run-once`: trigger one immediate cycle using persisted goal configuration.
 
 Data constraints are enforced at both API and database levels:
 
 - `critical_threshold_dsm > warning_threshold_dsm`
 - `evaluation_interval_minutes >= 1`
-- `is_active` is required and controls whether run-once is allowed.
+- `is_active` controls whether the worker evaluates the goal.
 
-## Active Monitoring Worker (Phase 4)
+## Active Monitoring Worker
 
 Worker loop:
 
@@ -115,7 +125,8 @@ Worker loop:
 3. Acquire `mekong-salt:monitoring-goal:{goal_id}:lock` in Redis.
 4. Run `observe -> risk -> incident`.
 5. In `dry_run`, stop before plan creation.
-6. In `active`, create a plan only when `auto_plan_enabled=true` and no non-terminal plan exists for the incident.
+6. In `active`, create a plan only when `auto_plan_enabled=true` and no active/simulated plan exists for the incident.
+7. If enabled, auto-approve and execute the plan using the simulated action engine.
 
 Useful commands:
 
@@ -134,9 +145,8 @@ Trace APIs:
 - `GET /api/v1/agent/runs`: list recent runs.
 - `GET /api/v1/agent/runs/{run_id}`: inspect one run with snapshot and decision trace.
 
-Compatibility and trace fields:
+Trace fields:
 
-- Legacy `POST /api/v1/agent/plan` is available again for existing clients.
-- `GET /api/v1/risk/current` returns `agent_run_id`.
-- `POST /api/v1/alerts/evaluate` returns `agent_run_id`.
-- Plan generation responses include `agent_run_id` when available.
+- `monitoring.worker.observe_risk`: risk observation run.
+- `monitoring.worker.auto_plan`: plan generation run.
+- `reactive-monitoring`: approval/execution actor for automated plan advancement.

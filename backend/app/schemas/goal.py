@@ -1,4 +1,4 @@
-"""Schemas for monitoring goals and run-once execution."""
+"""Schemas for monitoring goal configuration."""
 
 from datetime import datetime
 from decimal import Decimal
@@ -7,7 +7,6 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
-from app.schemas.agent import AgentPlanResponse
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
 
 
@@ -81,18 +80,3 @@ class MonitoringGoalCollection(ORMBaseSchema):
 
     items: list[MonitoringGoalRead]
     count: int
-
-
-class GoalRunOnceRequest(ORMBaseSchema):
-    """Optional overrides when running one immediate goal cycle."""
-
-    objective: str | None = Field(default=None, min_length=3, max_length=255)
-    incident_id: UUID | None = None
-    provider: Literal["mock", "gemini", "ollama"] | None = None
-
-
-class GoalRunOnceResponse(ORMBaseSchema):
-    """One-shot execution result for a monitoring goal."""
-
-    goal: MonitoringGoalRead
-    result: AgentPlanResponse

@@ -1,16 +1,17 @@
-"""Tests for simulated execution and feedback flow."""
+"""Tests for reactive execution and removed manual workflow endpoints."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import UUID
+from uuid import uuid4
 
 import pytest
 
 from app.models.action import ActionPlan
 from app.models.enums import ActionPlanStatus, ActionType
-from app.models.sensor import SensorReading
+from app.models.goal import MonitoringGoal
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
+from app.services.active_monitoring_service import run_monitoring_goal_cycle
 
 
 async def _persist_stub_weather_snapshot(
@@ -43,7 +44,7 @@ class _ValidatedPlanProvider:
         return GeneratedActionPlan(
             objective=objective,
             summary="Protect irrigation canals with simulated mitigation.",
-            assumptions=["Operators are available."],
+            assumptions=["Reactive monitoring is enabled."],
             steps=[
                 PlanStep(
                     step_index=1,
@@ -65,78 +66,29 @@ class _ValidatedPlanProvider:
         )
 
 
-class _DraftPlanProvider:
-    name = "stub-provider"
+@pytest.mark.asyncio
+async def test_manual_workflow_trigger_endpoints_are_not_public(client):
+    plan_id = uuid4()
 
-    async def generate_plan(self, *, objective, context):
-        return GeneratedActionPlan(
-            objective=objective,
-            summary="Notify and wait only.",
-            assumptions=["Operators are available."],
-            steps=[
-                PlanStep(
-                    step_index=1,
-                    action_type=ActionType.NOTIFY_FARMERS,
-                    title="Notify farmers",
-                    instructions="Send advisory to avoid intake.",
-                    rationale="Communication reduces exposure.",
-                    simulated=True,
-                ),
-                PlanStep(
-                    step_index=2,
-                    action_type=ActionType.WAIT_SAFE_WINDOW,
-                    title="Wait for safer tide window",
-                    instructions="Pause intake until conditions improve.",
-                    rationale="Avoid saline intake during peak pressure.",
-                    simulated=True,
-                ),
-            ],
-        )
+    checks = [
+        await client.get("/api/v1/risk/current"),
+        await client.post("/api/v1/alerts/evaluate", json={}),
+        await client.post("/api/v1/agent/plan", json={}),
+        await client.post("/api/v1/agent/execute-simulated", json={}),
+        await client.post(f"/api/v1/approvals/plans/{plan_id}", json={"decision": "approved"}),
+        await client.post(f"/api/v1/plans/{plan_id}/approve", json={}),
+        await client.post(f"/api/v1/plans/{plan_id}/execute-simulated", json={}),
+    ]
+
+    assert all(response.status_code == 404 for response in checks)
 
 
 @pytest.mark.asyncio
-async def test_execute_simulated_rejects_draft_plan(
-    client, seeded_sensor_data, monkeypatch
-):
-    async def fake_weather_snapshot(session, *, region, station, redis_manager):
-        return await _persist_stub_weather_snapshot(
-            session,
-            region_id=region.id,
-            wind_speed_mps="5.50",
-            tide_level_m="1.70",
-        )
-
-    monkeypatch.setattr(
-        "app.services.risk_service.get_or_fetch_weather_snapshot",
-        fake_weather_snapshot,
-    )
-    monkeypatch.setattr(
-        "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: _DraftPlanProvider(),
-    )
-
-    plan_response = await client.post(
-        "/api/v1/agent/plan",
-        json={
-            "station_code": seeded_sensor_data["station_a"].code,
-            "objective": "Protect irrigation water quality",
-        },
-    )
-    plan_id = plan_response.json()["data"]["plan"]["id"]
-
-    execute_response = await client.post(
-        "/api/v1/agent/execute-simulated",
-        json={"action_plan_id": plan_id},
-    )
-
-    assert execute_response.status_code == 400
-    body = execute_response.json()
-    assert body["error"]["code"] == "action_plan_not_approved"
-
-
-@pytest.mark.asyncio
-async def test_execute_simulated_persists_executions_feedback_and_logs(
-    client, db_session, seeded_sensor_data, monkeypatch
+async def test_reactive_monitoring_persists_executions_feedback_and_logs(
+    client,
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
 ):
     async def fake_weather_snapshot(session, *, region, station, redis_manager):
         return await _persist_stub_weather_snapshot(
@@ -155,56 +107,48 @@ async def test_execute_simulated_persists_executions_feedback_and_logs(
         lambda provider_name=None: _ValidatedPlanProvider(),
     )
 
-    plan_response = await client.post(
-        "/api/v1/agent/plan",
-        json={
-            "station_code": seeded_sensor_data["station_a"].code,
-            "objective": "Protect irrigation water quality",
-        },
-    )
-
-    plan_body = plan_response.json()["data"]["plan"]
-    plan_id = plan_body["id"]
-    assert plan_body["status"] == ActionPlanStatus.PENDING_APPROVAL.value
-
-    approval_response = await client.post(
-        f"/api/v1/approvals/plans/{plan_id}",
-        json={"decision": "approved", "comment": "test approval"},
-    )
-    assert approval_response.status_code == 200
-
-    follow_up_reading = SensorReading(
+    goal = MonitoringGoal(
+        name="Reactive-Execution-Goal",
+        region_id=seeded_sensor_data["region"].id,
         station_id=seeded_sensor_data["station_a"].id,
-        recorded_at=datetime.now(UTC),
-        salinity_dsm=Decimal("2.40"),
-        water_level_m=Decimal("1.30"),
-        temperature_c=Decimal("28.10"),
+        objective="Protect irrigation water quality",
+        provider="mock",
+        warning_threshold_dsm=Decimal("2.50"),
+        critical_threshold_dsm=Decimal("4.00"),
+        evaluation_interval_minutes=1,
+        auto_plan_enabled=True,
+        is_active=True,
     )
-    db_session.add(follow_up_reading)
+    db_session.add(goal)
     await db_session.commit()
+    await db_session.refresh(goal)
 
-    execute_response = await client.post(
-        "/api/v1/agent/execute-simulated",
-        json={"action_plan_id": plan_id},
+    result = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
     )
 
-    assert execute_response.status_code == 200
-    execute_body = execute_response.json()["data"]
-    assert execute_body["plan"]["status"] == ActionPlanStatus.SIMULATED.value
-    assert len(execute_body["executions"]) == 2
-    assert execute_body["feedback"]["status"] == "improved"
-    assert len(execute_body["decision_logs"]) == 3
+    assert result.status == "succeeded_plan_executed"
+    assert result.reactive_result is not None
+    assert result.reactive_result.execution_bundle is not None
+
+    plan = await db_session.get(ActionPlan, result.plan_bundle.plan.id)
+    assert plan is not None
+    assert plan.status == ActionPlanStatus.SIMULATED
+
+    execution_bundle = result.reactive_result.execution_bundle
+    assert len(execution_bundle.executions) == 2
+    assert execution_bundle.feedback.status == "insufficient_new_observation"
+    assert len(execution_bundle.decision_logs) == 3
 
     logs_response = await client.get(
         "/api/v1/actions/logs",
-        params={"plan_id": plan_id},
+        params={"plan_id": str(plan.id)},
     )
 
     assert logs_response.status_code == 200
     logs_body = logs_response.json()["data"]
     assert logs_body["count"] == 2
     assert all(item["decision_log"] is not None for item in logs_body["items"])
-
-    persisted_plan = await db_session.get(ActionPlan, UUID(plan_id))
-    assert persisted_plan is not None
-    assert persisted_plan.status == ActionPlanStatus.SIMULATED

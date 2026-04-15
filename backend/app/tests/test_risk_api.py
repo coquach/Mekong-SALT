@@ -1,4 +1,4 @@
-"""API tests for risk evaluation and alert creation."""
+"""API tests for read-only risk views."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -7,6 +7,8 @@ import pytest
 
 from app.models.enums import RiskLevel
 from app.models.weather import WeatherSnapshot
+from app.schemas.risk import RiskEvaluationFilters
+from app.services.risk_service import evaluate_current_risk
 
 
 async def _persist_stub_weather_snapshot(
@@ -33,8 +35,11 @@ async def _persist_stub_weather_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_get_current_risk_persists_assessment_and_returns_weather_context(
-    client, seeded_sensor_data, monkeypatch
+async def test_get_latest_risk_returns_worker_persisted_assessment(
+    client,
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
 ):
     async def fake_weather_snapshot(session, *, region, station, redis_manager):
         return await _persist_stub_weather_snapshot(
@@ -49,8 +54,15 @@ async def test_get_current_risk_persists_assessment_and_returns_weather_context(
         fake_weather_snapshot,
     )
 
+    await evaluate_current_risk(
+        db_session,
+        filters=RiskEvaluationFilters(station_code=seeded_sensor_data["station_a"].code),
+        redis_manager=None,
+        trigger_source="test.risk.evaluate",
+    )
+
     response = await client.get(
-        "/api/v1/risk/current",
+        "/api/v1/risk/latest",
         params={"station_code": seeded_sensor_data["station_a"].code},
     )
 
@@ -64,60 +76,14 @@ async def test_get_current_risk_persists_assessment_and_returns_weather_context(
 
 
 @pytest.mark.asyncio
-async def test_alert_evaluate_creates_alert_for_high_risk_station(
-    client, seeded_sensor_data, monkeypatch
+async def test_get_latest_risk_returns_404_before_monitoring_produces_assessment(
+    client,
+    seeded_sensor_data,
 ):
-    async def fake_weather_snapshot(session, *, region, station, redis_manager):
-        return await _persist_stub_weather_snapshot(
-            session,
-            region_id=region.id,
-            wind_speed_mps="5.50",
-            tide_level_m="1.70",
-        )
-
-    monkeypatch.setattr(
-        "app.services.risk_service.get_or_fetch_weather_snapshot",
-        fake_weather_snapshot,
+    response = await client.get(
+        "/api/v1/risk/latest",
+        params={"station_code": seeded_sensor_data["station_a"].code},
     )
 
-    response = await client.post(
-        "/api/v1/alerts/evaluate",
-        json={"station_code": seeded_sensor_data["station_a"].code},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["success"] is True
-    assert body["data"]["assessment"]["risk_level"] == RiskLevel.CRITICAL.value
-    assert body["data"]["alert_created"] is True
-    assert body["data"]["alert"]["severity"] == RiskLevel.CRITICAL.value
-
-
-@pytest.mark.asyncio
-async def test_alert_evaluate_skips_alert_for_warning_level_station(
-    client, seeded_sensor_data, monkeypatch
-):
-    async def fake_weather_snapshot(session, *, region, station, redis_manager):
-        return await _persist_stub_weather_snapshot(
-            session,
-            region_id=region.id,
-            wind_speed_mps="2.00",
-            tide_level_m="0.80",
-        )
-
-    monkeypatch.setattr(
-        "app.services.risk_service.get_or_fetch_weather_snapshot",
-        fake_weather_snapshot,
-    )
-
-    response = await client.post(
-        "/api/v1/alerts/evaluate",
-        json={"station_code": seeded_sensor_data["station_b"].code},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["success"] is True
-    assert body["data"]["assessment"]["risk_level"] == RiskLevel.WARNING.value
-    assert body["data"]["alert_created"] is False
-    assert body["data"]["alert"] is None
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "risk_assessment_not_found"
