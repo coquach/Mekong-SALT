@@ -3733,8 +3733,7 @@
                 "type": "string",
                 "enum": [
                   "mock",
-                  "gemini",
-                  "ollama"
+                  "gemini"
                 ]
               },
               {
@@ -3834,8 +3833,7 @@
                 "type": "string",
                 "enum": [
                   "mock",
-                  "gemini",
-                  "ollama"
+                  "gemini"
                 ]
               },
               {
@@ -3981,8 +3979,7 @@
                 "type": "string",
                 "enum": [
                   "mock",
-                  "gemini",
-                  "ollama"
+                  "gemini"
                 ]
               },
               {

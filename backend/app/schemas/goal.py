@@ -31,7 +31,7 @@ class MonitoringGoalBase(ORMBaseSchema):
     region_id: UUID
     station_id: UUID | None = None
     objective: str = Field(min_length=3, max_length=255)
-    provider: Literal["mock", "gemini", "ollama"] | None = None
+    provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds
     evaluation_interval_minutes: int = Field(ge=1, le=10080)
     auto_plan_enabled: bool = True
@@ -50,7 +50,7 @@ class MonitoringGoalUpdate(ORMBaseSchema):
     region_id: UUID | None = None
     station_id: UUID | None = None
     objective: str | None = Field(default=None, min_length=3, max_length=255)
-    provider: Literal["mock", "gemini", "ollama"] | None = None
+    provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds | None = None
     evaluation_interval_minutes: int | None = Field(default=None, ge=1, le=10080)
     auto_plan_enabled: bool | None = None
@@ -65,7 +65,7 @@ class MonitoringGoalRead(EntityReadSchema):
     region_id: UUID
     station_id: UUID | None = None
     objective: str
-    provider: Literal["mock", "gemini", "ollama"] | None = None
+    provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds
     evaluation_interval_minutes: int
     auto_plan_enabled: bool

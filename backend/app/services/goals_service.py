@@ -30,7 +30,7 @@ async def create_monitoring_goal(
         region_id=payload.region_id,
         station_id=payload.station_id,
         objective=payload.objective,
-        provider=payload.provider,
+        provider="gemini",
         warning_threshold_dsm=payload.thresholds.warning_threshold_dsm,
         critical_threshold_dsm=payload.thresholds.critical_threshold_dsm,
         evaluation_interval_minutes=payload.evaluation_interval_minutes,
@@ -93,6 +93,8 @@ async def update_monitoring_goal(
 
     for field, value in updates.items():
         setattr(goal, field, value)
+
+    goal.provider = "gemini"
 
     await _validate_goal_target(session, region_id=goal.region_id, station_id=goal.station_id)
     _validate_threshold_order(goal.warning_threshold_dsm, goal.critical_threshold_dsm)

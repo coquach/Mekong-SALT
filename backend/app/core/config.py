@@ -49,11 +49,12 @@ class Settings(BaseSettings):
     open_meteo_weather_base_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_marine_base_url: str = "https://marine-api.open-meteo.com/v1/marine"
 
-    llm_provider: Literal["mock", "gemini", "ollama"] = "mock"
+    llm_provider: Literal["gemini"] = "gemini"
+    llm_use_vertex: bool = True
+    vertex_ai_project: str | None = None
+    vertex_ai_location: str = "us-central1"
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.1:8b"
+    gemini_model: Literal["gemini-2.5-flash"] = "gemini-2.5-flash"
     llm_temperature: float = 0.2
     llm_request_timeout_seconds: int = 30
 
@@ -94,6 +95,24 @@ class Settings(BaseSettings):
             query_pairs["prepared_statement_cache_size"] = "0"
 
         return urlunsplit(parsed._replace(query=urlencode(query_pairs)))
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def enforce_llm_provider(cls, _value: str | None) -> str:
+        """Force Gemini as the only supported planning provider."""
+        return "gemini"
+
+    @field_validator("llm_use_vertex", mode="before")
+    @classmethod
+    def enforce_vertex_mode(cls, _value: bool | None) -> bool:
+        """Force Vertex mode for all Gemini plan generation."""
+        return True
+
+    @field_validator("gemini_model", mode="before")
+    @classmethod
+    def enforce_gemini_flash_model(cls, _value: str | None) -> str:
+        """Force Gemini Flash 2.5 as the planning model."""
+        return "gemini-2.5-flash"
 
 
 

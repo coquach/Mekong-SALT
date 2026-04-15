@@ -22,7 +22,7 @@ class AgentPlanRequest(ORMBaseSchema):
     region_code: str | None = None
     incident_id: UUID | None = None
     objective: str | None = Field(default=None, max_length=255)
-    provider: Literal["mock", "gemini", "ollama"] | None = None
+    provider: Literal["mock", "gemini"] | None = None
 
 
 class PlanStep(ORMBaseSchema):
