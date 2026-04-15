@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
+from app.models.action import ActionPlan
 from app.models.approval import Approval
 from app.models.enums import ApprovalDecision, AuditEventType, IncidentStatus
 from app.models.enums import ActionPlanStatus
@@ -24,7 +25,7 @@ async def decide_plan(
     plan_id: UUID,
     payload: ApprovalRequest,
     actor_name: str = "supervisor",
-) -> tuple[Approval, object]:
+) -> tuple[Approval, ActionPlan]:
     """Approve or reject a pending plan."""
     plan = await ActionPlanRepository(session).get_with_assessment(plan_id)
     if plan is None:

@@ -36,3 +36,10 @@ class ApprovalDecisionResponse(ORMBaseSchema):
 
     approval: ApprovalRead
     plan: ActionPlanRead
+
+
+class ApprovalCollection(ORMBaseSchema):
+    """Approval history collection payload for one action plan."""
+
+    items: list[ApprovalRead]
+    count: int

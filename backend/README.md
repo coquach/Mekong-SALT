@@ -92,6 +92,40 @@ Manual trigger endpoints for risk evaluation, plan generation, approval, and
 action execution are no longer public API. The public API configures goals and
 reads state; the worker owns side-effecting decisions.
 
+Approval and feedback boundaries now expose explicit contract placeholders
+without runtime side effects:
+
+- `POST /api/v1/approvals/plans/{plan_id}/decision` (placeholder, returns 501)
+- `GET /api/v1/approvals/plans/{plan_id}/history` (placeholder, returns 501)
+- `POST /api/v1/feedback/execution-batches/{batch_id}/evaluate` (placeholder, returns 501)
+- `GET /api/v1/feedback/execution-batches/{batch_id}/latest` (placeholder, returns 501)
+
+## Operational API Boundaries
+
+| Endpoint group | Owner module | Responsibility | Status |
+|---|---|---|---|
+| `/health` | `app.services.health_service` | service readiness metadata | stable |
+| `/goals` | `app.services.goals_service` | configure monitoring automation scope | stable |
+| `/incidents` | `app.services.incident_service` | manual incident lifecycle management | stable |
+| `/plans` | `app.repositories.action` (read) | plan visibility for operators and FE | stable |
+| `/execution-batches`, `/action-outcomes` | `app.services.agent_execution_service` | simulated execution transaction view | stable |
+| `/actions/logs` | `app.services.agent_execution_service` | execution + decision log timeline | stable |
+| `/notifications` | `app.services.notification_service` | dashboard/SMS/Zalo/email mock records | stable |
+| `/agent/*`, `/audit/*` | `app.services.agent_trace_service`, `app.services.audit_service` | traceability and auditability | stable |
+| `/dashboard/*` | `app.services.dashboard_service` | operational summary and timeline stream | stable |
+| `/approvals/*` | `app.services.approval_service` | HITL approval contracts (no side effects yet) | placeholder |
+| `/feedback/*` | `app.services.feedback` (planned) | post-execution evaluation contracts | placeholder |
+
+## Transitional Route Overlap
+
+The following routes are transitional and retained for compatibility during FE migration:
+
+- Legacy read APIs: `/api/v1/sensors/latest`, `/api/v1/sensors/history`
+- Preferred facade read APIs: `/api/v1/readings/latest`, `/api/v1/readings/history`
+- Legacy risk read API: `/api/v1/risk/latest` (kept while dashboard/read facades evolve)
+
+These transitional routes should not be used for new integrations.
+
 ## Folder Layout
 
 - `app/api`: versioned HTTP routes and response presenters.

@@ -4,9 +4,11 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints.actions import router as actions_router
 from app.api.v1.endpoints.agent import router as agent_router
+from app.api.v1.endpoints.approvals import router as approvals_router
 from app.api.v1.endpoints.audit import router as audit_router
 from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.execution_batches import router as execution_batches_router
+from app.api.v1.endpoints.feedback import router as feedback_router
 from app.api.v1.endpoints.goals import router as goals_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.incidents import router as incidents_router
@@ -18,18 +20,25 @@ from app.api.v1.endpoints.sensors import router as sensors_router
 from app.api.v1.endpoints.stations import router as stations_router
 
 router = APIRouter()
+
+# Operational read/write boundaries
 router.include_router(actions_router)
+# Explicit HITL approval boundary.
+router.include_router(approvals_router)
 router.include_router(agent_router)
 router.include_router(audit_router)
 router.include_router(dashboard_router)
 router.include_router(execution_batches_router)
+router.include_router(feedback_router)
 router.include_router(goals_router)
 router.include_router(health_router)
 router.include_router(incidents_router)
 router.include_router(notifications_router)
 router.include_router(plans_router)
 router.include_router(readings_router)
-# Legacy routers stay registered during FE migration to new facade paths.
+
+# Transitional overlap routes: retained for compatibility during FE migration.
+# Preferred facade routes are `/readings/*` and `/plans/*`.
 router.include_router(risk_router)
 router.include_router(sensors_router)
 router.include_router(stations_router)
