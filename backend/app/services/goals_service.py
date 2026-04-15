@@ -47,6 +47,7 @@ async def create_monitoring_goal(
         warning_threshold_dsm=payload.thresholds.warning_threshold_dsm,
         critical_threshold_dsm=payload.thresholds.critical_threshold_dsm,
         evaluation_interval_minutes=payload.evaluation_interval_minutes,
+        auto_plan_enabled=payload.auto_plan_enabled,
         is_active=payload.is_active,
     )
     await repo.add(goal)

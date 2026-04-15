@@ -5,25 +5,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.presenters.goals import goal_run_once_to_response, goal_to_read
 from app.core.responses import success_response
 from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import get_db_session
-from app.models.goal import MonitoringGoal
-from app.schemas.action import ActionPlanRead
-from app.schemas.agent import AgentPlanResponse
 from app.schemas.common import SuccessResponse
 from app.schemas.goal import (
     GoalRunOnceRequest,
     GoalRunOnceResponse,
-    GoalThresholds,
     MonitoringGoalCollection,
     MonitoringGoalCreate,
     MonitoringGoalRead,
     MonitoringGoalUpdate,
 )
-from app.schemas.risk import RiskAssessmentRead
-from app.schemas.sensor import SensorReadingRead
-from app.schemas.weather import WeatherSnapshotRead
 from app.services.goals_service import (
     create_monitoring_goal,
     delete_monitoring_goal,
@@ -34,30 +28,6 @@ from app.services.goals_service import (
 )
 
 router = APIRouter(prefix="/goals", tags=["goals"])
-
-
-def _goal_to_read(goal: MonitoringGoal) -> MonitoringGoalRead:
-    """Map ORM goal to API read payload."""
-    return MonitoringGoalRead(
-        id=goal.id,
-        created_at=goal.created_at,
-        updated_at=goal.updated_at,
-        name=goal.name,
-        description=goal.description,
-        region_id=goal.region_id,
-        station_id=goal.station_id,
-        objective=goal.objective,
-        provider=goal.provider,
-        thresholds=GoalThresholds(
-            warning_threshold_dsm=goal.warning_threshold_dsm,
-            critical_threshold_dsm=goal.critical_threshold_dsm,
-        ),
-        evaluation_interval_minutes=goal.evaluation_interval_minutes,
-        is_active=goal.is_active,
-        last_run_at=goal.last_run_at,
-        last_run_status=goal.last_run_status,
-        last_run_plan_id=goal.last_run_plan_id,
-    )
 
 
 @router.post("", response_model=SuccessResponse[MonitoringGoalRead], status_code=201)
@@ -71,7 +41,7 @@ async def create_goal(
     return success_response(
         request=request,
         message="Monitoring goal created successfully.",
-        data=_goal_to_read(goal),
+        data=goal_to_read(goal),
         status_code=201,
     )
 
@@ -89,7 +59,7 @@ async def list_goals(
         request=request,
         message="Monitoring goals retrieved successfully.",
         data=MonitoringGoalCollection(
-            items=[_goal_to_read(goal) for goal in goals],
+            items=[goal_to_read(goal) for goal in goals],
             count=len(goals),
         ),
     )
@@ -106,7 +76,7 @@ async def get_goal(
     return success_response(
         request=request,
         message="Monitoring goal retrieved successfully.",
-        data=_goal_to_read(goal),
+        data=goal_to_read(goal),
     )
 
 
@@ -122,7 +92,7 @@ async def update_goal(
     return success_response(
         request=request,
         message="Monitoring goal updated successfully.",
-        data=_goal_to_read(goal),
+        data=goal_to_read(goal),
     )
 
 
@@ -156,22 +126,8 @@ async def run_goal_once(
         payload=payload,
         redis_manager=redis_manager,
     )
-    response_payload = GoalRunOnceResponse(
-        goal=_goal_to_read(bundle.goal),
-        result=AgentPlanResponse(
-            assessment=RiskAssessmentRead.model_validate(bundle.plan_bundle.risk_bundle.assessment),
-            reading=SensorReadingRead.model_validate(bundle.plan_bundle.risk_bundle.reading),
-            weather_snapshot=(
-                WeatherSnapshotRead.model_validate(bundle.plan_bundle.risk_bundle.weather_snapshot)
-                if bundle.plan_bundle.risk_bundle.weather_snapshot is not None
-                else None
-            ),
-            plan=ActionPlanRead.model_validate(bundle.plan_bundle.plan),
-            agent_run_id=getattr(bundle.plan_bundle, "run_id", None),
-        ),
-    )
     return success_response(
         request=request,
         message="Goal run-once completed successfully.",
-        data=response_payload,
+        data=goal_run_once_to_response(bundle),
     )

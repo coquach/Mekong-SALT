@@ -5,10 +5,11 @@ Backend MVP scope includes:
 - FastAPI modular monolith with versioned APIs
 - environment-based config with Pydantic v2 settings
 - async SQLAlchemy + Redis integration
-- auth and simple RBAC (admin/supervisor/operator/viewer)
+- authentication disabled for MVP demo
 - sensor ingestion + risk evaluation + incident creation
 - AI planning orchestration (mock + provider abstractions)
 - approval workflow and simulated execution
+- goal-driven active monitoring worker with Redis locks
 - notifications (dashboard + SMS/Zalo/email mock)
 - audit logging and outcomes
 - dashboard summary + SSE stream
@@ -39,6 +40,17 @@ docker compose up -d postgres redis
 ```bash
 ./.venv/Scripts/python.exe -m uvicorn main:app --reload
 
+```
+
+The active monitoring worker is off by default. To run it inside the API
+process, set `ACTIVE_MONITORING_ENABLED=true`. Start with
+`ACTIVE_MONITORING_MODE=dry_run`, then switch to `active` only after the worker
+has completed stable cycles.
+
+Standalone worker:
+
+```bash
+./.venv/Scripts/python.exe -m app.workers.active_monitoring_worker
 ```
 
 ## Optional: run backend in Docker too
@@ -82,6 +94,7 @@ curl http://localhost:8000/api/v1/health
 ## Monitoring Goals (Phase 2)
 
 - `POST /api/v1/goals`: create goal with `thresholds`, `evaluation_interval_minutes`, and `is_active`.
+- `auto_plan_enabled`: lets the worker create a pending-approval plan automatically in active mode.
 - `GET /api/v1/goals` and `GET /api/v1/goals/{goal_id}`: read goals.
 - `PATCH /api/v1/goals/{goal_id}`: update thresholds, interval, active flag, objective, target.
 - `DELETE /api/v1/goals/{goal_id}`: remove goal.
@@ -92,6 +105,24 @@ Data constraints are enforced at both API and database levels:
 - `critical_threshold_dsm > warning_threshold_dsm`
 - `evaluation_interval_minutes >= 1`
 - `is_active` is required and controls whether run-once is allowed.
+
+## Active Monitoring Worker (Phase 4)
+
+Worker loop:
+
+1. Load active monitoring goals.
+2. Skip goals whose `last_run_at + evaluation_interval_minutes` is still in the future.
+3. Acquire `mekong-salt:monitoring-goal:{goal_id}:lock` in Redis.
+4. Run `observe -> risk -> incident`.
+5. In `dry_run`, stop before plan creation.
+6. In `active`, create a plan only when `auto_plan_enabled=true` and no non-terminal plan exists for the incident.
+
+Useful commands:
+
+```bash
+alembic upgrade head
+pytest app/tests/test_active_monitoring_worker.py app/tests/test_agent_run_trace.py
+```
 
 ## Agent Runs + Observation Snapshots (Phase 3)
 

@@ -58,6 +58,23 @@ class RedisManager:
         except Exception:
             logger.exception("Redis set failed for key %s", key)
 
+    async def acquire_lock(self, key: str, token: str, ttl_seconds: int) -> bool:
+        """Acquire a short-lived Redis lock using SET NX EX semantics."""
+        try:
+            return bool(await self.client.set(key, token, ex=ttl_seconds, nx=True))
+        except Exception:
+            logger.exception("Redis lock acquire failed for key %s", key)
+            return False
+
+    async def release_lock(self, key: str, token: str) -> None:
+        """Release a Redis lock only when the token still matches this worker."""
+        try:
+            current = await self.client.get(key)
+            if current == token:
+                await self.client.delete(key)
+        except Exception:
+            logger.exception("Redis lock release failed for key %s", key)
+
     async def close(self) -> None:
         """Close the Redis connection if it was created."""
         if self._client is not None:

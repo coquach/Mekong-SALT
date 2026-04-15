@@ -6,6 +6,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.enums import ActionPlanStatus
 from app.models.action import ActionExecution, ActionPlan
 from app.repositories.base import AsyncRepository
 
@@ -44,6 +45,25 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
             select(ActionPlan).order_by(desc(ActionPlan.created_at)).limit(limit)
         )
         return list(result.all())
+
+    async def get_open_for_incident(self, incident_id: UUID) -> ActionPlan | None:
+        """Return an existing non-terminal plan for an incident, if one exists."""
+        active_statuses = {
+            ActionPlanStatus.DRAFT,
+            ActionPlanStatus.VALIDATED,
+            ActionPlanStatus.PENDING_APPROVAL,
+            ActionPlanStatus.APPROVED,
+        }
+        result = await self.session.scalars(
+            select(ActionPlan)
+            .where(
+                ActionPlan.incident_id == incident_id,
+                ActionPlan.status.in_(active_statuses),
+            )
+            .order_by(desc(ActionPlan.created_at))
+            .limit(1)
+        )
+        return result.first()
 
 
 class ActionExecutionRepository(AsyncRepository[ActionExecution]):

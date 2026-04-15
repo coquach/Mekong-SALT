@@ -56,3 +56,17 @@ class MonitoringGoalRepository(AsyncRepository[MonitoringGoal]):
             statement = statement.where(MonitoringGoal.is_active == is_active)
         result = await self.session.scalars(statement)
         return result.all()
+
+    async def list_active(self, *, limit: int = 100) -> Sequence[MonitoringGoal]:
+        """List active goals for the monitoring worker."""
+        result = await self.session.scalars(
+            select(MonitoringGoal)
+            .options(
+                selectinload(MonitoringGoal.region),
+                selectinload(MonitoringGoal.station),
+            )
+            .where(MonitoringGoal.is_active.is_(True))
+            .order_by(MonitoringGoal.created_at.asc())
+            .limit(limit)
+        )
+        return result.all()
