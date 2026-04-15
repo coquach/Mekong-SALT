@@ -23,7 +23,6 @@ from app.services.approval_service import decide_plan
 
 ReactiveAdvanceStatus = Literal[
     "skipped_not_pending",
-    "pending_approval",
     "approved",
     "executed",
 ]
@@ -52,13 +51,6 @@ async def advance_plan_reactively(
             status="skipped_not_pending",
             plan=plan,
             reason=f"Plan status is {plan.status.value}.",
-        )
-
-    if not settings.reactive_auto_approve_enabled:
-        return ReactiveAdvanceResult(
-            status="pending_approval",
-            plan=plan,
-            reason="Reactive auto-approval is disabled.",
         )
 
     approval, approved_plan = await decide_plan(

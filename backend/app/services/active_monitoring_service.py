@@ -166,6 +166,7 @@ async def run_monitoring_goal_cycle(
             provider=goal.provider,
         ),
         redis_manager=redis_manager,
+        risk_bundle=risk_bundle,
         trigger_source="monitoring.worker.auto_plan",
         trigger_payload={
             "goal_id": str(goal.id),

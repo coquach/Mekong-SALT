@@ -42,6 +42,7 @@ async def generate_agent_plan(
     *,
     payload: AgentPlanRequest,
     redis_manager: RedisManager | None,
+    risk_bundle: RiskEvaluationBundle | None = None,
     trigger_source: str = "agent.plan",
     trigger_payload: dict[str, Any] | None = None,
 ) -> AgentPlanBundle:
@@ -64,25 +65,28 @@ async def generate_agent_plan(
             redis_manager=redis_manager,
             provider=provider,
         )
-        state = await workflow.run(payload)
+        state = await workflow.run(
+            payload,
+            precomputed_risk_bundle=risk_bundle,
+        )
 
-        risk_bundle = state["risk_bundle"]
+        resolved_risk_bundle = state["risk_bundle"]
         generated_plan = state["draft_plan"]
         validation_result = state["validation_result"]
 
         await _capture_plan_observation(
             session=session,
             run=run,
-            risk_bundle=risk_bundle,
+            risk_bundle=resolved_risk_bundle,
         )
         incident, incident_decision = await _resolve_plan_incident(
             session=session,
             payload=payload,
-            risk_bundle=risk_bundle,
+            risk_bundle=resolved_risk_bundle,
         )
         plan = await _persist_plan(
             session=session,
-            risk_bundle=risk_bundle,
+            risk_bundle=resolved_risk_bundle,
             incident=incident,
             generated_plan=generated_plan,
             validation_result=validation_result,
@@ -106,7 +110,7 @@ async def generate_agent_plan(
                 plan=plan,
                 validation_result=validation_result,
             ),
-            risk_assessment_id=risk_bundle.assessment.id,
+            risk_assessment_id=resolved_risk_bundle.assessment.id,
             incident_id=plan.incident_id,
             action_plan_id=plan.id,
         )
@@ -114,7 +118,7 @@ async def generate_agent_plan(
         await session.refresh(plan)
 
         return AgentPlanBundle(
-            risk_bundle=risk_bundle,
+            risk_bundle=resolved_risk_bundle,
             plan=plan,
             provider_name=provider.name,
             run_id=run.id,

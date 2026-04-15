@@ -43,9 +43,17 @@ class AgentPlanningWorkflow:
         self._provider = provider
         self._graph = self._build_graph().compile()
 
-    async def run(self, request: AgentPlanRequest) -> PlanningState:
-        """Execute the initial planning workflow."""
-        return await self._graph.ainvoke({"request": request})
+    async def run(
+        self,
+        request: AgentPlanRequest,
+        *,
+        precomputed_risk_bundle: RiskEvaluationBundle | None = None,
+    ) -> PlanningState:
+        """Execute the planning workflow with an optional precomputed risk bundle."""
+        initial_state: PlanningState = {"request": request}
+        if precomputed_risk_bundle is not None:
+            initial_state["risk_bundle"] = precomputed_risk_bundle
+        return await self._graph.ainvoke(initial_state)
 
     def _build_graph(self) -> StateGraph:
         graph = StateGraph(PlanningState)
@@ -75,6 +83,9 @@ class AgentPlanningWorkflow:
         }
 
     async def _assess_risk(self, state: PlanningState) -> PlanningState:
+        if state.get("risk_bundle") is not None:
+            return {}
+
         bundle = await evaluate_current_risk(
             self._session,
             filters=state["filters"],

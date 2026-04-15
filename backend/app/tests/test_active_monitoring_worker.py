@@ -89,6 +89,13 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         "app.services.risk_service.get_or_fetch_weather_snapshot",
         fake_weather_snapshot,
     )
+    async def fail_if_planning_reassesses_risk(*args, **kwargs):
+        raise AssertionError("planning workflow must not call evaluate_current_risk when risk_bundle is precomputed")
+
+    monkeypatch.setattr(
+        "app.agents.planning_graph.evaluate_current_risk",
+        fail_if_planning_reassesses_risk,
+    )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
         lambda provider_name=None: StubProvider(),
