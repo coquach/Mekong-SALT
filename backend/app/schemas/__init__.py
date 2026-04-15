@@ -5,9 +5,13 @@ from app.schemas.action import (
     ActionLogEntry,
     ActionExecutionRead,
     ActionPlanRead,
+    ExecutionBatchCollection,
+    ExecutionBatchDetail,
+    ExecutionBatchRead,
     ExecutionSimulateRequest,
     FeedbackEvaluation,
     SimulatedExecutionRequest,
+    SimulatedExecutionBatchResponse,
     SimulatedExecutionResponse,
 )
 from app.schemas.agent import (
@@ -63,6 +67,9 @@ from app.schemas.weather import WeatherSnapshotCreate, WeatherSnapshotRead
 
 __all__ = [
     "ActionExecutionRead",
+    "ExecutionBatchCollection",
+    "ExecutionBatchDetail",
+    "ExecutionBatchRead",
     "ActionLogCollection",
     "ActionLogEntry",
     "ActionPlanRead",
@@ -120,6 +127,7 @@ __all__ = [
     "SensorStationRead",
     "SensorStationUpdate",
     "SimulatedExecutionRequest",
+    "SimulatedExecutionBatchResponse",
     "SimulatedExecutionResponse",
     "AgentRunCollection",
     "AgentRunRead",

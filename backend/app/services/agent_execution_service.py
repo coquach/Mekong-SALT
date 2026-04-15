@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.execution_policy import validate_execution_plan
 from app.core.exceptions import AppException
-from app.models.action import ActionExecution, ActionPlan
+from app.models.action import ActionExecution, ActionPlan, ExecutionBatch
 from app.models.audit import ActionOutcome
 from app.models.decision import DecisionLog
 from app.models.enums import ActionPlanStatus, ActionType, AuditEventType, ExecutionStatus, IncidentStatus
-from app.repositories.action import ActionExecutionRepository, ActionPlanRepository
+from app.repositories.action import ActionExecutionRepository, ActionPlanRepository, ExecutionBatchRepository
 from app.repositories.decision import DecisionLogRepository
 from app.repositories.ops import ActionOutcomeRepository
 from app.repositories.region import RegionRepository
@@ -36,6 +36,7 @@ from app.services.notification_service import create_execution_alert_notificatio
 class SimulatedExecutionBundle:
     """Aggregate result returned after simulated execution."""
 
+    batch: ExecutionBatch
     plan: ActionPlan
     executions: list[ActionExecution]
     feedback: FeedbackEvaluation
@@ -52,29 +53,42 @@ async def execute_simulated_plan(
 ) -> SimulatedExecutionBundle:
     """Execute a validated plan in simulated mode only."""
     plan_repo = ActionPlanRepository(session)
+    batch_repo = ExecutionBatchRepository(session)
     execution_repo = ActionExecutionRepository(session)
     decision_repo = DecisionLogRepository(session)
     outcome_repo = ActionOutcomeRepository(session)
 
     if payload.idempotency_key is not None:
-        existing = await execution_repo.get_by_idempotency_key(payload.idempotency_key)
-        if existing is not None:
-            plan = await plan_repo.get_with_assessment(payload.action_plan_id)
+        existing_batch = await batch_repo.get_by_idempotency_key(payload.idempotency_key)
+        if existing_batch is not None:
+            if existing_batch.plan_id != payload.action_plan_id:
+                raise AppException(
+                    status_code=HTTPStatus.CONFLICT,
+                    code="idempotency_key_conflict",
+                    message="Provided idempotency key is already used for another action plan.",
+                )
+
+            plan = await plan_repo.get_with_assessment(existing_batch.plan_id)
             if plan is None:
                 raise AppException(
                     status_code=HTTPStatus.NOT_FOUND,
                     code="action_plan_not_found",
-                    message=f"Action plan '{payload.action_plan_id}' was not found.",
+                    message=f"Action plan '{existing_batch.plan_id}' was not found.",
                 )
+            executions = await execution_repo.list_for_batch(existing_batch.id)
+            decision_logs = await decision_repo.list_for_execution_ids(
+                [execution.id for execution in executions]
+            ) if executions else []
             feedback = FeedbackEvaluation(
                 status="insufficient_new_observation",
-                summary="Execution was returned from an existing idempotency key.",
+                summary="Execution batch was returned from an existing idempotency key.",
             )
             return SimulatedExecutionBundle(
+                batch=existing_batch,
                 plan=plan,
-                executions=[existing],
+                executions=executions,
                 feedback=feedback,
-                decision_logs=[],
+                decision_logs=decision_logs,
                 outcomes=[],
                 idempotent_replay=True,
             )
@@ -89,6 +103,18 @@ async def execute_simulated_plan(
 
     steps = validate_execution_plan(plan)
     now = datetime.now(UTC)
+    batch = ExecutionBatch(
+        plan_id=plan.id,
+        region_id=plan.region_id,
+        status=ExecutionStatus.RUNNING,
+        simulated=True,
+        started_at=now,
+        completed_at=None,
+        idempotency_key=payload.idempotency_key,
+        requested_by=actor_name,
+    )
+    await batch_repo.add(batch)
+
     executions: list[ActionExecution] = []
     decision_logs: list[DecisionLog] = []
     outcomes: list[ActionOutcome] = []
@@ -98,6 +124,7 @@ async def execute_simulated_plan(
     for step in steps:
         execution = ActionExecution(
             plan_id=plan.id,
+            batch_id=batch.id,
             region_id=plan.region_id,
             action_type=step.action_type,
             status=ExecutionStatus.SUCCEEDED,
@@ -113,11 +140,9 @@ async def execute_simulated_plan(
                 "simulated": True,
             },
             idempotency_key=(
-                payload.idempotency_key
-                if payload.idempotency_key is not None and step.step_index == 1
-                else f"{payload.idempotency_key}:{step.step_index}"
+                f"{payload.idempotency_key}:{step.step_index}"
                 if payload.idempotency_key is not None
-                else payload.idempotency_key
+                else f"{batch.id}:{step.step_index}"
             ),
             requested_by=actor_name,
         )
@@ -190,6 +215,8 @@ async def execute_simulated_plan(
     decision_logs.append(feedback_log)
 
     plan.status = ActionPlanStatus.SIMULATED
+    batch.status = ExecutionStatus.SUCCEEDED
+    batch.completed_at = datetime.now(UTC)
     if plan.incident is not None:
         plan.incident.status = IncidentStatus.RESOLVED if feedback.status == "improved" else IncidentStatus.EXECUTING
     await session.commit()
@@ -200,9 +227,11 @@ async def execute_simulated_plan(
         await session.refresh(decision_log)
     for outcome in outcomes:
         await session.refresh(outcome)
+    await session.refresh(batch)
     await session.refresh(plan)
 
     return SimulatedExecutionBundle(
+        batch=batch,
         plan=plan,
         executions=executions,
         feedback=feedback,

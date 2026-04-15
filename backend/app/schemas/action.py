@@ -53,6 +53,36 @@ class ActionExecutionRead(EntityReadSchema, ActionExecutionBase):
     """Schema for returning an action execution."""
 
 
+class ExecutionBatchRead(ORMBaseSchema):
+    """Execution batch read model for one simulated transaction."""
+
+    id: str
+    plan_id: UUID
+    region_id: UUID
+    status: str
+    simulated: bool = True
+    requested_by: str | None = None
+    idempotency_key: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    step_count: int
+
+
+class ExecutionBatchCollection(ORMBaseSchema):
+    """Collection payload for execution batch listing."""
+
+    items: list[ExecutionBatchRead]
+    count: int
+
+
+class ExecutionBatchDetail(ORMBaseSchema):
+    """Execution batch detail with step-level executions."""
+
+    batch: ExecutionBatchRead
+    executions: list[ActionExecutionRead]
+    count: int
+
+
 class SimulatedExecutionRequest(ORMBaseSchema):
     """Request payload for safe simulated execution."""
 
@@ -80,6 +110,16 @@ class SimulatedExecutionResponse(ORMBaseSchema):
     """Response payload for simulated execution flow."""
 
     plan: ActionPlanRead
+    executions: list[ActionExecutionRead]
+    feedback: FeedbackEvaluation
+    decision_logs: list[DecisionLogRead]
+    idempotent_replay: bool = False
+
+
+class SimulatedExecutionBatchResponse(ORMBaseSchema):
+    """Response payload for batch-oriented simulated execution."""
+
+    batch: ExecutionBatchRead
     executions: list[ActionExecutionRead]
     feedback: FeedbackEvaluation
     decision_logs: list[DecisionLogRead]

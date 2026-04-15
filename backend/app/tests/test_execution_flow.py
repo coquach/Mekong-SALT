@@ -7,8 +7,9 @@ from uuid import uuid4
 import pytest
 
 from app.models.action import ActionPlan
-from app.models.enums import ActionPlanStatus, ActionType
+from app.models.enums import ActionPlanStatus, ActionType, RiskLevel, TrendDirection
 from app.models.goal import MonitoringGoal
+from app.models.risk import RiskAssessment
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
 from app.services.active_monitoring_service import run_monitoring_goal_cycle
@@ -152,3 +153,96 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     logs_body = logs_response.json()["data"]
     assert logs_body["count"] == 2
     assert all(item["decision_log"] is not None for item in logs_body["items"])
+
+
+@pytest.mark.asyncio
+async def test_execute_simulated_returns_batch_transaction_and_replays_idempotency(
+    client,
+    db_session,
+    seeded_sensor_data,
+):
+    reading = seeded_sensor_data["reading_a_latest"]
+    station = seeded_sensor_data["station_a"]
+    region = seeded_sensor_data["region"]
+
+    assessment = RiskAssessment(
+        region_id=region.id,
+        station_id=station.id,
+        based_on_reading_id=reading.id,
+        based_on_weather_id=None,
+        assessed_at=datetime.now(UTC),
+        risk_level=RiskLevel.DANGER,
+        salinity_dsm=reading.salinity_dsm,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.60"),
+        rule_version="v1",
+        summary="Danger risk requires simulated execution.",
+        rationale={"source": "test"},
+    )
+    db_session.add(assessment)
+    await db_session.commit()
+    await db_session.refresh(assessment)
+
+    plan = ActionPlan(
+        region_id=region.id,
+        risk_assessment_id=assessment.id,
+        incident_id=None,
+        status=ActionPlanStatus.APPROVED,
+        objective="Protect irrigation water quality",
+        generated_by="test-suite",
+        model_provider="mock",
+        summary="Simulated execution transaction for FE batch view.",
+        assumptions={"items": ["Operators are available"]},
+        plan_steps=[
+            {
+                "step_index": 1,
+                "action_type": ActionType.NOTIFY_FARMERS.value,
+                "priority": 1,
+                "title": "Notify farmers",
+                "instructions": "Send advisory to avoid intake.",
+                "rationale": "Communication reduces exposure.",
+                "simulated": True,
+            },
+            {
+                "step_index": 2,
+                "action_type": ActionType.CLOSE_GATE_SIMULATED.value,
+                "priority": 2,
+                "title": "Simulate gate closure",
+                "instructions": "Model temporary gate closure.",
+                "rationale": "Mitigate saline inflow in simulation.",
+                "simulated": True,
+            },
+        ],
+        validation_result={"is_valid": True, "errors": [], "warnings": []},
+    )
+    db_session.add(plan)
+    await db_session.commit()
+    await db_session.refresh(plan)
+
+    first = await client.post(
+        f"/api/v1/execution-batches/plans/{plan.id}/simulate",
+        json={"idempotency_key": "phase6-batch-1"},
+    )
+    assert first.status_code == 200
+    first_data = first.json()["data"]
+    assert first_data["idempotent_replay"] is False
+    assert first_data["batch"]["plan_id"] == str(plan.id)
+    assert first_data["batch"]["step_count"] == 2
+    assert len(first_data["executions"]) == 2
+    batch_id = first_data["batch"]["id"]
+
+    second = await client.post(
+        f"/api/v1/execution-batches/plans/{plan.id}/simulate",
+        json={"idempotency_key": "phase6-batch-1"},
+    )
+    assert second.status_code == 200
+    second_data = second.json()["data"]
+    assert second_data["idempotent_replay"] is True
+    assert second_data["batch"]["id"] == batch_id
+    assert second_data["batch"]["step_count"] == 2
+
+    detail = await client.get(f"/api/v1/execution-batches/{batch_id}")
+    assert detail.status_code == 200
+    detail_data = detail.json()["data"]
+    assert detail_data["batch"]["id"] == batch_id
+    assert detail_data["count"] == 2

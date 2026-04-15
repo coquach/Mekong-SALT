@@ -1,54 +1,33 @@
-"""Execution batch facade endpoints (Phase 1 compatibility layer)."""
+"""Execution batch endpoints."""
 
-from datetime import datetime
 from http import HTTPStatus
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.core.responses import success_response
 from app.db.session import get_db_session
-from app.models.action import ActionExecution
-from app.models.enums import ExecutionStatus
-from app.repositories.action import ActionExecutionRepository
+from app.models.action import ActionExecution, ExecutionBatch
+from app.repositories.action import ExecutionBatchRepository
 from app.repositories.ops import ActionOutcomeRepository
-from app.schemas.action import ActionExecutionRead
+from app.schemas.action import (
+    ActionExecutionRead,
+    ExecutionBatchCollection,
+    ExecutionBatchDetail,
+    ExecutionBatchRead,
+    ExecutionSimulateRequest,
+    SimulatedExecutionBatchResponse,
+    SimulatedExecutionRequest,
+)
 from app.schemas.audit import ActionOutcomeRead
 from app.schemas.base import ORMBaseSchema
 from app.schemas.common import SuccessResponse
+from app.schemas.decision import DecisionLogRead
+from app.services.agent_execution_service import execute_simulated_plan
 
 router = APIRouter(tags=["execution-batches"])
-
-
-class ExecutionBatchRead(ORMBaseSchema):
-    """Synthetic batch view built from current action executions."""
-
-    id: str
-    plan_id: UUID
-    status: str
-    requested_by: str | None = None
-    idempotency_key: str | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    step_count: int
-
-
-class ExecutionBatchCollection(ORMBaseSchema):
-    """Collection payload for synthetic batch list."""
-
-    items: list[ExecutionBatchRead]
-    count: int
-
-
-class ExecutionBatchDetail(ORMBaseSchema):
-    """Detail payload for one synthetic batch."""
-
-    batch: ExecutionBatchRead
-    executions: list[ActionExecutionRead]
-    count: int
 
 
 class ActionOutcomeCollection(ORMBaseSchema):
@@ -58,37 +37,19 @@ class ActionOutcomeCollection(ORMBaseSchema):
     count: int
 
 
-def _batch_key(execution: ActionExecution) -> str:
-    if execution.idempotency_key:
-        return execution.idempotency_key.split(":", 1)[0]
-    return str(execution.id)
-
-
-def _derive_batch_status(executions: list[ActionExecution]) -> str:
-    statuses = {item.status for item in executions}
-    if ExecutionStatus.FAILED in statuses:
-        return ExecutionStatus.FAILED.value
-    if ExecutionStatus.CANCELLED in statuses:
-        return ExecutionStatus.CANCELLED.value
-    if ExecutionStatus.RUNNING in statuses:
-        return ExecutionStatus.RUNNING.value
-    if ExecutionStatus.SUCCEEDED in statuses:
-        return ExecutionStatus.SUCCEEDED.value
-    return ExecutionStatus.PENDING.value
-
-
-def _to_batch_read(batch_id: str, executions: list[ActionExecution]) -> ExecutionBatchRead:
-    first = executions[0]
+def _to_batch_read(batch: ExecutionBatch, executions: list[ActionExecution]) -> ExecutionBatchRead:
     started_values = [item.started_at for item in executions if item.started_at is not None]
     completed_values = [item.completed_at for item in executions if item.completed_at is not None]
     return ExecutionBatchRead(
-        id=batch_id,
-        plan_id=first.plan_id,
-        status=_derive_batch_status(executions),
-        requested_by=first.requested_by,
-        idempotency_key=first.idempotency_key,
-        started_at=min(started_values) if started_values else None,
-        completed_at=max(completed_values) if completed_values else None,
+        id=str(batch.id),
+        plan_id=batch.plan_id,
+        region_id=batch.region_id,
+        status=batch.status.value,
+        simulated=batch.simulated,
+        requested_by=batch.requested_by,
+        idempotency_key=batch.idempotency_key,
+        started_at=batch.started_at or (min(started_values) if started_values else None),
+        completed_at=batch.completed_at or (max(completed_values) if completed_values else None),
         step_count=len(executions),
     )
 
@@ -99,20 +60,9 @@ async def list_execution_batches(
     limit: int = Query(default=100, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List synthetic execution batches until dedicated `execution_batches` table is added."""
-    # Phase 1 note: this groups current per-step executions by idempotency key prefix.
-    executions = await ActionExecutionRepository(session).list_for_logs(limit=limit)
-
-    grouped: dict[str, list[ActionExecution]] = {}
-    for execution in executions:
-        key = _batch_key(execution)
-        grouped.setdefault(key, []).append(execution)
-
-    items = [
-        _to_batch_read(batch_id, group)
-        for batch_id, group in grouped.items()
-    ]
-    items.sort(key=lambda item: item.started_at or datetime.min, reverse=True)
+    """List persisted execution batches as full transaction records."""
+    batches = await ExecutionBatchRepository(session).list_recent(limit=limit)
+    items = [_to_batch_read(batch, list(batch.executions)) for batch in batches]
 
     return success_response(
         request=request,
@@ -123,49 +73,62 @@ async def list_execution_batches(
 
 @router.get("/execution-batches/{batch_id}", response_model=SuccessResponse[ExecutionBatchDetail])
 async def get_execution_batch(
-    batch_id: str,
+    batch_id: UUID,
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return one synthetic batch with all step executions."""
-    statement = (
-        select(ActionExecution)
-        .where(
-            or_(
-                ActionExecution.idempotency_key == batch_id,
-                ActionExecution.idempotency_key.like(f"{batch_id}:%"),
-            )
-        )
-        .order_by(ActionExecution.step_index, desc(ActionExecution.created_at))
-    )
-    executions = list((await session.scalars(statement)).all())
-
-    # Backward fallback: when no idempotency key is present, allow direct lookup by execution id.
-    if not executions:
-        try:
-            execution_id = UUID(batch_id)
-        except ValueError:
-            execution_id = None
-        if execution_id is not None:
-            execution = await ActionExecutionRepository(session).get(execution_id)
-            if execution is not None:
-                executions = [execution]
-
-    if not executions:
+    """Return one batch with all step executions."""
+    batch = await ExecutionBatchRepository(session).get_with_executions(batch_id)
+    if batch is None:
         raise AppException(
             status_code=HTTPStatus.NOT_FOUND,
             code="execution_batch_not_found",
             message=f"Execution batch '{batch_id}' was not found.",
         )
 
-    batch = _to_batch_read(batch_id, executions)
+    executions = sorted(
+        list(batch.executions),
+        key=lambda item: (item.step_index, item.created_at),
+    )
     return success_response(
         request=request,
         message="Execution batch retrieved successfully.",
         data=ExecutionBatchDetail(
-            batch=batch,
+            batch=_to_batch_read(batch, executions),
             executions=[ActionExecutionRead.model_validate(item) for item in executions],
             count=len(executions),
+        ),
+    )
+
+
+@router.post(
+    "/execution-batches/plans/{plan_id}/simulate",
+    response_model=SuccessResponse[SimulatedExecutionBatchResponse],
+)
+async def execute_plan_as_batch(
+    plan_id: UUID,
+    payload: ExecutionSimulateRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Execute one approved plan as a batch transaction."""
+    bundle = await execute_simulated_plan(
+        session,
+        payload=SimulatedExecutionRequest(
+            action_plan_id=plan_id,
+            idempotency_key=payload.idempotency_key,
+        ),
+        actor_name="operator",
+    )
+    return success_response(
+        request=request,
+        message="Execution batch completed successfully.",
+        data=SimulatedExecutionBatchResponse(
+            batch=_to_batch_read(bundle.batch, bundle.executions),
+            executions=[ActionExecutionRead.model_validate(item) for item in bundle.executions],
+            feedback=bundle.feedback,
+            decision_logs=[DecisionLogRead.model_validate(item) for item in bundle.decision_logs],
+            idempotent_replay=bundle.idempotent_replay,
         ),
     )
 

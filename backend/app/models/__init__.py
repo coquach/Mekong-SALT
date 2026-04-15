@@ -1,6 +1,6 @@
 """ORM model registry."""
 
-from app.models.action import ActionExecution, ActionPlan
+from app.models.action import ActionExecution, ActionPlan, ExecutionBatch
 from app.models.agent_run import AgentRun, ObservationSnapshot
 from app.models.approval import Approval
 from app.models.audit import ActionOutcome, AuditLog
@@ -19,6 +19,7 @@ __all__ = [
     "AgentRun",
     "ActionOutcome",
     "ActionPlan",
+    "ExecutionBatch",
     "Approval",
     "AuditLog",
     "AlertEvent",

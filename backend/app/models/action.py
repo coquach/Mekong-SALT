@@ -64,9 +64,48 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="action_plan",
         cascade="all, delete-orphan",
     )
+    execution_batches = relationship(
+        "ExecutionBatch",
+        back_populates="action_plan",
+        cascade="all, delete-orphan",
+    )
     decision_logs = relationship("DecisionLog", back_populates="action_plan")
     audit_logs = relationship("AuditLog", back_populates="action_plan")
     agent_runs = relationship("AgentRun", back_populates="action_plan")
+
+
+class ExecutionBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Execution transaction grouping one simulated plan run."""
+
+    __tablename__ = "execution_batches"
+
+    plan_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("action_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    region_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("regions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[ExecutionStatus] = mapped_column(
+        enum_type(ExecutionStatus, "execution_status"),
+        nullable=False,
+        default=ExecutionStatus.PENDING,
+        index=True,
+    )
+    simulated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
+    requested_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    action_plan = relationship("ActionPlan", back_populates="execution_batches")
+    region = relationship("Region", back_populates="execution_batches")
+    executions = relationship("ActionExecution", back_populates="execution_batch")
 
 
 class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -78,6 +117,12 @@ class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("action_plans.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    batch_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("execution_batches.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     region_id: Mapped[UUID] = mapped_column(
@@ -106,6 +151,7 @@ class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     requested_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     action_plan = relationship("ActionPlan", back_populates="executions")
+    execution_batch = relationship("ExecutionBatch", back_populates="executions")
     region = relationship("Region", back_populates="action_executions")
     decision_logs = relationship("DecisionLog", back_populates="action_execution")
     notifications = relationship("Notification", back_populates="execution")
