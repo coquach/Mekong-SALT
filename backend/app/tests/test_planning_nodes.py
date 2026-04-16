@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
-from app.models.enums import ActionType, RiskLevel, TrendDirection
+from app.models.action import ActionPlan
+from app.models.enums import ActionPlanStatus, ActionType, IncidentStatus, RiskLevel, TrendDirection
+from app.models.incident import Incident
+from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
+from app.models.risk import RiskAssessment
 from app.orchestration.planning_nodes import (
     PlanningNodeServices,
     assess_risk_node,
@@ -144,6 +150,165 @@ async def test_retrieve_context_node_returns_compact_context(db_session, seeded_
     assert context["assessment"]["risk_level"] == "warning"
     assert context["assessment"]["trend_direction"] == "rising"
     assert context["weather_snapshot"] is None
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_node_includes_ranked_rag_evidence(db_session, seeded_sensor_data):
+    now = datetime.now(UTC)
+    station = seeded_sensor_data["station_a"]
+    region = seeded_sensor_data["region"]
+    reading = seeded_sensor_data["reading_a_latest"]
+
+    historical_assessment = RiskAssessment(
+        region_id=region.id,
+        station_id=station.id,
+        based_on_reading_id=reading.id,
+        based_on_weather_id=None,
+        assessed_at=now - timedelta(hours=6),
+        risk_level=RiskLevel.WARNING,
+        salinity_dsm=Decimal("3.20"),
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.40"),
+        rule_version="v1",
+        summary="Historical warning risk in same irrigation area.",
+        rationale={"source": "test"},
+    )
+    db_session.add(historical_assessment)
+    await db_session.flush()
+
+    historical_incident = Incident(
+        region_id=region.id,
+        station_id=station.id,
+        risk_assessment_id=historical_assessment.id,
+        title="Historical salinity response case",
+        description="Operators paused intake and waited for safe window.",
+        severity=RiskLevel.WARNING,
+        status=IncidentStatus.RESOLVED,
+        source="risk_engine",
+        evidence={"pattern": "rising salinity"},
+        opened_at=now - timedelta(hours=5),
+        resolved_at=now - timedelta(hours=4),
+        created_by="test",
+    )
+    db_session.add(historical_incident)
+    await db_session.flush()
+
+    historical_plan = ActionPlan(
+        region_id=region.id,
+        risk_assessment_id=historical_assessment.id,
+        incident_id=historical_incident.id,
+        status=ActionPlanStatus.SIMULATED,
+        objective="Protect irrigation water quality",
+        generated_by="test",
+        model_provider="test-provider",
+        summary="Past plan combined advisory and temporary intake pause.",
+        assumptions={"items": ["historical case"]},
+        plan_steps=[
+            {
+                "step_index": 1,
+                "action_type": "send_alert",
+                "priority": 1,
+                "title": "Notify",
+                "instructions": "Send advisory",
+                "rationale": "Reduce exposure",
+                "simulated": True,
+            }
+        ],
+        validation_result={"is_valid": True, "errors": [], "warnings": []},
+    )
+    db_session.add(historical_plan)
+
+    sop_doc = KnowledgeDocument(
+        title="Irrigation SOP for salinity events",
+        source_uri=f"mekong-salt://knowledge/sop-{uuid4().hex}",
+        document_type="guideline",
+        summary="SOP for immediate advisories and simulated intake controls.",
+        content_text="SOP says send alerts first, then simulate gate response.",
+        tags=["sop", "response", "irrigation"],
+        metadata_payload={"source": "test"},
+    )
+    threshold_doc = KnowledgeDocument(
+        title="Salinity threshold matrix",
+        source_uri=f"mekong-salt://knowledge/threshold-{uuid4().hex}",
+        document_type="threshold",
+        summary="Warning and critical thresholds in dS/m.",
+        content_text="Warning threshold 2.5 dS/m, critical threshold 4.0 dS/m.",
+        tags=["threshold", "salinity", "critical"],
+        metadata_payload={"source": "test"},
+    )
+    db_session.add_all([sop_doc, threshold_doc])
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            EmbeddedChunk(
+                document_id=sop_doc.id,
+                chunk_index=0,
+                content_text=sop_doc.content_text,
+                token_count=16,
+                embedding=[0.001] * 768,
+                metadata_payload={"section": "ops"},
+            ),
+            EmbeddedChunk(
+                document_id=threshold_doc.id,
+                chunk_index=0,
+                content_text=threshold_doc.content_text,
+                token_count=14,
+                embedding=[0.001] * 768,
+                metadata_payload={"section": "thresholds"},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    current_assessment = SimpleNamespace(
+        id=uuid4(),
+        region_id=region.id,
+        risk_level=RiskLevel.WARNING,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.30"),
+        summary="Current warning level requires grounded planning.",
+        rationale={"reason": "rising salinity"},
+    )
+    risk_bundle = SimpleNamespace(
+        assessment=current_assessment,
+        reading=reading,
+        weather_snapshot=None,
+    )
+    services = PlanningNodeServices(
+        session=db_session,
+        redis_manager=None,
+        provider=SimpleNamespace(),
+    )
+
+    result = await retrieve_context_node(
+        {
+            "objective": "Protect irrigation intake using SOP and threshold guidance",
+            "risk_bundle": risk_bundle,
+        },
+        services=services,
+    )
+
+    knowledge_context = result["retrieved_context"]["knowledge_context"]
+    assert knowledge_context
+    assert any(item["evidence_source"] == "sop_doc" for item in knowledge_context)
+    assert any(item["evidence_source"] == "threshold_doc" for item in knowledge_context)
+    assert any(item["evidence_source"] == "past_similar_case" for item in knowledge_context)
+
+    first = knowledge_context[0]
+    assert "snippet" in first
+    assert "citation" in first
+    assert "metadata_filters" in first
+    assert set(first["metadata_filters"]).issuperset(
+        {"region", "station", "severity", "crop", "time"}
+    )
+
+    scores = [item["score"] for item in knowledge_context]
+    assert scores == sorted(scores, reverse=True)
+
+    retrieval_trace = result["retrieved_context"]["retrieval_trace"]
+    assert retrieval_trace["total_evidence"] == len(knowledge_context)
+    assert retrieval_trace["top_citations"]
 
 
 @pytest.mark.asyncio

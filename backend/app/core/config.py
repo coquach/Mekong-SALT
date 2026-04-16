@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     vertex_ai_location: str = "us-central1"
     gemini_api_key: SecretStr | None = None
     gemini_model: Literal["gemini-2.5-flash"] = "gemini-2.5-flash"
+    rag_use_vertex_vector_search: bool = True
+    rag_enable_local_fallback: bool = True
+    rag_embedding_model: str = "text-embedding-005"
+    rag_retrieval_top_k: int = 8
+    rag_csv_reindex_ttl_days: int = 7
+    vertex_vector_search_index: str | None = None
+    vertex_vector_search_index_endpoint: str | None = None
+    vertex_vector_search_deployed_index_id: str | None = None
     llm_temperature: float = 0.2
     llm_request_timeout_seconds: int = 30
 

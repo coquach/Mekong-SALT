@@ -7,6 +7,7 @@ from app.repositories.base import AsyncRepository
 from app.repositories.decision import DecisionLogRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.incident import IncidentRepository
+from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
 from app.repositories.ops import ActionOutcomeRepository, AuditLogRepository, NotificationRepository
 from app.repositories.region import RegionRepository
 from app.repositories.risk import AlertEventRepository, RiskAssessmentRepository
@@ -25,6 +26,7 @@ __all__ = [
     "ActionOutcomeRepository",
     "DecisionLogRepository",
     "IncidentRepository",
+    "KnowledgeDocumentRepository",
     "MonitoringGoalRepository",
     "NotificationRepository",
     "ObservationSnapshotRepository",
@@ -32,6 +34,7 @@ __all__ = [
     "RiskAssessmentRepository",
     "SensorReadingRepository",
     "SensorStationRepository",
+    "SimilarCaseRepository",
     "WeatherSnapshotRepository",
 ]
 

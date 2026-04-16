@@ -169,6 +169,67 @@ alembic upgrade head
 pytest app/tests/test_active_monitoring_worker.py app/tests/test_agent_run_trace.py
 ```
 
+## Vertex Vector Search RAG (Phase 1)
+
+Planning context retrieval is now Vertex-first when `RAG_USE_VERTEX_VECTOR_SEARCH=true`.
+The workflow embeds query text with Vertex, searches your deployed Vertex index,
+maps returned datapoint IDs to local chunk records, and injects ranked evidence
+into `retrieved_context.knowledge_context` before plan generation.
+
+Grounding contract in `knowledge_context`:
+
+- `evidence_source`
+- `score`
+- `snippet`
+- `citation`
+- `metadata_filters` with `region`, `station`, `severity`, `crop`, `time`
+
+Required environment variables:
+
+- `VERTEX_AI_PROJECT`
+- `VERTEX_AI_LOCATION`
+- `VERTEX_VECTOR_SEARCH_INDEX`
+- `VERTEX_VECTOR_SEARCH_INDEX_ENDPOINT`
+- `VERTEX_VECTOR_SEARCH_DEPLOYED_INDEX_ID`
+- `RAG_EMBEDDING_MODEL` (default `text-embedding-005`)
+
+Optional controls:
+
+- `RAG_USE_VERTEX_VECTOR_SEARCH=true`
+- `RAG_ENABLE_LOCAL_FALLBACK=true`
+- `RAG_RETRIEVAL_TOP_K=8`
+- `RAG_CSV_REINDEX_TTL_DAYS=7`
+
+Ingest document/CSV sources into DB + Vertex index:
+
+```bash
+./.venv/Scripts/python.exe scripts/ingest_rag_source.py \
+	"./document/salinity_thresholds.csv" \
+	--document-type threshold \
+	--tags "threshold,salinity,policy"
+```
+
+Ingest bundled sample docs (SOP + threshold + casebook + weather guidance):
+
+```bash
+./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
+```
+
+Sample files are stored under `document/rag_samples/`.
+
+Supported ingestion formats in Phase 1:
+
+- `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `log`
+- `csv` (row-aware normalization)
+- `docx` (requires `python-docx`)
+
+Governance behavior:
+
+- Document versioning by `source_key` + `effective_date` in `metadata_payload`.
+- CSV TTL re-index checks based on `RAG_CSV_REINDEX_TTL_DAYS` and `last_indexed_at`.
+- Re-index cleanup removes stale datapoints from Vertex index before upserting new chunks.
+- Retrieval traces are logged into planning observation snapshots and plan audit payloads.
+
 ## Agent Runs + Observation Snapshots (Phase 3)
 
 - `agent_runs`: one record per risk/plan run with `status`, `trigger_source`, `payload`, and decision `trace`.

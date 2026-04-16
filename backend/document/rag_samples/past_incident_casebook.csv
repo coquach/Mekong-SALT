@@ -1,0 +1,5 @@
+case_id,region_code,severity,trigger_pattern,actions_taken,outcome_summary,lessons_learned
+CASE-2025-001,TIEN_GIANG,warning,"Rising salinity + high tide","notify-farmers; wait-safe-window","No crop damage reported","Early advisory reduced risky intake"
+CASE-2025-014,BEN_TRE,danger,"Critical threshold breach at intake","send_alert; close-gate-simulated","Exposure reduced within 2 cycles","Gate-first mitigation worked for rapid spikes"
+CASE-2025-022,LONG_AN,warning,"Sustained warning over 3 checks","send_alert; stop_pump","Stabilized after tide shift","Pump pause prevented further saline ingress"
+CASE-2025-031,VINH_LONG,critical,"Fast rise and strong onshore wind","notify-farmers; close-gate-simulated; wait-safe-window","Recovered after operator-approved mitigation","Combining communication and hydraulic controls improved response"

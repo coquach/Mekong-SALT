@@ -66,6 +66,16 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
         )
         return result.first()
 
+    async def get_latest_for_incident(self, incident_id: UUID) -> ActionPlan | None:
+        """Return the latest plan for one incident regardless of lifecycle state."""
+        result = await self.session.scalars(
+            select(ActionPlan)
+            .where(ActionPlan.incident_id == incident_id)
+            .order_by(desc(ActionPlan.created_at))
+            .limit(1)
+        )
+        return result.first()
+
 
 class ActionExecutionRepository(AsyncRepository[ActionExecution]):
     """Action execution query helpers."""
