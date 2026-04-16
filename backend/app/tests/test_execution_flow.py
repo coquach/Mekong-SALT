@@ -253,3 +253,16 @@ async def test_execute_simulated_returns_batch_transaction_and_replays_idempoten
     assert detail_data["batch"]["id"] == batch_id
     assert detail_data["batch"]["execution_job_id"] == batch_id
     assert detail_data["count"] == 2
+
+    evaluate_feedback = await client.post(f"/api/v1/feedback/execution-batches/{batch_id}/evaluate")
+    assert evaluate_feedback.status_code == 200
+    evaluate_payload = evaluate_feedback.json()["data"]
+    assert evaluate_payload["evaluation"]["batch_id"] == batch_id
+    assert evaluate_payload["before_snapshot"]["snapshot_kind"] == "before"
+    assert evaluate_payload["after_snapshot"]["snapshot_kind"] == "after"
+
+    latest_feedback = await client.get(f"/api/v1/feedback/execution-batches/{batch_id}/latest")
+    assert latest_feedback.status_code == 200
+    latest_payload = latest_feedback.json()["data"]
+    assert latest_payload["evaluation"]["id"] == evaluate_payload["evaluation"]["id"]
+    assert latest_payload["feedback"]["outcome_class"] == evaluate_payload["feedback"]["outcome_class"]

@@ -6,6 +6,7 @@ from app.repositories.approval import ApprovalRepository
 from app.repositories.base import AsyncRepository
 from app.repositories.decision import DecisionLogRepository
 from app.repositories.domain_event import DomainEventRepository
+from app.repositories.feedback import FeedbackSnapshotRepository, OutcomeEvaluationRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.incident import IncidentRepository
 from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
@@ -28,12 +29,14 @@ __all__ = [
     "ActionOutcomeRepository",
     "DecisionLogRepository",
     "DomainEventRepository",
+    "FeedbackSnapshotRepository",
     "IncidentRepository",
     "KnowledgeDocumentRepository",
     "MemoryCaseRepository",
     "MonitoringGoalRepository",
     "NotificationRepository",
     "ObservationSnapshotRepository",
+    "OutcomeEvaluationRepository",
     "RegionRepository",
     "RiskAssessmentRepository",
     "SensorReadingRepository",

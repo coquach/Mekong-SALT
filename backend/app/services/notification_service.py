@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from http import HTTPStatus
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.models.enums import AuditEventType, NotificationChannel, NotificationStatus
+from app.models.domain_event import DomainEvent
 from app.models.notification import Notification
 from app.repositories.ops import NotificationRepository
 from app.schemas.notification import NotificationCreate
 from app.services.audit_service import write_audit_log
-from app.services.db import append_domain_event
+from app.services.domain_event_service import DomainEventNotificationDispatcher
 
 
 _DEFAULT_CHANNEL_RECIPIENTS: tuple[tuple[NotificationChannel, str], ...] = (
@@ -23,6 +25,40 @@ _DEFAULT_CHANNEL_RECIPIENTS: tuple[tuple[NotificationChannel, str], ...] = (
     (NotificationChannel.ZALO_MOCK, "zalo-operator-group"),
     (NotificationChannel.EMAIL_MOCK, "ops@example.local"),
 )
+
+
+class MockDomainEventNotificationDispatcher(DomainEventNotificationDispatcher):
+    """Map domain events to existing mock channel fanout behavior."""
+
+    async def dispatch(self, session: AsyncSession, event: DomainEvent) -> None:
+        if not event.event_type.startswith("notification."):
+            return
+
+        payload = dict(event.payload or {})
+        subject = str(payload.get("subject") or payload.get("summary") or "Mekong-SALT notification")
+        message = str(payload.get("message") or payload.get("summary") or "")
+        incident_id = event.incident_id
+        execution_id = _parse_uuid(payload.get("execution_id"))
+        details = payload.get("details")
+        if not isinstance(details, dict):
+            details = {}
+        details.setdefault("event", event.event_type.removeprefix("notification."))
+
+        await create_operational_notifications(
+            session,
+            incident_id=incident_id,
+            execution_id=execution_id,
+            subject=subject,
+            message=message,
+            payload=details,
+            actor_name="domain-event-dispatcher",
+            channel_recipients=_channel_recipients_from_event_payload(payload),
+        )
+
+
+def get_domain_event_notification_dispatcher() -> DomainEventNotificationDispatcher:
+    """Return the default domain-event-to-notification dispatcher."""
+    return MockDomainEventNotificationDispatcher()
 
 
 async def create_notification(
@@ -87,28 +123,6 @@ async def create_operational_notifications(
     channel_recipients: tuple[tuple[NotificationChannel, str], ...] | None = None,
 ) -> list[Notification]:
     """Create notifications across configured operational channels (mock-friendly)."""
-    event_name = str((payload or {}).get("event") or "notification_broadcast")
-    await append_domain_event(
-        session,
-        event_type=f"notification.{event_name}",
-        source="notification-service",
-        summary=subject,
-        payload={
-            "event": event_name,
-            "subject": subject,
-            "message": message,
-            "incident_id": str(incident_id) if incident_id is not None else None,
-            "execution_id": str(execution_id) if execution_id is not None else None,
-            "channels": [channel.value for channel, _ in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS)],
-            "details": payload or {},
-        },
-        aggregate_type="incident" if incident_id is not None else "system",
-        aggregate_id=incident_id,
-        incident_id=incident_id,
-        action_plan_id=_extract_uuid(payload, "action_plan_id"),
-        execution_batch_id=_extract_uuid(payload, "execution_batch_id"),
-    )
-
     notifications: list[Notification] = []
     for channel, recipient in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS):
         notification = await create_notification(
@@ -136,6 +150,34 @@ def _extract_uuid(payload: dict | None, key: str) -> UUID | None:
         return UUID(str(raw))
     except ValueError:
         return None
+
+
+def _parse_uuid(raw: Any) -> UUID | None:
+    if raw is None:
+        return None
+    try:
+        return UUID(str(raw))
+    except ValueError:
+        return None
+
+
+def _channel_recipients_from_event_payload(
+    payload: dict[str, Any],
+) -> tuple[tuple[NotificationChannel, str], ...]:
+    channels = payload.get("channels")
+    if not isinstance(channels, list):
+        return _DEFAULT_CHANNEL_RECIPIENTS
+
+    resolved: list[tuple[NotificationChannel, str]] = []
+    by_channel = {channel.value: recipient for channel, recipient in _DEFAULT_CHANNEL_RECIPIENTS}
+    for item in channels:
+        channel_name = str(item)
+        if channel_name not in by_channel:
+            continue
+        resolved.append((NotificationChannel(channel_name), by_channel[channel_name]))
+    if not resolved:
+        return _DEFAULT_CHANNEL_RECIPIENTS
+    return tuple(resolved)
 
 
 async def create_incident_created_notifications(

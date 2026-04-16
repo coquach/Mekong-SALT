@@ -1,73 +1,77 @@
-"""Feedback API contract placeholders.
-
-These endpoints intentionally return 501 while preserving an explicit OpenAPI
-contract for post-execution evaluation workflows.
-"""
+"""Feedback lifecycle endpoints."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import success_response
-from app.schemas.base import ORMBaseSchema
+from app.db.session import get_db_session
 from app.schemas.common import SuccessResponse
+from app.schemas.feedback import FeedbackLifecycleRead, FeedbackSnapshotRead, OutcomeEvaluationRead
+from app.services.feedback import evaluate_execution_batch_feedback, get_latest_batch_feedback
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-class FeedbackContractPlaceholder(ORMBaseSchema):
-    """Contract metadata returned by placeholder feedback endpoints."""
-
-    area: str = "feedback"
-    owner: str = "app.services.feedback (planned)"
-    status: str = "placeholder"
-    endpoint: str
-    expected_behavior: str
-    next_step: str = "Implement dedicated feedback service + outcome taxonomy mapping."
+def _to_feedback_lifecycle_read(bundle) -> FeedbackLifecycleRead:
+    return FeedbackLifecycleRead(
+        evaluation=OutcomeEvaluationRead.model_validate(bundle.evaluation),
+        before_snapshot=(
+            FeedbackSnapshotRead.model_validate(bundle.before_snapshot)
+            if bundle.before_snapshot is not None
+            else None
+        ),
+        after_snapshot=(
+            FeedbackSnapshotRead.model_validate(bundle.after_snapshot)
+            if bundle.after_snapshot is not None
+            else None
+        ),
+        feedback=bundle.feedback,
+    )
 
 
 @router.post(
     "/execution-batches/{batch_id}/evaluate",
-    response_model=SuccessResponse[FeedbackContractPlaceholder],
-    summary="Feedback evaluation contract placeholder",
+    response_model=SuccessResponse[FeedbackLifecycleRead],
+    summary="Persist feedback lifecycle evaluation",
 )
-async def feedback_evaluate_contract(
+async def feedback_evaluate(
     batch_id: UUID,
     request: Request,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    """Expose the future feedback evaluation API contract without side effects."""
+    """Persist before/after snapshots and one outcome evaluation for a batch."""
+    bundle = await evaluate_execution_batch_feedback(
+        session,
+        batch_id=batch_id,
+        evaluator_name="feedback-api",
+    )
+    await session.commit()
+
     return success_response(
         request=request,
-        status_code=501,
-        message="Feedback evaluation API contract placeholder.",
-        data=FeedbackContractPlaceholder(
-            endpoint=f"/api/v1/feedback/execution-batches/{batch_id}/evaluate",
-            expected_behavior=(
-                "Compare pre/post snapshots and classify execution outcome for "
-                "re-planning decisions."
-            ),
-        ),
+        message="Feedback lifecycle evaluation persisted successfully.",
+        data=_to_feedback_lifecycle_read(bundle),
     )
 
 
 @router.get(
     "/execution-batches/{batch_id}/latest",
-    response_model=SuccessResponse[FeedbackContractPlaceholder],
-    summary="Feedback read contract placeholder",
+    response_model=SuccessResponse[FeedbackLifecycleRead],
+    summary="Get latest persisted feedback lifecycle evaluation",
 )
-async def feedback_latest_contract(
+async def feedback_latest(
     batch_id: UUID,
     request: Request,
+    session: AsyncSession = Depends(get_db_session),
 ):
-    """Expose the future feedback read API contract without side effects."""
+    """Return latest persisted feedback snapshots and evaluation for a batch."""
+    bundle = await get_latest_batch_feedback(session, batch_id=batch_id)
     return success_response(
         request=request,
-        status_code=501,
-        message="Feedback read API contract placeholder.",
-        data=FeedbackContractPlaceholder(
-            endpoint=f"/api/v1/feedback/execution-batches/{batch_id}/latest",
-            expected_behavior="Return latest feedback evaluation result for one execution batch.",
-        ),
+        message="Latest feedback lifecycle evaluation retrieved successfully.",
+        data=_to_feedback_lifecycle_read(bundle),
     )

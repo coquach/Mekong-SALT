@@ -113,6 +113,16 @@ class ExecutionBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     action_plan = relationship("ActionPlan", back_populates="execution_batches")
     region = relationship("Region", back_populates="execution_batches")
     executions = relationship("ActionExecution", back_populates="execution_batch")
+    feedback_snapshots = relationship(
+        "FeedbackSnapshot",
+        back_populates="execution_batch",
+        cascade="all, delete-orphan",
+    )
+    outcome_evaluations = relationship(
+        "OutcomeEvaluation",
+        back_populates="execution_batch",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def execution_job_id(self) -> UUID:
@@ -187,6 +197,8 @@ class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="execution",
         cascade="all, delete-orphan",
     )
+    feedback_snapshots = relationship("FeedbackSnapshot", back_populates="action_execution")
+    outcome_evaluations = relationship("OutcomeEvaluation", back_populates="action_execution")
     audit_logs = relationship("AuditLog", back_populates="action_execution")
 
     @property

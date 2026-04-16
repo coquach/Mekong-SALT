@@ -16,9 +16,39 @@ from app.models.risk import RiskAssessment
 from app.repositories.incident import IncidentRepository
 from app.schemas.incident import IncidentCreate, IncidentUpdate
 from app.services.audit_service import write_audit_log
-from app.services.notify import create_incident_created_notifications
+from app.services.db import append_domain_event_and_dispatch
+from app.services.notify import get_domain_event_notification_dispatcher
 
 INCIDENT_RISK_LEVELS = {RiskLevel.WARNING, RiskLevel.DANGER, RiskLevel.CRITICAL}
+
+
+async def _emit_incident_opened_notification_event(
+    session: AsyncSession,
+    *,
+    incident: Incident,
+) -> None:
+    await append_domain_event_and_dispatch(
+        session,
+        event_type="notification.incident_created",
+        source="incident-service",
+        summary=f"Incident opened: {incident.severity.value.upper()} salinity",
+        payload={
+            "event": "incident_created",
+            "subject": f"Incident opened: {incident.severity.value.upper()} salinity",
+            "message": f"Incident '{incident.title}' was opened from source '{incident.source}'.",
+            "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
+            "details": {
+                "severity": incident.severity.value,
+                "title": incident.title,
+                "source": incident.source,
+            },
+        },
+        aggregate_type="incident",
+        aggregate_id=incident.id,
+        region_id=incident.region_id,
+        incident_id=incident.id,
+        dispatcher=get_domain_event_notification_dispatcher(),
+    )
 
 
 @dataclass(slots=True)
@@ -60,13 +90,7 @@ async def create_incident(
         summary=f"Incident created: {incident.title}",
         payload={"severity": incident.severity.value, "source": incident.source},
     )
-    await create_incident_created_notifications(
-        session,
-        incident_id=incident.id,
-        title=incident.title,
-        severity=incident.severity.value,
-        source=incident.source,
-    )
+    await _emit_incident_opened_notification_event(session, incident=incident)
     await session.commit()
     await session.refresh(incident)
     return incident
@@ -135,13 +159,7 @@ async def ensure_incident_for_assessment(
         summary=f"Incident opened from risk assessment {assessment.id}.",
         payload=incident.evidence,
     )
-    await create_incident_created_notifications(
-        session,
-        incident_id=incident.id,
-        title=incident.title,
-        severity=incident.severity.value,
-        source=incident.source,
-    )
+    await _emit_incident_opened_notification_event(session, incident=incident)
     return IncidentDecisionResult(
         incident=incident,
         decision="created",

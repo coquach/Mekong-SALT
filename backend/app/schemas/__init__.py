@@ -28,6 +28,7 @@ from app.schemas.approval import ApprovalDecisionResponse, ApprovalRead, Approva
 from app.schemas.audit import ActionOutcomeRead, AuditLogCollection, AuditLogRead
 from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
 from app.schemas.decision import DecisionLogCreate, DecisionLogRead
+from app.schemas.feedback import FeedbackLifecycleRead, FeedbackSnapshotRead, OutcomeEvaluationRead
 from app.schemas.goal import (
     GoalThresholds,
     MonitoringGoalCollection,
@@ -103,6 +104,9 @@ __all__ = [
     "AlertEventRead",
     "DecisionLogCreate",
     "DecisionLogRead",
+    "FeedbackLifecycleRead",
+    "FeedbackSnapshotRead",
+    "OutcomeEvaluationRead",
     "GoalThresholds",
     "IncidentCollection",
     "IncidentCreate",

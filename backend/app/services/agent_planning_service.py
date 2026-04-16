@@ -23,9 +23,10 @@ from app.services.agent_trace_service import (
     start_agent_run,
 )
 from app.services.audit_service import write_audit_log
+from app.services.db import append_domain_event_and_dispatch
 from app.services.incident_service import ensure_incident_for_assessment, get_incident
 from app.services.llm import VertexGeminiPlannerAdapter
-from app.services.notify import create_plan_created_notifications
+from app.services.notify import get_domain_event_notification_dispatcher
 from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.services.risk_service import RiskEvaluationBundle
 
@@ -115,12 +116,28 @@ async def generate_agent_plan(
             retrieved_context=retrieved_context,
             transition_log=transition_log,
         )
-        await create_plan_created_notifications(
+        await append_domain_event_and_dispatch(
             session,
+            event_type="notification.plan_created",
+            source="planning-service",
+            summary=f"Action plan generated ({plan.status.value})",
+            payload={
+                "event": "plan_created",
+                "subject": f"Action plan generated ({plan.status.value})",
+                "message": f"Plan '{plan.id}' generated for objective: {plan.objective}",
+                "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
+                "details": {
+                    "action_plan_id": str(plan.id),
+                    "status": plan.status.value,
+                    "objective": plan.objective,
+                },
+            },
+            aggregate_type="incident" if plan.incident_id is not None else "action_plan",
+            aggregate_id=plan.incident_id if plan.incident_id is not None else plan.id,
+            region_id=plan.region_id,
             incident_id=plan.incident_id,
             action_plan_id=plan.id,
-            objective=plan.objective,
-            status=plan.status.value,
+            dispatcher=get_domain_event_notification_dispatcher(),
         )
         finish_agent_run(
             run,

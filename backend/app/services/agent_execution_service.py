@@ -29,6 +29,7 @@ from app.schemas.action import (
     SimulatedExecutionRequest,
 )
 from app.services.feedback.evaluation_service import evaluate_execution_feedback
+
 from app.services.memory_case_vector_service import MemoryCaseVectorService
 from app.services.internal_memory_service import (
     build_execution_decision_log,
@@ -36,10 +37,8 @@ from app.services.internal_memory_service import (
     build_feedback_memory_case,
 )
 from app.services.audit_service import write_audit_log
-from app.services.notify import (
-    create_execution_alert_notifications,
-    create_execution_summary_notifications,
-)
+from app.services.db import append_domain_event_and_dispatch
+from app.services.notify import get_domain_event_notification_dispatcher
 
 
 @dataclass(slots=True)
@@ -163,11 +162,29 @@ async def execute_simulated_plan(
         executions.append(execution)
 
         if step.action_type in {ActionType.SEND_ALERT, ActionType.NOTIFY_FARMERS}:
-            await create_execution_alert_notifications(
+            await append_domain_event_and_dispatch(
                 session,
+                event_type="notification.execution_alert",
+                source="execution-service",
+                summary="Mekong-SALT salinity response",
+                payload={
+                    "event": "execution_alert",
+                    "subject": "Mekong-SALT salinity response",
+                    "message": step.instructions,
+                    "execution_id": str(execution.id),
+                    "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
+                    "details": {
+                        "action_plan_id": str(plan.id),
+                        "execution_batch_id": str(batch.id),
+                    },
+                },
+                aggregate_type="incident" if plan.incident_id is not None else "action_plan",
+                aggregate_id=plan.incident_id if plan.incident_id is not None else plan.id,
+                region_id=plan.region_id,
                 incident_id=plan.incident_id,
-                execution_id=execution.id,
-                message=step.instructions,
+                action_plan_id=plan.id,
+                execution_batch_id=batch.id,
+                dispatcher=get_domain_event_notification_dispatcher(),
             )
 
         decision_log = build_execution_decision_log(
@@ -195,7 +212,14 @@ async def execute_simulated_plan(
             payload=execution.result_payload,
         )
 
-    feedback = await evaluate_execution_feedback(session, plan)
+    feedback = await evaluate_execution_feedback(
+        session,
+        plan,
+        batch=batch,
+        execution=executions[-1] if executions else None,
+        evaluator_name="execution-agent",
+        persist_lifecycle=True,
+    )
     if executions:
         outcome = ActionOutcome(
             execution_id=executions[-1].id,
@@ -228,17 +252,35 @@ async def execute_simulated_plan(
     await decision_repo.add(feedback_log)
     decision_logs.append(feedback_log)
 
-    await create_execution_summary_notifications(
+    await append_domain_event_and_dispatch(
         session,
+        event_type="notification.execution_summary",
+        source="execution-service",
+        summary=f"Execution summary: {feedback.outcome_class}",
+        payload={
+            "event": "execution_summary",
+            "subject": f"Execution summary: {feedback.outcome_class}",
+            "message": feedback.summary,
+            "execution_id": str(executions[-1].id) if executions else None,
+            "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
+            "details": {
+                "action_plan_id": str(plan.id),
+                "execution_batch_id": str(batch.id),
+                "execution_count": len(executions),
+                "outcome_class": feedback.outcome_class,
+                "replan_recommended": feedback.replan_recommended,
+            },
+        },
+        aggregate_type="incident" if plan.incident_id is not None else "action_plan",
+        aggregate_id=plan.incident_id if plan.incident_id is not None else plan.id,
+        region_id=plan.region_id,
         incident_id=plan.incident_id,
-        execution_id=executions[-1].id if executions else None,
         action_plan_id=plan.id,
-        outcome_class=feedback.outcome_class,
-        summary=feedback.summary,
-        execution_count=len(executions),
-        replan_recommended=feedback.replan_recommended,
+        execution_batch_id=batch.id,
+        dispatcher=get_domain_event_notification_dispatcher(),
     )
 
+  
     memory_case = build_feedback_memory_case(
         region_id=plan.region_id,
         station_id=(plan.risk_assessment.station_id if plan.risk_assessment is not None else None),
