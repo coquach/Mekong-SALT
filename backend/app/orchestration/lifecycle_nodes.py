@@ -248,12 +248,12 @@ async def feedback_node(state: Mapping[str, Any]) -> dict[str, Any]:
 
     feedback = execution_bundle.feedback
     return {
-        "feedback_status": feedback.status,
+        "feedback_status": feedback.outcome_class,
         "feedback_summary": feedback.summary,
         "transition_log": _append_transition(
             state,
             node="feedback",
-            status=feedback.status,
+            status=feedback.outcome_class,
             details={"summary": feedback.summary},
         ),
     }
@@ -267,7 +267,7 @@ async def memory_write_node(
     """Persist a lifecycle checkpoint as an explicit memory decision log."""
     plan: ActionPlan = state.get("executed_plan") or state.get("approved_plan") or state["plan"]
     execution_bundle: SimulatedExecutionBundle | None = state.get("execution_bundle")
-    feedback_status = str(state.get("feedback_status") or "not_available")
+    feedback_status = str(state.get("feedback_status") or "inconclusive")
     transitions = list(state.get("transition_log") or [])
 
     latest_execution_id = None
@@ -292,7 +292,7 @@ async def memory_write_node(
             "feedback_summary": state.get("feedback_summary"),
             "transition_log": transitions,
         },
-        store_as_memory=feedback_status == "improved",
+        store_as_memory=feedback_status == "success",
     )
     await DecisionLogRepository(services.session).add(memory_log)
 

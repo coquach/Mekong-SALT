@@ -141,7 +141,9 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
 
     execution_bundle = result.lifecycle_result.execution_bundle
     assert len(execution_bundle.executions) == 2
+    assert execution_bundle.feedback.outcome_class == "inconclusive"
     assert execution_bundle.feedback.status == "insufficient_new_observation"
+    assert execution_bundle.feedback.replan_recommended is True
     assert len(execution_bundle.decision_logs) == 3
 
     logs_response = await client.get(

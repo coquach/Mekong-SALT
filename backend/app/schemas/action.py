@@ -99,11 +99,21 @@ class ExecutionSimulateRequest(ORMBaseSchema):
 class FeedbackEvaluation(ORMBaseSchema):
     """Feedback summary after simulated execution."""
 
+    outcome_class: Literal[
+        "success",
+        "partial_success",
+        "failed_execution",
+        "failed_plan",
+        "inconclusive",
+    ]
+    # Backward compatibility field for current clients. Keep until FE migration completes.
     status: Literal["improved", "not_improved", "no_change", "insufficient_new_observation"]
     baseline_salinity_dsm: Decimal | None = None
     latest_salinity_dsm: Decimal | None = None
     delta_dsm: Decimal | None = None
     summary: str
+    replan_recommended: bool = False
+    replan_reason: str | None = None
 
 
 class SimulatedExecutionResponse(ORMBaseSchema):

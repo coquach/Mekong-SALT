@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
 from http import HTTPStatus
 from uuid import UUID
 
@@ -20,13 +19,13 @@ from app.repositories.action import ActionExecutionRepository, ActionPlanReposit
 from app.repositories.decision import DecisionLogRepository
 from app.repositories.ops import ActionOutcomeRepository
 from app.repositories.region import RegionRepository
-from app.repositories.sensor import SensorReadingRepository
 from app.schemas.action import (
     ActionLogCollection,
     ActionLogEntry,
     FeedbackEvaluation,
     SimulatedExecutionRequest,
 )
+from app.services.feedback.evaluation_service import evaluate_execution_feedback
 from app.services.internal_memory_service import build_execution_decision_log, build_feedback_decision_log
 from app.services.audit_service import write_audit_log
 from app.services.notification_service import create_execution_alert_notifications
@@ -80,8 +79,11 @@ async def execute_simulated_plan(
                 [execution.id for execution in executions]
             ) if executions else []
             feedback = FeedbackEvaluation(
+                outcome_class="inconclusive",
                 status="insufficient_new_observation",
                 summary="Execution batch was returned from an existing idempotency key.",
+                replan_recommended=True,
+                replan_reason="Execution batch was returned from an existing idempotency key.",
             )
             return SimulatedExecutionBundle(
                 batch=existing_batch,
@@ -182,7 +184,7 @@ async def execute_simulated_plan(
             payload=execution.result_payload,
         )
 
-    feedback = await _evaluate_feedback(session, plan)
+    feedback = await evaluate_execution_feedback(session, plan)
     if executions:
         outcome = ActionOutcome(
             execution_id=executions[-1].id,
@@ -197,8 +199,9 @@ async def execute_simulated_plan(
                 if feedback.latest_salinity_dsm is not None
                 else None,
                 "delta_dsm": str(feedback.delta_dsm) if feedback.delta_dsm is not None else None,
+                "legacy_status": feedback.status,
             },
-            status=feedback.status,
+            status=feedback.outcome_class,
             summary=feedback.summary,
         )
         await outcome_repo.add(outcome)
@@ -218,7 +221,11 @@ async def execute_simulated_plan(
     batch.status = ExecutionStatus.SUCCEEDED
     batch.completed_at = datetime.now(UTC)
     if plan.incident is not None:
-        plan.incident.status = IncidentStatus.RESOLVED if feedback.status == "improved" else IncidentStatus.EXECUTING
+        plan.incident.status = (
+            IncidentStatus.RESOLVED
+            if feedback.outcome_class == "success"
+            else IncidentStatus.EXECUTING
+        )
     await session.commit()
 
     for execution in executions:
@@ -282,64 +289,6 @@ async def list_action_logs(
         for execution in executions
     ]
     return ActionLogCollection(items=items, count=len(items))
-
-
-async def _evaluate_feedback(
-    session: AsyncSession,
-    plan: ActionPlan,
-) -> FeedbackEvaluation:
-    """Evaluate whether salinity appears reduced after simulated actions."""
-    if plan.risk_assessment is None or plan.risk_assessment.station_id is None:
-        return FeedbackEvaluation(
-            status="insufficient_new_observation",
-            summary="Risk assessment is missing station context for feedback evaluation.",
-        )
-    if plan.risk_assessment.based_on_reading_id is None:
-        return FeedbackEvaluation(
-            status="insufficient_new_observation",
-            summary="Risk assessment is missing a baseline reading for feedback evaluation.",
-        )
-
-    reading_repo = SensorReadingRepository(session)
-    baseline = await reading_repo.get_with_station(plan.risk_assessment.based_on_reading_id)
-    latest = await reading_repo.get_latest_for_station(plan.risk_assessment.station_id)
-    if baseline is None or latest is None:
-        return FeedbackEvaluation(
-            status="insufficient_new_observation",
-            summary="No comparable readings were available for feedback evaluation.",
-        )
-    if latest.recorded_at <= baseline.recorded_at:
-        return FeedbackEvaluation(
-            status="insufficient_new_observation",
-            baseline_salinity_dsm=baseline.salinity_dsm,
-            latest_salinity_dsm=latest.salinity_dsm,
-            summary="No newer sensor reading is available after the simulated actions.",
-        )
-
-    delta = latest.salinity_dsm - baseline.salinity_dsm
-    if delta < Decimal("0.00"):
-        return FeedbackEvaluation(
-            status="improved",
-            baseline_salinity_dsm=baseline.salinity_dsm,
-            latest_salinity_dsm=latest.salinity_dsm,
-            delta_dsm=delta,
-            summary="Latest observed salinity is lower than the baseline reading.",
-        )
-    if delta == Decimal("0.00"):
-        return FeedbackEvaluation(
-            status="no_change",
-            baseline_salinity_dsm=baseline.salinity_dsm,
-            latest_salinity_dsm=latest.salinity_dsm,
-            delta_dsm=delta,
-            summary="Latest observed salinity is unchanged after simulated actions.",
-        )
-    return FeedbackEvaluation(
-        status="not_improved",
-        baseline_salinity_dsm=baseline.salinity_dsm,
-        latest_salinity_dsm=latest.salinity_dsm,
-        delta_dsm=delta,
-        summary="Latest observed salinity did not decrease after simulated actions.",
-    )
 
 
 def _build_execution_summary(action_type) -> str:

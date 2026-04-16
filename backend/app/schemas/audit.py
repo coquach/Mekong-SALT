@@ -1,7 +1,7 @@
 """Schemas for audit logs and action outcomes."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from app.models.enums import AuditEventType
@@ -37,6 +37,12 @@ class ActionOutcomeRead(EntityReadSchema):
     recorded_at: datetime
     pre_metrics: dict[str, Any] | None = None
     post_metrics: dict[str, Any] | None = None
-    status: str
+    status: Literal[
+        "success",
+        "partial_success",
+        "failed_execution",
+        "failed_plan",
+        "inconclusive",
+    ]
     summary: str
 

@@ -66,7 +66,7 @@ def build_feedback_decision_log(
         actor_type=DecisionActorType.SYSTEM,
         actor_name="feedback-evaluator",
         summary="Simulated execution feedback evaluated.",
-        outcome=feedback.status,
+        outcome=feedback.outcome_class,
         details=feedback.model_dump(mode="json"),
-        store_as_memory=feedback.status == "improved",
+        store_as_memory=feedback.outcome_class == "success",
     )
