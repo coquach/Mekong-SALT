@@ -25,7 +25,7 @@ from app.schemas.audit import ActionOutcomeRead
 from app.schemas.base import ORMBaseSchema
 from app.schemas.common import SuccessResponse
 from app.schemas.decision import DecisionLogRead
-from app.services.agent_execution_service import execute_simulated_plan
+from app.services.execution import execute_simulated_plan
 
 router = APIRouter(tags=["execution-batches"])
 

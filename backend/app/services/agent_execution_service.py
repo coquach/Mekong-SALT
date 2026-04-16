@@ -36,7 +36,7 @@ from app.services.internal_memory_service import (
     build_feedback_memory_case,
 )
 from app.services.audit_service import write_audit_log
-from app.services.notification_service import (
+from app.services.notify import (
     create_execution_alert_notifications,
     create_execution_summary_notifications,
 )

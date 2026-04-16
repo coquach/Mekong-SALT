@@ -14,7 +14,7 @@ from app.models.notification import Notification
 from app.repositories.ops import NotificationRepository
 from app.schemas.notification import NotificationCreate
 from app.services.audit_service import write_audit_log
-from app.services.domain_event_service import append_domain_event
+from app.services.db import append_domain_event
 
 
 _DEFAULT_CHANNEL_RECIPIENTS: tuple[tuple[NotificationChannel, str], ...] = (

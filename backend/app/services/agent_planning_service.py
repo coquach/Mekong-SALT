@@ -15,6 +15,7 @@ from app.models.action import ActionPlan
 from app.models.agent_run import AgentRun
 from app.models.enums import ActionPlanStatus, AuditEventType, IncidentStatus
 from app.models.incident import Incident
+from app.orchestration.planning_nodes import PlanningNodeServices
 from app.repositories.action import ActionPlanRepository
 from app.services.agent_trace_service import (
     capture_observation_snapshot,
@@ -23,7 +24,8 @@ from app.services.agent_trace_service import (
 )
 from app.services.audit_service import write_audit_log
 from app.services.incident_service import ensure_incident_for_assessment, get_incident
-from app.services.notification_service import create_plan_created_notifications
+from app.services.llm import VertexGeminiPlannerAdapter
+from app.services.notify import create_plan_created_notifications
 from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.services.risk_service import RiskEvaluationBundle
 
@@ -60,11 +62,15 @@ async def generate_agent_plan(
         station_id=payload.station_id,
     )
     try:
-        provider = get_plan_provider(payload.provider)
-        workflow = AgentPlanningWorkflow(
+        planner = VertexGeminiPlannerAdapter()
+        provider = get_plan_provider(payload.provider, planner=planner)
+        workflow_services = PlanningNodeServices(
             session=session,
             redis_manager=redis_manager,
             provider=provider,
+        )
+        workflow = AgentPlanningWorkflow(
+            services=workflow_services,
         )
         state = await workflow.run(
             payload,

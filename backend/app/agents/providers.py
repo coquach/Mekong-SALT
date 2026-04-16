@@ -8,7 +8,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.schemas.agent import GeneratedActionPlan
-from app.services.llm import VertexGeminiPlannerAdapter
+from app.services.llm import PlannerInterface
 
 
 class PlanProvider(ABC):
@@ -95,8 +95,8 @@ class GeminiProvider(PlanProvider):
 
     name = "gemini"
 
-    def __init__(self) -> None:
-        self._adapter = VertexGeminiPlannerAdapter()
+    def __init__(self, *, planner: PlannerInterface) -> None:
+        self._planner = planner
 
     async def generate_plan(
         self,
@@ -105,10 +105,14 @@ class GeminiProvider(PlanProvider):
         context: dict[str, Any],
     ) -> GeneratedActionPlan:
         """Generate a plan via centralized LLM adapter boundary."""
-        return await self._adapter.generate_plan(objective=objective, context=context)
+        return await self._planner.generate_plan(objective=objective, context=context)
 
 
-def get_plan_provider(provider_name: str | None = None) -> PlanProvider:
+def get_plan_provider(
+    provider_name: str | None = None,
+    *,
+    planner: PlannerInterface | None = None,
+) -> PlanProvider:
     """Resolve the configured planning provider implementation."""
     _ = provider_name
     settings = get_settings()
@@ -118,4 +122,10 @@ def get_plan_provider(provider_name: str | None = None) -> PlanProvider:
             code="invalid_llm_provider_configuration",
             message="Runtime configuration must use Gemini provider.",
         )
-    return GeminiProvider()
+    if planner is None:
+        raise AppException(
+            status_code=500,
+            code="planner_interface_missing",
+            message="Gemini provider requires an injected planner interface.",
+        )
+    return GeminiProvider(planner=planner)

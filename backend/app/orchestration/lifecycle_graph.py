@@ -22,7 +22,7 @@ from app.orchestration.lifecycle_nodes import (
     memory_write_node,
 )
 from app.repositories.action import ActionPlanRepository
-from app.services.agent_execution_service import SimulatedExecutionBundle
+from app.services.execution import SimulatedExecutionBundle
 
 LifecycleAdvanceStatus = Literal[
     "skipped_not_pending",

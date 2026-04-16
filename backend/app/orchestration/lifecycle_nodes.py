@@ -17,8 +17,8 @@ from app.models.enums import ActionPlanStatus, ApprovalDecision, DecisionActorTy
 from app.repositories.decision import DecisionLogRepository
 from app.schemas.action import SimulatedExecutionRequest
 from app.schemas.approval import ApprovalRequest
-from app.services.agent_execution_service import SimulatedExecutionBundle, execute_simulated_plan
-from app.services.approval_service import decide_plan
+from app.services.execution import SimulatedExecutionBundle, execute_simulated_plan
+from app.services.approval import decide_plan
 
 HIGH_RISK_HITL_LEVELS = {RiskLevel.DANGER, RiskLevel.CRITICAL}
 

@@ -5,11 +5,7 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.providers import PlanProvider
-from app.db.redis import RedisManager
-from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.orchestration.planning_nodes import (
     PlanningNodeServices,
     assess_risk_node,
@@ -18,6 +14,7 @@ from app.orchestration.planning_nodes import (
     retrieve_context_node,
     validate_plan_node,
 )
+from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.schemas.risk import RiskEvaluationFilters
 from app.services.risk_service import RiskEvaluationBundle
 
@@ -41,15 +38,9 @@ class AgentPlanningWorkflow:
     def __init__(
         self,
         *,
-        session: AsyncSession,
-        redis_manager: RedisManager | None,
-        provider: PlanProvider,
+        services: PlanningNodeServices,
     ) -> None:
-        self._services = PlanningNodeServices(
-            session=session,
-            redis_manager=redis_manager,
-            provider=provider,
-        )
+        self._services = services
         self._graph = self._build_graph().compile()
 
     async def run(

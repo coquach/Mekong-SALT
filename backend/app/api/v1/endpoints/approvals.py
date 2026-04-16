@@ -10,7 +10,7 @@ from app.core.responses import success_response
 from app.db.session import get_db_session
 from app.schemas.approval import ApprovalCollection, ApprovalDecisionResponse, ApprovalRequest
 from app.schemas.common import SuccessResponse
-from app.services.approval_service import decide_plan, list_plan_approvals
+from app.services.approval import decide_plan, list_plan_approvals
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])

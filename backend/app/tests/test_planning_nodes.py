@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.agents.planning_graph import AgentPlanningWorkflow
 from app.models.action import ActionPlan
 from app.models.enums import ActionPlanStatus, ActionType, IncidentStatus, RiskLevel, TrendDirection
 from app.models.incident import Incident
@@ -351,3 +352,68 @@ async def test_draft_and_validate_nodes_work_with_rule_policy():
         }
     )
     assert validate_result["validation_result"].is_valid is True
+
+
+@pytest.mark.asyncio
+async def test_planning_workflow_uses_injected_services(monkeypatch):
+    draft_plan = GeneratedActionPlan(
+        objective="Protect irrigation water quality",
+        summary="Stub plan",
+        assumptions=["stub"],
+        steps=[
+            PlanStep(
+                step_index=1,
+                action_type=ActionType.SEND_ALERT,
+                title="Send alert",
+                instructions="Notify operators",
+                rationale="Risk communication first",
+                simulated=True,
+            )
+        ],
+    )
+    services = PlanningNodeServices(
+        session=SimpleNamespace(),
+        redis_manager=None,
+        provider=SimpleNamespace(),
+    )
+
+    async def fake_observe(_state):
+        return {
+            "filters": RiskEvaluationFilters(station_code="ST-01"),
+            "objective": draft_plan.objective,
+        }
+
+    async def fake_assess(_state, *, services: PlanningNodeServices):
+        assert services is services_ref
+        return {"risk_bundle": SimpleNamespace(assessment=SimpleNamespace(risk_level=RiskLevel.WARNING))}
+
+    async def fake_retrieve(_state, *, services: PlanningNodeServices):
+        assert services is services_ref
+        return {"retrieved_context": {"assessment": {"risk_level": "warning"}}}
+
+    async def fake_draft(_state, *, services: PlanningNodeServices):
+        assert services is services_ref
+        return {"draft_plan": draft_plan}
+
+    async def fake_validate(_state):
+        return {
+            "validation_result": {
+                "is_valid": True,
+                "errors": [],
+                "warnings": [],
+                "normalized_steps": [],
+            }
+        }
+
+    services_ref = services
+    monkeypatch.setattr("app.agents.planning_graph.observe_request_node", fake_observe)
+    monkeypatch.setattr("app.agents.planning_graph.assess_risk_node", fake_assess)
+    monkeypatch.setattr("app.agents.planning_graph.retrieve_context_node", fake_retrieve)
+    monkeypatch.setattr("app.agents.planning_graph.draft_plan_node", fake_draft)
+    monkeypatch.setattr("app.agents.planning_graph.validate_plan_node", fake_validate)
+
+    workflow = AgentPlanningWorkflow(services=services)
+    state = await workflow.run(AgentPlanRequest(station_code="ST-01"))
+
+    assert state["draft_plan"] == draft_plan
+    assert state["validation_result"]["is_valid"] is True

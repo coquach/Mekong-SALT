@@ -9,7 +9,7 @@ from app.core.responses import success_response
 from app.db.session import get_db_session
 from app.schemas.action import ActionLogCollection
 from app.schemas.common import SuccessResponse
-from app.services.agent_execution_service import list_action_logs
+from app.services.execution import list_action_logs
 
 router = APIRouter(prefix="/actions", tags=["actions"])
 

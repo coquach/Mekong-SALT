@@ -9,7 +9,7 @@ from app.core.responses import success_response
 from app.db.session import get_db_session
 from app.schemas.common import SuccessResponse
 from app.schemas.notification import NotificationCollection, NotificationCreate, NotificationRead
-from app.services.notification_service import create_notification, list_notifications, mark_notification_read
+from app.services.notify import create_notification, list_notifications, mark_notification_read
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 

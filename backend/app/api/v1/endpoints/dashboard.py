@@ -14,7 +14,7 @@ from app.core.responses import success_response
 from app.db.session import AsyncSessionFactory, get_db_session
 from app.schemas.common import SuccessResponse
 from app.schemas.dashboard import DashboardSummary, DashboardTimeline
-from app.services.domain_event_service import (
+from app.services.db import (
     list_domain_events_after_cursor,
     to_stream_event_payload,
 )

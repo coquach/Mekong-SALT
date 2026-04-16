@@ -16,7 +16,7 @@ from app.models.risk import RiskAssessment
 from app.repositories.incident import IncidentRepository
 from app.schemas.incident import IncidentCreate, IncidentUpdate
 from app.services.audit_service import write_audit_log
-from app.services.notification_service import create_incident_created_notifications
+from app.services.notify import create_incident_created_notifications
 
 INCIDENT_RISK_LEVELS = {RiskLevel.WARNING, RiskLevel.DANGER, RiskLevel.CRITICAL}
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Protocol
 
 from google import genai
 from google.genai import types as genai_types
@@ -15,11 +15,44 @@ from app.schemas.agent import GeneratedActionPlan
 from app.services.llm.planner_interface import PlannerInterface
 
 
+class PlanPromptBuilder(Protocol):
+    """Boundary for planner prompt construction."""
+
+    def build(self, *, objective: str, context: dict[str, Any]) -> str:
+        """Build planner prompt text from objective and context."""
+
+
+class VertexPlanPromptBuilder:
+    """Default prompt builder for Vertex Gemini planning."""
+
+    def build(self, *, objective: str, context: dict[str, Any]) -> str:
+        serialized_context = json.dumps(context, ensure_ascii=True, indent=2, default=str)
+        return (
+            "Generate a salinity response plan for Mekong-SALT.\n"
+            "Requirements:\n"
+            "- Use only simulated or informational actions.\n"
+            "- Allowed action types: send_alert, notify-farmers, wait-safe-window, "
+            "close_gate, open_gate, start_pump, stop_pump, close-gate-simulated, start-pump-simulated.\n"
+            "- All actions are simulated in MVP and require human approval before execution.\n"
+            "- Keep the plan practical for an MVP decision-support system.\n"
+            "- Return 2 to 5 ordered steps.\n"
+            "- Every step must include action_type, title, instructions, rationale, and simulated=true.\n"
+            f"Objective: {objective}\n"
+            f"Context:\n{serialized_context}\n"
+        )
+
+
 class VertexGeminiPlannerAdapter(PlannerInterface):
     """LLM planner adapter for Vertex AI Gemini plan generation."""
 
-    def __init__(self, *, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        settings: Settings | None = None,
+        prompt_builder: PlanPromptBuilder | None = None,
+    ) -> None:
         self._settings = settings or get_settings()
+        self._prompt_builder = prompt_builder or VertexPlanPromptBuilder()
         self._client = self._build_client(self._settings)
 
     async def generate_plan(
@@ -29,7 +62,7 @@ class VertexGeminiPlannerAdapter(PlannerInterface):
         context: dict[str, Any],
     ) -> GeneratedActionPlan:
         """Generate one structured plan via Gemini using a JSON schema contract."""
-        prompt = build_plan_prompt(objective=objective, context=context)
+        prompt = self._prompt_builder.build(objective=objective, context=context)
         try:
             response = await self._client.aio.models.generate_content(
                 model=self._settings.gemini_model,
@@ -88,18 +121,5 @@ class VertexGeminiPlannerAdapter(PlannerInterface):
 
 
 def build_plan_prompt(*, objective: str, context: dict[str, Any]) -> str:
-    """Build a compact prompt for structured plan generation."""
-    serialized_context = json.dumps(context, ensure_ascii=True, indent=2, default=str)
-    return (
-        "Generate a salinity response plan for Mekong-SALT.\n"
-        "Requirements:\n"
-        "- Use only simulated or informational actions.\n"
-        "- Allowed action types: send_alert, notify-farmers, wait-safe-window, "
-        "close_gate, open_gate, start_pump, stop_pump, close-gate-simulated, start-pump-simulated.\n"
-        "- All actions are simulated in MVP and require human approval before execution.\n"
-        "- Keep the plan practical for an MVP decision-support system.\n"
-        "- Return 2 to 5 ordered steps.\n"
-        "- Every step must include action_type, title, instructions, rationale, and simulated=true.\n"
-        f"Objective: {objective}\n"
-        f"Context:\n{serialized_context}\n"
-    )
+    """Backward-compatible function wrapper for prompt construction."""
+    return VertexPlanPromptBuilder().build(objective=objective, context=context)

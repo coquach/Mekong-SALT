@@ -1,6 +1,6 @@
 """Service layer package."""
 
-from app.services.agent_execution_service import execute_simulated_plan, list_action_logs
+from app.services.execution import execute_simulated_plan, list_action_logs
 from app.services.agent_planning_service import generate_agent_plan
 from app.services.health_service import get_health_status
 from app.services.risk_service import evaluate_alerts, evaluate_current_risk
