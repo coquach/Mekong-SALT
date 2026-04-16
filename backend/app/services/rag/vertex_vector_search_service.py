@@ -129,6 +129,7 @@ class VertexVectorSearchService:
         *,
         query_embedding: list[float],
         neighbor_count: int,
+        restricts: dict[str, list[str]] | None = None,
     ) -> list[VertexNeighbor]:
         """Query Vertex Vector Search for nearest neighbors."""
         if not self.is_configured():
@@ -140,6 +141,7 @@ class VertexVectorSearchService:
             self._sync_find_neighbors,
             query_embedding,
             neighbor_count,
+            restricts or {},
         )
 
     def _sync_upsert_datapoints(self, datapoints: list[dict[str, Any]]) -> None:
@@ -187,6 +189,7 @@ class VertexVectorSearchService:
         self,
         query_embedding: list[float],
         neighbor_count: int,
+        restricts: dict[str, list[str]],
     ) -> list[VertexNeighbor]:
         try:
             from google.cloud import aiplatform_v1
@@ -201,12 +204,24 @@ class VertexVectorSearchService:
             client_options={"api_endpoint": f"{self._settings.vertex_ai_location}-aiplatform.googleapis.com"}
         )
 
+        query_restricts = []
+        for namespace, values in (restricts or {}).items():
+            if not values:
+                continue
+            query_restricts.append(
+                aiplatform_v1.IndexDatapoint.Restriction(
+                    namespace=namespace,
+                    allow_list=[str(value) for value in values],
+                )
+            )
+
         query = aiplatform_v1.FindNeighborsRequest.Query(
             datapoint=aiplatform_v1.IndexDatapoint(
                 datapoint_id="query",
                 feature_vector=[float(v) for v in query_embedding],
             ),
             neighbor_count=max(1, int(neighbor_count)),
+            restricts=query_restricts,
         )
 
         request = aiplatform_v1.FindNeighborsRequest(

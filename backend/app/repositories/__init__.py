@@ -8,6 +8,7 @@ from app.repositories.decision import DecisionLogRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.incident import IncidentRepository
 from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
+from app.repositories.memory_case import MemoryCaseRepository
 from app.repositories.ops import ActionOutcomeRepository, AuditLogRepository, NotificationRepository
 from app.repositories.region import RegionRepository
 from app.repositories.risk import AlertEventRepository, RiskAssessmentRepository
@@ -27,6 +28,7 @@ __all__ = [
     "DecisionLogRepository",
     "IncidentRepository",
     "KnowledgeDocumentRepository",
+    "MemoryCaseRepository",
     "MonitoringGoalRepository",
     "NotificationRepository",
     "ObservationSnapshotRepository",

@@ -8,6 +8,7 @@ from app.models.decision import DecisionLog
 from app.models.incident import Incident
 from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
 from app.models.goal import MonitoringGoal
+from app.models.memory_case import MemoryCase
 from app.models.notification import Notification
 from app.models.region import Region
 from app.models.risk import AlertEvent, RiskAssessment
@@ -27,6 +28,7 @@ __all__ = [
     "EmbeddedChunk",
     "Incident",
     "KnowledgeDocument",
+    "MemoryCase",
     "MonitoringGoal",
     "Notification",
     "ObservationSnapshot",

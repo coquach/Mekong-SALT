@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.execution_policy import validate_execution_plan
@@ -17,6 +19,7 @@ from app.models.decision import DecisionLog
 from app.models.enums import ActionPlanStatus, ActionType, AuditEventType, ExecutionStatus, IncidentStatus
 from app.repositories.action import ActionExecutionRepository, ActionPlanRepository, ExecutionBatchRepository
 from app.repositories.decision import DecisionLogRepository
+from app.repositories.memory_case import MemoryCaseRepository
 from app.repositories.ops import ActionOutcomeRepository
 from app.repositories.region import RegionRepository
 from app.schemas.action import (
@@ -26,7 +29,12 @@ from app.schemas.action import (
     SimulatedExecutionRequest,
 )
 from app.services.feedback.evaluation_service import evaluate_execution_feedback
-from app.services.internal_memory_service import build_execution_decision_log, build_feedback_decision_log
+from app.services.memory_case_vector_service import MemoryCaseVectorService
+from app.services.internal_memory_service import (
+    build_execution_decision_log,
+    build_feedback_decision_log,
+    build_feedback_memory_case,
+)
 from app.services.audit_service import write_audit_log
 from app.services.notification_service import create_execution_alert_notifications
 
@@ -216,6 +224,50 @@ async def execute_simulated_plan(
     )
     await decision_repo.add(feedback_log)
     decision_logs.append(feedback_log)
+
+    memory_case = build_feedback_memory_case(
+        region_id=plan.region_id,
+        station_id=(plan.risk_assessment.station_id if plan.risk_assessment is not None else None),
+        risk_assessment_id=plan.risk_assessment_id,
+        incident_id=plan.incident_id,
+        action_plan_id=plan.id,
+        action_execution_id=(executions[-1].id if executions else None),
+        decision_log_id=feedback_log.id,
+        objective=plan.objective,
+        severity=(
+            plan.risk_assessment.risk_level.value
+            if plan.risk_assessment is not None
+            else None
+        ),
+        feedback=feedback,
+        context_payload={
+            "incident_id": str(plan.incident_id) if plan.incident_id is not None else None,
+            "risk_assessment_id": str(plan.risk_assessment_id),
+            "weather_linked": plan.risk_assessment.based_on_weather_id is not None
+            if plan.risk_assessment is not None
+            else False,
+        },
+        action_payload={
+            "steps": plan.plan_steps,
+            "execution_count": len(executions),
+            "batch_id": str(batch.id),
+        },
+        occurred_at=datetime.now(UTC),
+    )
+    memory_case_repo = MemoryCaseRepository(session)
+    if await memory_case_repo.is_table_ready():
+        try:
+            await memory_case_repo.add(memory_case)
+            await asyncio.wait_for(
+                MemoryCaseVectorService().upsert_memory_case(memory_case),
+                timeout=2.5,
+            )
+        except SQLAlchemyError:
+            # Keep execution path resilient during phased rollout before migration is applied.
+            pass
+        except Exception:
+            # Vector indexing is best-effort and must not fail execution pipeline.
+            pass
 
     plan.status = ActionPlanStatus.SIMULATED
     batch.status = ExecutionStatus.SUCCEEDED

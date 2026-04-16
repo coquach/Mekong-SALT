@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
@@ -121,3 +122,84 @@ async def test_retrieve_ranked_knowledge_context_uses_vertex_neighbors(
     assert all("citation" in item for item in evidence)
     assert all("metadata_filters" in item for item in evidence)
     assert evidence[0]["score"] >= evidence[-1]["score"]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_ranked_knowledge_context_includes_memory_case_evidence(
+    db_session,
+    monkeypatch,
+):
+    region_id = uuid4()
+
+    class FakeMemoryCase:
+        def __init__(self) -> None:
+            self.id = uuid4()
+            self.region_id = region_id
+            self.station_id = None
+            self.incident_id = None
+            self.action_plan_id = None
+            self.action_execution_id = None
+            self.severity = RiskLevel.WARNING.value
+            self.objective = "Protect irrigation intake"
+            self.outcome_class = "success"
+            self.outcome_status_legacy = "improved"
+            self.summary = "Previous warning-level case improved after advisory + wait-safe-window."
+            self.keywords = ["warning", "wait-safe-window", "irrigation"]
+            self.occurred_at = datetime.now(UTC)
+
+    async def fake_list_similar_cases(self, *, region_id, severity, query_terms, limit):
+        return [FakeMemoryCase()]
+
+    async def fake_is_table_ready(self):
+        return True
+
+    monkeypatch.setattr(
+        "app.repositories.memory_case.MemoryCaseRepository.list_similar_cases",
+        fake_list_similar_cases,
+    )
+    monkeypatch.setattr(
+        "app.repositories.memory_case.MemoryCaseRepository.is_table_ready",
+        fake_is_table_ready,
+    )
+
+    class FakeVertexService:
+        def is_configured(self) -> bool:
+            return False
+
+    monkeypatch.setattr(
+        "app.services.rag.retrieval_service.VertexVectorSearchService",
+        lambda: FakeVertexService(),
+    )
+
+    class FakeSettings:
+        rag_use_vertex_vector_search = True
+        rag_enable_local_fallback = False
+        rag_retrieval_top_k = 8
+
+    monkeypatch.setattr(
+        "app.services.rag.retrieval_service.get_settings",
+        lambda: FakeSettings(),
+    )
+
+    risk_bundle = SimpleNamespace(
+        assessment=SimpleNamespace(
+            id=uuid4(),
+            region_id=region_id,
+            risk_level=RiskLevel.WARNING,
+            trend_direction=TrendDirection.RISING,
+            trend_delta_dsm=Decimal("0.15"),
+            summary="Warning salinity drift.",
+            rationale={"source": "test"},
+        ),
+        reading=SimpleNamespace(),
+        weather_snapshot=None,
+    )
+
+    evidence = await retrieve_ranked_knowledge_context(
+        db_session,
+        objective="Reuse successful warning-case actions",
+        risk_bundle=risk_bundle,
+        max_evidence=6,
+    )
+
+    assert any(item["evidence_source"] == "memory_case" for item in evidence)

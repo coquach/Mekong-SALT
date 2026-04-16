@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.core.config import get_settings
 from app.models.enums import IncidentStatus
 from app.repositories.action import ActionPlanRepository
 from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
+from app.repositories.memory_case import MemoryCaseRepository
 from app.services.rag.vertex_vector_search_service import VertexVectorSearchService
 
 _DEFAULT_MAX_EVIDENCE = 8
@@ -43,6 +47,7 @@ async def retrieve_ranked_knowledge_context(
 ) -> list[dict[str, Any]]:
     """Build ranked RAG evidence from SOP docs, threshold docs, and similar cases."""
     settings = get_settings()
+    rag_top_k = int(getattr(settings, "rag_retrieval_top_k", 8))
     assessment = risk_bundle.assessment
     risk_level = assessment.risk_level.value
     query_terms = _extract_query_terms(
@@ -61,6 +66,7 @@ async def retrieve_ranked_knowledge_context(
 
     document_repo = KnowledgeDocumentRepository(session)
     case_repo = SimilarCaseRepository(session)
+    memory_case_repo = MemoryCaseRepository(session)
     action_repo = ActionPlanRepository(session)
 
     evidence: list[dict[str, Any]] = []
@@ -73,7 +79,7 @@ async def retrieve_ranked_knowledge_context(
                     assessment=assessment,
                     query_terms=query_terms,
                     max_evidence=max_evidence,
-                    top_k=settings.rag_retrieval_top_k,
+                    top_k=rag_top_k,
                 )
             )
         except Exception:
@@ -131,6 +137,47 @@ async def retrieve_ranked_knowledge_context(
                 risk_level=risk_level,
             )
         )
+
+    try:
+        if await memory_case_repo.is_table_ready():
+            memory_case_evidence: list[dict[str, Any]] = []
+            if settings.rag_use_vertex_vector_search:
+                try:
+                    memory_case_evidence = await asyncio.wait_for(
+                        _retrieve_memory_case_evidence_from_vertex(
+                            session,
+                            objective=objective,
+                            assessment=assessment,
+                            query_terms=query_terms,
+                            max_evidence=4,
+                            top_k=rag_top_k,
+                        ),
+                        timeout=2.5,
+                    )
+                except Exception:
+                    # Memory-case semantic lookup is best-effort and should not block planning.
+                    memory_case_evidence = []
+
+            if not memory_case_evidence:
+                memory_cases = await memory_case_repo.list_similar_cases(
+                    region_id=assessment.region_id,
+                    severity=risk_level,
+                    query_terms=query_terms,
+                    limit=4,
+                )
+                for case in memory_cases:
+                    memory_case_evidence.append(
+                        _build_memory_case_evidence(
+                            memory_case=case,
+                            query_terms=query_terms,
+                            risk_level=risk_level,
+                        )
+                    )
+
+            evidence.extend(memory_case_evidence)
+    except SQLAlchemyError:
+        # Support environments where memory_cases migration has not been applied yet.
+        pass
 
     deduped = _dedupe_evidence(evidence)
     ranked = sorted(deduped, key=lambda item: item["score"], reverse=True)[:max_evidence]
@@ -216,6 +263,85 @@ async def _retrieve_document_evidence_from_vertex(
         key=lambda item: (
             -item["score"],
             distance_order.get(item.get("chunk_id", ""), 9999),
+        )
+    )
+    return evidence[:max(max_evidence, 1)]
+
+
+async def _retrieve_memory_case_evidence_from_vertex(
+    session,
+    *,
+    objective: str,
+    assessment,
+    query_terms: list[str],
+    max_evidence: int,
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """Retrieve memory-case evidence via Vertex and hydrate from DB rows."""
+    vector_service = VertexVectorSearchService()
+    if not vector_service.is_configured():
+        return []
+
+    query_text = " ".join(
+        filter(
+            None,
+            [
+                objective,
+                getattr(assessment, "summary", None),
+                getattr(getattr(assessment, "risk_level", None), "value", None),
+                getattr(getattr(assessment, "trend_direction", None), "value", None),
+            ],
+        )
+    )
+
+    vectors = await vector_service.embed_texts([query_text])
+    if not vectors:
+        return []
+
+    neighbors = await vector_service.find_neighbors(
+        query_embedding=vectors[0],
+        neighbor_count=max(max(top_k, max_evidence) * 2, 12),
+        restricts={
+            "entity_type": ["memory_case"],
+            "region_scope": [str(getattr(assessment, "region_id"))],
+        },
+    )
+    if not neighbors:
+        return []
+
+    parsed_ids: list[UUID] = []
+    ordered_ids: list[str] = []
+    for neighbor in neighbors:
+        try:
+            parsed_ids.append(UUID(neighbor.datapoint_id))
+            ordered_ids.append(neighbor.datapoint_id)
+        except ValueError:
+            continue
+    if not parsed_ids:
+        return []
+
+    cases = await MemoryCaseRepository(session).list_by_ids(parsed_ids)
+    case_by_id = {str(case.id): case for case in cases}
+
+    evidence: list[dict[str, Any]] = []
+    risk_level = getattr(getattr(assessment, "risk_level", None), "value", "")
+    for neighbor in neighbors:
+        case = case_by_id.get(neighbor.datapoint_id)
+        if case is None:
+            continue
+        item = _build_memory_case_evidence(
+            memory_case=case,
+            query_terms=query_terms,
+            risk_level=risk_level,
+        )
+        item["score"] = round(item["score"] + _score_bias_from_distance(neighbor.distance), 3)
+        evidence.append(item)
+
+    distance_order = {case_id: index for index, case_id in enumerate(ordered_ids)}
+    evidence.sort(
+        key=lambda item: (
+            -item["score"],
+            distance_order.get(item.get("memory_case_id", ""), 9999),
         )
     )
     return evidence[:max(max_evidence, 1)]
@@ -365,6 +491,76 @@ def _build_case_evidence(
             "opened_at": incident.opened_at.isoformat(),
             "plan_id": str(latest_plan.id) if latest_plan is not None else None,
             "matched_terms": matched_terms,
+        },
+    }
+
+
+def _build_memory_case_evidence(
+    *,
+    memory_case,
+    query_terms: Iterable[str],
+    risk_level: str,
+) -> dict[str, Any]:
+    case_text = " ".join(
+        filter(
+            None,
+            [
+                memory_case.objective,
+                memory_case.summary,
+                str(memory_case.severity or ""),
+                str(memory_case.outcome_class or ""),
+                " ".join(memory_case.keywords or []),
+            ],
+        )
+    ).lower()
+    matched_terms = [term for term in query_terms if term in case_text]
+    score = 2.1 + (len(matched_terms) * 0.75)
+    if (memory_case.severity or "") == risk_level:
+        score += 0.45
+    if memory_case.outcome_class == "success":
+        score += 0.65
+    elif memory_case.outcome_class == "partial_success":
+        score += 0.35
+
+    snippet = _make_excerpt(memory_case.summary or case_text)
+    citation = {
+        "type": "memory_case",
+        "memory_case_id": str(memory_case.id),
+        "incident_id": str(memory_case.incident_id) if memory_case.incident_id is not None else None,
+        "plan_id": str(memory_case.action_plan_id) if memory_case.action_plan_id is not None else None,
+        "execution_id": (
+            str(memory_case.action_execution_id)
+            if memory_case.action_execution_id is not None
+            else None
+        ),
+        "occurred_at": memory_case.occurred_at.isoformat(),
+    }
+    metadata_filters = {
+        "region": str(memory_case.region_id),
+        "station": str(memory_case.station_id) if memory_case.station_id is not None else "any",
+        "severity": str(memory_case.severity or "unknown"),
+        "crop": "any",
+        "time": memory_case.occurred_at.date().isoformat(),
+    }
+
+    return {
+        "rank": 0,
+        "score": round(score, 3),
+        "snippet": snippet,
+        "citation": citation,
+        "metadata_filters": metadata_filters,
+        "evidence_type": "memory_case",
+        "evidence_source": "memory_case",
+        "title": "Memory case",
+        "summary": memory_case.summary,
+        "content_excerpt": snippet,
+        "memory_case_id": str(memory_case.id),
+        "metadata": {
+            "outcome_class": memory_case.outcome_class,
+            "legacy_status": memory_case.outcome_status_legacy,
+            "severity": memory_case.severity,
+            "matched_terms": matched_terms,
+            "keywords": memory_case.keywords or [],
         },
     }
 
