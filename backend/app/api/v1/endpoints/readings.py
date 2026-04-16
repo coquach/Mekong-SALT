@@ -1,4 +1,7 @@
-"""FE-facing reading query endpoints (Phase 1 facade)."""
+"""Canonical FE-facing reading query endpoints.
+
+Legacy `/sensors/latest` and `/sensors/history` routes were removed.
+"""
 
 from datetime import datetime
 from uuid import UUID
@@ -34,7 +37,7 @@ async def get_latest_readings(
     limit: int = Query(default=100, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return latest reading per station under FE-friendly `/readings` namespace."""
+    """Return latest reading per station under canonical `/readings` namespace."""
     # Phase 1 facade: reuse existing sensor service logic to avoid duplicating business rules.
     filters = SensorReadingHistoryFilters(
         station_id=station_id,
@@ -69,7 +72,7 @@ async def get_reading_history(
     limit: int = Query(default=100, ge=1, le=1000),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return historical readings under FE-friendly `/readings` namespace."""
+    """Return historical readings under canonical `/readings` namespace."""
     filters = SensorReadingHistoryFilters(
         station_id=station_id,
         station_code=station_code,

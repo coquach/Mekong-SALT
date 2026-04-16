@@ -40,7 +40,7 @@ async def test_latest_returns_one_latest_reading_per_station_for_region(
     region = seeded_sensor_data["region"]
 
     response = await client.get(
-        "/api/v1/sensors/latest",
+        "/api/v1/readings/latest",
         params={"region_code": region.code},
     )
 
@@ -73,7 +73,7 @@ async def test_history_filters_by_station_and_time_range(client, seeded_sensor_d
     end_at = seeded_sensor_data["now"] - timedelta(minutes=30)
 
     response = await client.get(
-        "/api/v1/sensors/history",
+        "/api/v1/readings/history",
         params={
             "station_code": station.code,
             "start_at": start_at.isoformat().replace("+00:00", "Z"),
@@ -98,7 +98,7 @@ async def test_history_rejects_invalid_time_range(client, seeded_sensor_data):
     end_at = start_at - timedelta(hours=1)
 
     response = await client.get(
-        "/api/v1/sensors/history",
+        "/api/v1/readings/history",
         params={
             "station_code": station.code,
             "start_at": start_at.isoformat().replace("+00:00", "Z"),
@@ -109,3 +109,12 @@ async def test_history_rejects_invalid_time_range(client, seeded_sensor_data):
     assert response.status_code == 400
     body = response.json()
     assert body["error"]["code"] == "invalid_time_range"
+
+
+@pytest.mark.asyncio
+async def test_legacy_sensor_read_routes_are_removed(client):
+    latest = await client.get("/api/v1/sensors/latest")
+    history = await client.get("/api/v1/sensors/history")
+
+    assert latest.status_code == 404
+    assert history.status_code == 404
