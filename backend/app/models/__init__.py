@@ -5,6 +5,7 @@ from app.models.agent_run import AgentRun, ObservationSnapshot
 from app.models.approval import Approval
 from app.models.audit import ActionOutcome, AuditLog
 from app.models.decision import DecisionLog
+from app.models.domain_event import DomainEvent
 from app.models.incident import Incident
 from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
 from app.models.goal import MonitoringGoal
@@ -25,6 +26,7 @@ __all__ = [
     "AuditLog",
     "AlertEvent",
     "DecisionLog",
+    "DomainEvent",
     "EmbeddedChunk",
     "Incident",
     "KnowledgeDocument",

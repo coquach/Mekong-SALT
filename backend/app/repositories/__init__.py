@@ -5,6 +5,7 @@ from app.repositories.agent_run import AgentRunRepository, ObservationSnapshotRe
 from app.repositories.approval import ApprovalRepository
 from app.repositories.base import AsyncRepository
 from app.repositories.decision import DecisionLogRepository
+from app.repositories.domain_event import DomainEventRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.repositories.incident import IncidentRepository
 from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
@@ -26,6 +27,7 @@ __all__ = [
     "AuditLogRepository",
     "ActionOutcomeRepository",
     "DecisionLogRepository",
+    "DomainEventRepository",
     "IncidentRepository",
     "KnowledgeDocumentRepository",
     "MemoryCaseRepository",

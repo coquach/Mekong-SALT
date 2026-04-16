@@ -14,6 +14,7 @@ from app.models.notification import Notification
 from app.repositories.ops import NotificationRepository
 from app.schemas.notification import NotificationCreate
 from app.services.audit_service import write_audit_log
+from app.services.domain_event_service import append_domain_event
 
 
 _DEFAULT_CHANNEL_RECIPIENTS: tuple[tuple[NotificationChannel, str], ...] = (
@@ -86,6 +87,28 @@ async def create_operational_notifications(
     channel_recipients: tuple[tuple[NotificationChannel, str], ...] | None = None,
 ) -> list[Notification]:
     """Create notifications across configured operational channels (mock-friendly)."""
+    event_name = str((payload or {}).get("event") or "notification_broadcast")
+    await append_domain_event(
+        session,
+        event_type=f"notification.{event_name}",
+        source="notification-service",
+        summary=subject,
+        payload={
+            "event": event_name,
+            "subject": subject,
+            "message": message,
+            "incident_id": str(incident_id) if incident_id is not None else None,
+            "execution_id": str(execution_id) if execution_id is not None else None,
+            "channels": [channel.value for channel, _ in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS)],
+            "details": payload or {},
+        },
+        aggregate_type="incident" if incident_id is not None else "system",
+        aggregate_id=incident_id,
+        incident_id=incident_id,
+        action_plan_id=_extract_uuid(payload, "action_plan_id"),
+        execution_batch_id=_extract_uuid(payload, "execution_batch_id"),
+    )
+
     notifications: list[Notification] = []
     for channel, recipient in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS):
         notification = await create_notification(
@@ -103,6 +126,16 @@ async def create_operational_notifications(
         )
         notifications.append(notification)
     return notifications
+
+
+def _extract_uuid(payload: dict | None, key: str) -> UUID | None:
+    raw = (payload or {}).get(key)
+    if raw is None:
+        return None
+    try:
+        return UUID(str(raw))
+    except ValueError:
+        return None
 
 
 async def create_incident_created_notifications(
