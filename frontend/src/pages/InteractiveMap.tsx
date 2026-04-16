@@ -1,39 +1,40 @@
-import React, { useState } from 'react';
-import { 
-  Layers, 
-  Maximize2, 
-  Download, 
-  AlertTriangle, 
-  Plus, 
-  Minus, 
-  Navigation, 
-  X, 
-  Zap, 
-  Lock,
-  Radio,
-  ChevronRight
-} from 'lucide-react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
+import React, { useState } from "react";
+import {
+  Layers,
+  Maximize2,
+  Download,
+  AlertTriangle,
+  Zap,
+  X,
+  TrendingUp,
+  Activity,
+  Waves,
+  Wind,
+  Cpu,
+  ChevronRight,
+} from "lucide-react";
+import { Card, CardContent } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { SatelliteMap } from "../components/dashboard/SatelliteMap";
 
-/**
- * INTERACTIVE MAP PAGE
- * --------------------
- * Giao diện bản đồ với các lớp điều khiển nổi (Floating UI).
- * Độ chính xác visual > 85% so với Figma.
- */
-
-// Component con cho các nút gạt (Toggle Switch)
-const MapToggle = ({ label, active, onClick }: { label: string, active: boolean, onClick: () => void }) => (
-  <div className="flex items-center justify-between py-2.5">
-    <span className="text-[11px] font-bold text-mekong-navy uppercase tracking-widest">{label}</span>
-    <button 
-      onClick={onClick}
-      className={`w-10 h-5 rounded-full relative transition-all duration-300 ${active ? 'bg-mekong-mint' : 'bg-slate-200'}`}
+const LayerSwitch = ({ label, active, onToggle }: any) => (
+  <div
+    className="flex items-center justify-between py-2 cursor-pointer group"
+    onClick={onToggle}
+  >
+    <span
+      className={`text-[11px] font-black uppercase tracking-widest transition-colors ${active ? "text-mekong-navy" : "text-slate-400"}`}
     >
-      <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${active ? 'right-1' : 'left-1'}`} />
-    </button>
+      {label}
+    </span>
+    <div
+      className={`w-9 h-5 rounded-full relative transition-all ${active ? "bg-mekong-mint" : "bg-slate-200"}`}
+    >
+      <div
+        className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${active ? "right-1" : "left-1"}`}
+      />
+    </div>
   </div>
 );
 
@@ -42,163 +43,264 @@ export const InteractiveMap = () => {
     heatmap: true,
     stations: true,
     gates: true,
-    prediction: false
+    prediction: false,
   });
 
   return (
-    <div className="relative w-full h-[calc(100vh-140px)] rounded-[40px] overflow-hidden shadow-2xl border border-slate-200 bg-slate-900">
-      
-      {/* 1. MAP BACKGROUND (Satellite Image Overlay) */}
-      <div className="absolute inset-0 z-0">
-        <img 
-          src="https://images.unsplash.com/photo-1582103287241-2762adba6c36?auto=format&fit=crop&q=80&w=2000" 
-          className="w-full h-full object-cover opacity-80 grayscale-[0.3]" 
-          alt="Mekong Delta Satellite" 
-        />
-        {/* Lớp phủ màu mặn (Heatmap Mockup) */}
-        <div className="absolute inset-0 bg-gradient-to-t from-orange-500/20 via-transparent to-transparent mix-blend-overlay" />
-      </div>
+    <div className="relative w-full h-[calc(100vh-120px)] rounded-[48px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10">
+      {/* --- MAP CHÍNH --- */}
+      <SatelliteMap layers={layers} zoom={15} showControls={true} />
 
-      {/* 2. TOP LEFT: LAYER CONTROLS & LEGEND */}
-      <div className="absolute top-8 left-8 z-20 space-y-4">
-        <Card variant="glass" padding="sm" className="w-64 rounded-3xl">
-          <div className="flex items-center gap-3 mb-4 border-b border-slate-200/20 pb-3">
+      {/* --- TOP LEFT: LAYER CONTROLS --- */}
+      <div className="absolute top-8 left-8 z-20 space-y-4 w-72">
+        <Card
+          variant="glass"
+          className="p-6 rounded-[32px] border-white/40 shadow-glass backdrop-blur-2xl"
+        >
+          <div className="flex items-center gap-3 mb-6 border-b border-mekong-navy/10 pb-4">
             <Layers size={18} className="text-mekong-navy" />
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Layer Controls</h3>
+            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">
+              Layer Controls
+            </h3>
           </div>
           <div className="space-y-1">
-            <MapToggle label="Salinity Heatmap" active={layers.heatmap} onClick={() => setLayers({...layers, heatmap: !layers.heatmap})} />
-            <MapToggle label="Sensor Stations" active={layers.stations} onClick={() => setLayers({...layers, stations: !layers.stations})} />
-            <MapToggle label="Irrigation Gates" active={layers.gates} onClick={() => setLayers({...layers, gates: !layers.gates})} />
-            <MapToggle label="Tidal Prediction Model" active={layers.prediction} onClick={() => setLayers({...layers, prediction: !layers.prediction})} />
+            <LayerSwitch
+              label="Salinity Heatmap"
+              active={layers.heatmap}
+              onToggle={() =>
+                setLayers({ ...layers, heatmap: !layers.heatmap })
+              }
+            />
+            <LayerSwitch
+              label="Sensor Stations"
+              active={layers.stations}
+              onToggle={() =>
+                setLayers({ ...layers, stations: !layers.stations })
+              }
+            />
+            <LayerSwitch
+              label="Irrigation Gates"
+              active={layers.gates}
+              onToggle={() => setLayers({ ...layers, gates: !layers.gates })}
+            />
+            <LayerSwitch
+              label="Tidal Prediction"
+              active={layers.prediction}
+              onToggle={() =>
+                setLayers({ ...layers, prediction: !layers.prediction })
+              }
+            />
           </div>
         </Card>
 
-        <Card variant="glass" padding="sm" className="w-64 rounded-2xl">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Salinity (g/L)</p>
+        {/* Legend */}
+        <Card
+          variant="glass"
+          className="p-5 rounded-2xl border-white/40 shadow-md"
+        >
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+            Salinity Index (g/L)
+          </p>
           <div className="flex h-2 rounded-full overflow-hidden mb-2">
             <div className="flex-1 bg-mekong-mint" />
             <div className="flex-1 bg-yellow-400" />
             <div className="flex-1 bg-orange-500" />
             <div className="flex-1 bg-mekong-critical" />
           </div>
-          <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">
-            <span>0.5</span><span>1.0</span><span>2.0</span><span>4.0+</span>
+          <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            <span>0.5</span>
+            <span>1.0</span>
+            <span>2.0</span>
+            <span>4.0+</span>
           </div>
         </Card>
       </div>
 
-      {/* 3. TOP RIGHT: UTILITY BUTTONS & AI LOGIC */}
-      <div className="absolute top-8 right-8 z-20 space-y-4 flex flex-col items-end">
-        <div className="flex flex-col gap-3">
-          <Button variant="outline" className="bg-white/90 backdrop-blur-md border-none shadow-xl w-48 h-12 rounded-xl text-xs">
-            <Maximize2 size={16} className="mr-3" /> Manual Override
-          </Button>
-          <Button variant="outline" className="bg-white/90 backdrop-blur-md border-none shadow-xl w-48 h-12 rounded-xl text-xs">
-            <Download size={16} className="mr-3" /> Export Map State
-          </Button>
-          <Button variant="danger" className="bg-[#BA1A1A]/90 backdrop-blur-md border-none shadow-xl w-48 h-12 rounded-xl text-xs text-white">
-            <AlertTriangle size={16} className="mr-3" /> Report Sensor Error
-          </Button>
+      {/* --- TOP RIGHT: ACTIONS & AUTO-GATE --- */}
+      <div className="absolute top-8 right-8 z-20 flex flex-col items-end gap-5 w-80">
+        {/* 1. KHỐI NÚT HÀNH ĐỘNG (Standardized Buttons) */}
+        <div className="flex flex-col gap-3 w-full">
+          {/* Nút Manual Override - Phong cách Kính mờ trắng */}
+          <button className="group flex items-center justify-between bg-white/90 backdrop-blur-md px-5 py-3.5 rounded-2xl shadow-xl hover:bg-white transition-all active:scale-[0.98] border border-white/20">
+            <div className="flex items-center gap-3">
+              <Maximize2
+                size={18}
+                className="text-mekong-navy group-hover:rotate-45 transition-transform"
+              />
+              <span className="text-[11px] font-black text-mekong-navy uppercase tracking-[0.2em]">
+                Manual Override
+              </span>
+            </div>
+            <ChevronRight
+              size={14}
+              className="text-slate-300 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all"
+            />
+          </button>
+
+          {/* Nút Report Error - Màu đỏ cảnh báo sắc nét */}
+          <button className="group flex items-center gap-3 bg-mekong-critical text-white px-5 py-3.5 rounded-2xl shadow-2xl shadow-red-900/30 hover:bg-red-700 transition-all active:scale-[0.98] border border-white/10">
+            <AlertTriangle
+              size={18}
+              strokeWidth={2.5}
+              className="group-hover:animate-bounce"
+            />
+            <span className="text-[11px] font-black uppercase tracking-[0.2em]">
+              Report Sensor Error
+            </span>
+          </button>
         </div>
 
-        <Card variant="navy" padding="sm" className="w-64 rounded-3xl border-white/10 bg-[#00203F]/90 backdrop-blur-xl">
-          <div className="flex items-center gap-2 mb-4 text-mekong-cyan">
-            <Zap size={18} fill="currentColor" />
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Auto-Gate Logic</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center group cursor-pointer">
-              <span className="text-[11px] font-bold text-slate-400 group-hover:text-white transition-colors">Thới Tân Gate</span>
-              <span className="text-[10px] font-black text-mekong-mint uppercase tracking-widest">Ready</span>
+        {/* 2. KHỐI AUTO-GATE LOGIC (Logic Status Panel) */}
+        <Card
+          variant="navy"
+          padding="none"
+          className="w-full rounded-[32px] bg-[#00203F]/90 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden group"
+        >
+          {/* Decorative Glow */}
+          <div className="absolute -right-10 -top-10 w-32 h-32 bg-mekong-cyan/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="p-6 relative z-10">
+            {/* Header Panel */}
+            <div className="flex items-center gap-3 mb-8 text-mekong-cyan">
+              <Zap size={20} fill="currentColor" className="animate-pulse" />
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] leading-none">
+                Auto-Gate Logic
+              </h3>
             </div>
-            <div className="flex justify-between items-center group cursor-pointer">
-              <span className="text-[11px] font-bold text-slate-400 group-hover:text-white transition-colors">Phú Đông Gate</span>
-              <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest">Monitoring</span>
+
+            {/* List Items - Đã fix lỗi dính chữ và căn lề */}
+            <div className="space-y-5">
+              {[
+                {
+                  label: "Hai Tân Node",
+                  status: "READY",
+                  variant: "optimal" as const,
+                },
+                {
+                  label: "Phú Đông Gate",
+                  status: "MONITORING",
+                  variant: "warning" as const,
+                },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between group/item"
+                >
+                  <span className="text-[13px] font-bold text-slate-400 group-hover/item:text-slate-200 transition-colors">
+                    {item.label}
+                  </span>
+                  {/* Sử dụng Badge chuẩn để đảm bảo kích thước khít 100% */}
+                  <Badge
+                    variant={item.variant}
+                    className={`text-[9px] py-1 px-3 min-w-[90px] text-center justify-center font-black tracking-widest ${
+                      item.variant === "optimal"
+                        ? "bg-mekong-mint/10 text-mekong-mint"
+                        : "bg-amber-500/10 text-amber-500"
+                    }`}
+                  >
+                    {item.status}
+                  </Badge>
+                </div>
+              ))}
             </div>
           </div>
+
+          {/* Footer trang trí siêu mỏng */}
+          <div className="h-1 w-full bg-gradient-to-r from-transparent via-mekong-cyan/20 to-transparent" />
         </Card>
       </div>
 
-      {/* 4. MAP MARKERS (Static Mockups) */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-         {/* Sensor Marker */}
-         <div className="absolute -top-10 -left-20 bg-[#BA1A1A]/20 p-2 rounded-2xl animate-pulse">
-            <div className="bg-[#BA1A1A] p-2.5 rounded-xl text-white shadow-2xl border border-white/20">
-               <Radio size={24} />
-            </div>
-         </div>
-         {/* Gate Marker */}
-         <div className="flex flex-col items-center gap-2">
-            <div className="bg-[#00203F] p-3 rounded-2xl text-white shadow-2xl border-2 border-white/20 ring-4 ring-[#00203F]/20">
-               <Lock size={24} />
-            </div>
-            <span className="bg-[#00203F] px-3 py-1 rounded-lg text-[9px] font-black text-white uppercase tracking-widest shadow-xl">Closed</span>
-         </div>
-      </div>
-
-      {/* 5. BOTTOM RIGHT: ZOOM CONTROLS */}
-      <div className="absolute bottom-10 right-10 z-20 flex flex-col gap-3">
-        <button className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-2xl hover:bg-white transition-all"><Plus size={20} className="text-mekong-navy" /></button>
-        <button className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-2xl hover:bg-white transition-all"><Minus size={20} className="text-mekong-navy" /></button>
-        <button className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-2xl hover:bg-white transition-all mt-2"><Navigation size={20} className="text-mekong-navy rotate-45" /></button>
-      </div>
-
-      {/* 6. BOTTOM PANEL: STATION DETAILS (Detailed Overlay) */}
+      {/* --- BOTTOM PANEL: STATION DEEP DIVE --- */}
       <div className="absolute bottom-8 left-8 right-32 z-30">
-        <Card variant="glass" padding="lg" className="rounded-[40px] shadow-glass border-white/50 backdrop-blur-2xl">
-          <div className="flex justify-between items-start mb-10">
-            <div>
-              <div className="flex items-center gap-4 mb-2">
-                <h2 className="text-3xl font-black text-mekong-navy tracking-tighter uppercase leading-none">Station: Hai Tân</h2>
-                <Badge variant="warning" dot className="bg-amber-50 text-amber-600 border-amber-200">Rising Salinity</Badge>
+        <Card
+          variant="glass"
+          className="rounded-[40px] p-10 shadow-glass border-white/60 backdrop-blur-3xl ring-1 ring-black/5 animate-in slide-in-from-bottom-10 duration-700"
+        >
+          <div className="flex justify-between items-start mb-8">
+            <div className="space-y-1">
+              <div className="flex items-center gap-4">
+                <h2 className="text-4xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
+                  Station: Hai Tân
+                </h2>
+                <Badge variant="critical" dot className="py-1.5 px-4">
+                  Rising Salinity
+                </Badge>
               </div>
-              <p className="text-sm font-bold text-mekong-slate uppercase tracking-widest opacity-80">
+              <p className="text-sm font-bold text-mekong-slate uppercase tracking-widest opacity-70">
                 Mỹ Tho River Entrance | Coord: 10.352, 106.365
               </p>
             </div>
-            <button className="p-3 bg-slate-100/50 hover:bg-slate-200/50 rounded-full transition-all"><X size={24} className="text-mekong-navy" /></button>
+            <button className="p-3 hover:bg-slate-200/50 rounded-full transition-all">
+              <X size={24} className="text-mekong-navy" />
+            </button>
           </div>
 
-          <div className="grid grid-cols-12 gap-6 items-end">
-            {/* Metrics */}
-            <div className="col-span-12 lg:col-span-6 grid grid-cols-2 gap-4">
-               {[
-                 { label: 'Live Reading', value: '2.45', unit: 'g/L', color: 'text-mekong-teal' },
-                 { label: 'Tidal Level', value: '+1.2', unit: 'm', color: 'text-mekong-teal' },
-                 { label: 'Wind Velocity', value: '14.2', unit: 'km/h', color: 'text-mekong-navy' },
-                 { label: 'AI Peak Prediction', value: '3.10', unit: 'g/L', color: 'text-mekong-navy', sub: 'Expected in 4h 20m', bg: 'bg-[#006877]/5 border-mekong-teal/10' }
-               ].map((m, i) => (
-                 <div key={i} className={`p-6 rounded-3xl border border-slate-100 bg-white/50 shadow-sm ${m.bg}`}>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">{m.label}</p>
-                    <div className="flex items-baseline gap-1">
-                       <span className={`text-2xl font-black ${m.color} tracking-tighter`}>{m.value}</span>
-                       <span className="text-[10px] font-black text-slate-400 uppercase">{m.unit}</span>
-                    </div>
-                    {m.sub && <p className="text-[9px] font-bold text-mekong-teal mt-2 italic">{m.sub}</p>}
-                 </div>
-               ))}
+          <div className="grid grid-cols-12 gap-8 items-end">
+            <div className="col-span-6 grid grid-cols-2 gap-4">
+              {[
+                {
+                  label: "Live Reading",
+                  val: "2.45",
+                  unit: "g/L",
+                  color: "text-mekong-teal",
+                },
+                {
+                  label: "Tidal Level",
+                  val: "+1.2",
+                  unit: "m",
+                  color: "text-mekong-teal",
+                },
+                {
+                  label: "Wind Velocity",
+                  val: "14.2",
+                  unit: "km/h",
+                  color: "text-mekong-navy",
+                },
+                {
+                  label: "Peak Forecast",
+                  val: "3.10",
+                  unit: "g/L",
+                  color: "text-mekong-navy",
+                  bg: "bg-slate-100/50",
+                },
+              ].map((m, i) => (
+                <div
+                  key={i}
+                  className={`p-6 rounded-3xl border border-white/40 bg-white/40 shadow-sm ${m.bg}`}
+                >
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">
+                    {m.label}
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={`text-3xl font-black ${m.color} tracking-tighter`}
+                    >
+                      {m.val}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                      {m.unit}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Visual Chart Placeholder (Right part of the card) */}
-            <div className="col-span-12 lg:col-span-6 h-40 flex items-end gap-3 px-4 relative">
-               {[30, 45, 38, 55, 75, 85, 95, 80].map((h, i) => (
-                 <div 
-                   key={i} 
-                   style={{ height: `${h}%` }} 
-                   className={`flex-1 rounded-t-xl transition-all duration-700 ${i > 3 ? 'bg-mekong-mint shadow-[0_0_15px_rgba(45,212,191,0.3)]' : 'bg-slate-200'}`} 
-                 />
-               ))}
-               <div className="absolute right-0 bottom-full mb-4 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm text-[9px] font-black text-mekong-navy uppercase tracking-widest">
-                  24H History & AI Forecast
-               </div>
-               {/* Dash line for forecast */}
-               <div className="absolute bottom-[40%] left-0 w-full h-0 border-t-2 border-dashed border-slate-300 -z-10" />
+            {/* Visual Forecast Chart */}
+            <div className="col-span-6 h-48 flex items-end gap-3 px-6 relative bg-white/20 rounded-[32px] border border-white/20 p-8">
+              {[20, 35, 30, 50, 75, 90, 85, 80].map((h, i) => (
+                <div
+                  key={i}
+                  style={{ height: `${h}%` }}
+                  className={`flex-1 rounded-t-xl transition-all duration-700 ${i > 3 ? "bg-mekong-mint shadow-[0_0_15px_#1BAEA6]" : "bg-slate-300"}`}
+                />
+              ))}
+              <div className="absolute top-6 right-8 bg-mekong-navy text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">
+                24H History & Forecast
+              </div>
             </div>
           </div>
         </Card>
       </div>
-
     </div>
   );
 };

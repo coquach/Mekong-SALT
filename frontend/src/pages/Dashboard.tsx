@@ -293,7 +293,7 @@ export const Dashboard = () => {
             >
               {/* Header và các thành phần khác giữ nguyên */}
               <div className="w-full h-full">
-                <SatelliteMap />
+                <SatelliteMap zoom={12} showControls={false} />
               </div>
             </Card>
 
