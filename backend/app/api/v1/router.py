@@ -21,9 +21,8 @@ from app.api.v1.endpoints.stations import router as stations_router
 
 router = APIRouter()
 
-# Operational read/write boundaries
+# Operational write/read boundaries
 router.include_router(actions_router)
-# Explicit HITL approval boundary.
 router.include_router(approvals_router)
 router.include_router(agent_router)
 router.include_router(audit_router)
@@ -34,11 +33,14 @@ router.include_router(goals_router)
 router.include_router(health_router)
 router.include_router(incidents_router)
 router.include_router(notifications_router)
+
+# Canonical read facades for UI and integrations.
+# - plans: plan records
+# - readings: sensor history/latest records
 router.include_router(plans_router)
 router.include_router(readings_router)
 
-# Transitional overlap routes: retained for compatibility during FE migration.
-# Preferred facade routes are `/readings/*` and `/plans/*`.
+# Domain-specific telemetry and administration surfaces.
 router.include_router(risk_router)
 router.include_router(sensors_router)
 router.include_router(stations_router)

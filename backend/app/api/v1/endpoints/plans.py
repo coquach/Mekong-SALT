@@ -22,7 +22,7 @@ async def list_plans(
     limit: int = Query(default=100, ge=1, le=500),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List recent plans under FE-friendly `/plans` namespace."""
+    """List recent plans under canonical `/plans` namespace."""
     plans = await ActionPlanRepository(session).list_recent(limit=limit)
     return success_response(
         request=request,

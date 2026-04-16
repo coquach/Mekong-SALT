@@ -79,26 +79,35 @@ Authentication is disabled for MVP demo.
 curl http://localhost:8000/api/v1/health
 ```
 
-## Reactive Flow
+## Current Orchestration Flow
 
-1. Ingest a sensor reading: `POST /api/v1/sensors/ingest`
-2. Create or update a monitoring goal: `POST /api/v1/goals`, `PATCH /api/v1/goals/{goal_id}`
-3. Worker observes due goals and runs `observe -> risk -> incident -> plan`
-4. Valid plans are approved by `reactive-monitoring`
-5. Approved plans execute through the simulated action engine
-6. Watch state: `GET /api/v1/dashboard/summary`, `GET /api/v1/dashboard/stream`, `GET /api/v1/risk/latest`, `GET /api/v1/plans`, `GET /api/v1/actions/logs`
+1. Observe: ingest and monitor readings (`/sensors/ingest`, `/goals/*`, worker tick).
+2. Assess risk: deterministic risk evaluation and incident decision.
+3. Retrieve context (RAG): gather SOP/threshold/similar-case evidence before drafting.
+4. Generate AI plan (Vertex Gemini) and validate plan with deterministic policy rules.
+5. Classify risk and branch approval gate: high risk waits for human decision, low risk may auto-approve.
+6. Execute simulated actions and emit milestone notifications.
+7. Evaluate outcome from post-action observations and persist memory case evidence for re-planning.
+8. Stream operational updates via dashboard SSE + durable domain event cursor.
+
+Watch state:
+
+- `GET /api/v1/dashboard/summary`
+- `GET /api/v1/dashboard/stream`
+- `GET /api/v1/risk/latest`
+- `GET /api/v1/plans`
+- `GET /api/v1/actions/logs`
 
 Manual trigger endpoints for risk evaluation, plan generation, approval, and
 action execution are no longer public API. The public API configures goals and
 reads state; the worker owns side-effecting decisions.
 
-Approval and feedback boundaries now expose explicit contract placeholders
-without runtime side effects:
+Approval and feedback boundaries:
 
-- `POST /api/v1/approvals/plans/{plan_id}/decision` (placeholder, returns 501)
-- `GET /api/v1/approvals/plans/{plan_id}/history` (placeholder, returns 501)
-- `POST /api/v1/feedback/execution-batches/{batch_id}/evaluate` (placeholder, returns 501)
-- `GET /api/v1/feedback/execution-batches/{batch_id}/latest` (placeholder, returns 501)
+- `POST /api/v1/approvals/plans/{plan_id}/decision` is active (records approval/rejection).
+- `GET /api/v1/approvals/plans/{plan_id}/history` is active.
+- `POST /api/v1/feedback/execution-batches/{batch_id}/evaluate` remains a contract placeholder (501).
+- `GET /api/v1/feedback/execution-batches/{batch_id}/latest` remains a contract placeholder (501).
 
 ## Operational API Boundaries
 
@@ -113,18 +122,16 @@ without runtime side effects:
 | `/notifications` | `app.services.notification_service` | dashboard/SMS/Zalo/email mock records | stable |
 | `/agent/*`, `/audit/*` | `app.services.agent_trace_service`, `app.services.audit_service` | traceability and auditability | stable |
 | `/dashboard/*` | `app.services.dashboard_service` | operational summary and timeline stream | stable |
-| `/approvals/*` | `app.services.approval_service` | HITL approval contracts (no side effects yet) | placeholder |
+| `/approvals/*` | `app.services.approval_service` | HITL approval workflow and decision history | active |
 | `/feedback/*` | `app.services.feedback` (planned) | post-execution evaluation contracts | placeholder |
 
-## Transitional Route Overlap
+## Canonical API Boundaries
 
-The following routes are transitional and retained for compatibility during FE migration:
-
-- Legacy read APIs: `/api/v1/sensors/latest`, `/api/v1/sensors/history`
-- Preferred facade read APIs: `/api/v1/readings/latest`, `/api/v1/readings/history`
-- Legacy risk read API: `/api/v1/risk/latest` (kept while dashboard/read facades evolve)
-
-These transitional routes should not be used for new integrations.
+- Sensor ingestion: `/api/v1/sensors/ingest`
+- Reading queries: `/api/v1/readings/*` (canonical read surface)
+- Plan queries: `/api/v1/plans/*` (canonical plan read surface)
+- Agent observability only: `/api/v1/agent/runs*`
+- Operational lifecycle: `/api/v1/incidents`, `/api/v1/approvals`, `/api/v1/execution-batches`, `/api/v1/actions/logs`, `/api/v1/notifications`
 
 ## Folder Layout
 

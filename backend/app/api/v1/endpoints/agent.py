@@ -9,9 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppException
 from app.core.responses import success_response
 from app.db.session import get_db_session
-from app.repositories.action import ActionPlanRepository
 from app.repositories.agent_run import AgentRunRepository
-from app.schemas.action import ActionPlanRead
 from app.schemas.common import SuccessResponse
 from app.schemas.trace import AgentRunCollection, AgentRunRead, ObservationSnapshotRead
 
@@ -54,25 +52,6 @@ def _run_to_read_model(run) -> AgentRunRead:
             if run.observation_snapshot is not None
             else None
         ),
-    )
-
-
-@router.get(
-    "/plans",
-    response_model=SuccessResponse[list[ActionPlanRead]],
-    summary="List recent AI-generated plans",
-)
-async def list_plans_endpoint(
-    request: Request,
-    limit: int = Query(default=100, ge=1, le=500),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """List recent plans for approval dashboards."""
-    plans = await ActionPlanRepository(session).list_recent(limit=limit)
-    return success_response(
-        request=request,
-        message="Plans retrieved successfully.",
-        data=[ActionPlanRead.model_validate(plan) for plan in plans],
     )
 
 

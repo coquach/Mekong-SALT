@@ -16,6 +16,12 @@ from app.services.active_monitoring_service import run_monitoring_goal_cycle
 from app.services.risk_service import evaluate_current_risk
 
 
+@pytest.mark.asyncio
+async def test_agent_plans_route_removed(client):
+    response = await client.get("/api/v1/agent/plans")
+    assert response.status_code == 404
+
+
 async def _persist_stub_weather_snapshot(
     session,
     *,
