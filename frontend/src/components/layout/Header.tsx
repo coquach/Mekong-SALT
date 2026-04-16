@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Globe, ChevronDown, Command } from 'lucide-react';
+import { Search, Bell, Globe, ChevronDown, Sparkles } from 'lucide-react';
 
 /**
  * HEADER COMPONENT
@@ -23,10 +23,10 @@ export const Header = () => {
           className="w-full bg-slate-50 border-none rounded-full py-2.5 pl-12 pr-12 text-sm font-medium focus:ring-2 ring-mekong-teal/20 transition-all placeholder:text-slate-400"
         />
         {/* Shortcut Hint - Điểm nhấn UX cho chuyên gia */}
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden lg:flex items-center gap-1 px-2 py-1 border border-slate-200 rounded-lg text-[9px] font-black text-slate-400 bg-white shadow-sm pointer-events-none">
-          <Command size={10} />
-          <span>K</span>
-        </div>
+        <button className="absolute right-2 top-1/2 -translate-y-1/2 bg-mekong-navy text-white px-4 py-1.5 rounded-full text-[10px]font-black uppercase tracking-widest hover:bg-mekong-teal transition-all shadow-md flex items-center gap-2 group">
+          <Sparkles size={12} className="group-hover:animate-pulse text-mekong-cyan" />
+          <span>Search</span>
+        </button>
       </div>
 
       {/* 2. KHU VỰC ĐIỀU KHIỂN & NGƯỜI DÙNG (RIGHT ACTIONS) */}

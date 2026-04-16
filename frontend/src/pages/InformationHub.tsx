@@ -1,203 +1,391 @@
-import React from 'react';
-import { 
-  ArrowRight, 
-  Calendar, 
-  MapPin, 
-  Bookmark, 
-  ChevronRight, 
+import React from "react";
+import {
+  ArrowRight,
+  Calendar,
+  MapPin,
+  Bookmark,
   Microscope,
   Mail,
-  ExternalLink,
-  Globe,
   ShieldCheck,
-  Database
-} from 'lucide-react';
-import { Card, CardContent } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
+  Search,
+  Sparkles,
+  ChevronRight,
+  TrendingUp,
+  Clock,
+  Monitor, // <-- Thêm Monitor vào đây
+  AlertTriangle,
+  Users,
+  ArrowUpRight, // <-- Thêm AlertTriangle vào đâ
+} from "lucide-react";
+
+// Import UI Components đã build ở các bước trước
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
 
 /**
- * INFORMATION HUB PAGE
- * --------------------
- * Trang trung tâm tin tức và dữ liệu khoa học.
- * Độ chính xác visual > 85% so với Figma.
+ * REFACTORED INFORMATION HUB
+ * --------------------------
+ * Section 1: Hero Alert with Blended Background Image
+ * Section 2: Main Grid (8 cols News/Research | 4 cols Sidebar)
  */
 
 export const InformationHub = () => {
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      
-      {/* 1. HERO ALERT SECTION - Điểm nhấn chính của trang */}
-      <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] p-10 lg:p-16 text-white shadow-2xl">
-        {/* Background Image Overlay */}
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2000')] bg-cover bg-center opacity-20 mix-blend-overlay" />
-        <div className="absolute inset-0 bg-gradient-to-r from-mekong-navy via-mekong-navy/80 to-transparent" />
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      {/* --- SECTION 1: HERO ALERT SECTION --- */}
+      {/* --- HERO ALERT SECTION: COMPACT WIDGET & CLEARER BG --- */}
+      <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] px-8 lg:px-16 h-[560px] flex items-center text-white shadow-2xl border border-white/5">
+        {/* 1. LỚP HÌNH ẢNH NỀN: Tăng độ rõ lên 40% (opacity-40) */}
+        <div className="absolute inset-0 z-0 select-none">
+          <img
+            src="/src/assets/hero-bg.png"
+            alt="Mekong Delta"
+            className="w-full h-full object-cover opacity-40 mix-blend-luminosity grayscale-[0.3]"
+          />
+          {/* Gradient mờ nhẹ hơn để tôn ảnh nền nhưng vẫn đảm bảo đọc được chữ */}
+          <div className="absolute inset-0 bg-gradient-to-r from-mekong-navy via-mekong-navy/70 to-transparent" />
+        </div>
 
-        <div className="relative z-10 grid grid-cols-12 gap-12 items-center">
-          <div className="col-span-12 lg:col-span-8 space-y-8">
-            <div className="flex items-center gap-4">
-              <Badge variant="critical" className="bg-[#BA1A1A] text-white border-none py-1.5 px-4">Urgent Alert</Badge>
-              <div className="flex items-center gap-2 text-xs font-bold text-mekong-cyan">
-                <div className="w-2 h-2 bg-mekong-mint rounded-full animate-pulse" />
-                Tiền River Monitoring
+        <div className="relative z-10 grid grid-cols-12 gap-10 items-center w-full">
+          {/* --- BÊN TRÁI: NỘI DUNG (Mở rộng không gian lên 8 cột) --- */}
+          <div className="col-span-12 lg:col-span-8 flex flex-col justify-center space-y-8 min-w-0">
+            <div className="flex items-center gap-5">
+              {/* Badge Urgent Alert - Đã sửa lỗi blur, sắc nét và thẩm mỹ hơn */}
+              <Badge
+                variant="critical"
+                className="bg-mekong-critical text-white border border-white/10 py-2 px-6 text-[12px] font-black uppercase tracking-[0.2em] shadow-[0_4px_12px_rgba(0,0,0,0.3)] ring-1 ring-white/5"
+              >
+                URGENT ALERT
+              </Badge>
+              <div className="flex items-center gap-3 text-[14px] font-black text-mekong-cyan uppercase tracking-widest drop-shadow-md">
+                <div className="w-2.5 h-2.5 bg-mekong-mint rounded-full animate-pulse shadow-[0_0_10px_#1BAEA6]" />
+                TIỀN RIVER MONITORING
               </div>
             </div>
 
-            <h1 className="text-6xl lg:text-7xl font-black leading-[1.05] tracking-tighter max-w-2xl">
-              Upcoming Salt Peak: <br/>
-              <span className="text-mekong-cyan">March 28, 2026</span>
-            </h1>
+            <div className="space-y-4">
+              <h1 className="text-5xl lg:text-[5.2rem] font-black leading-[1] tracking-tighter drop-shadow-2xl">
+                Upcoming Salt Peak: <br />
+                <span className="text-mekong-cyan drop-shadow-[0_0_30px_rgba(117,231,254,0.2)]">
+                  May 9, 2026
+                </span>
+              </h1>
+              <p className="text-lg lg:text-xl text-slate-200 max-w-2xl leading-relaxed font-medium opacity-90 drop-shadow-md">
+                Agent models predict a salinity surge of up to{" "}
+                <span className="text-white font-bold underline decoration-mekong-cyan underline-offset-4">
+                  4.2g/L
+                </span>{" "}
+                at the Mỹ Tho station. Local farmers are advised to seal sluice
+                gates.
+              </p>
+            </div>
 
-            <p className="text-lg text-slate-300 max-w-xl leading-relaxed font-medium">
-              Agent models predict a salinity surge of up to 4.2g/L at the Mỹ Tho station. 
-              Local farmers are advised to seal sluice gates and prioritize freshwater storage before Friday evening.
-            </p>
-
-            <div className="flex flex-wrap gap-4 pt-4">
-              <Button variant="cyan" size="lg" className="px-10 h-14">View Action Plan</Button>
-              <Button variant="outline" size="lg" className="px-10 h-14 border-white/20 text-white hover:bg-white/10">
-                Download Report
+            <div className="flex flex-wrap gap-5 pt-2">
+              <Button
+                variant="cyan"
+                className="px-10 h-14 text-[12px] font-black shadow-lg"
+              >
+                VIEW ACTION PLAN
+              </Button>
+              <Button
+                variant="outline"
+                className="px-10 h-14 text-[12px] font-black border-white/20 text-white hover:bg-white/5 backdrop-blur-sm"
+              >
+                DOWNLOAD REPORT
               </Button>
             </div>
           </div>
 
-          {/* Current Salinity Widget inside Hero */}
-          <div className="col-span-12 lg:col-span-4 bg-white/5 backdrop-blur-xl rounded-[32px] p-8 border border-white/10 self-start">
-            <div className="flex justify-between items-start mb-6">
-              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Current Salinity</p>
-              <Badge variant="critical" className="bg-[#BA1A1A]/20 text-[#BA1A1A] border-none text-[12px] font-black">+12%</Badge>
-            </div>
-            <div className="flex items-baseline gap-2 mb-8">
-              <span className="text-6xl font-black tracking-tighter">2.8</span>
-              <span className="text-xl font-bold text-slate-400">g/L</span>
-            </div>
-            
-            <div className="space-y-4">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 pb-2">Live River Node Status</p>
-              {[
-                { name: 'Station #082 - Tiền Giang', status: 'Optimal', color: 'text-mekong-mint' },
-                { name: 'Station #045 - Mỹ Tho', status: 'Critical', color: 'text-[#BA1A1A]' },
-                { name: 'Station #109 - Chợ Lách', status: 'Monitoring', color: 'text-mekong-cyan' },
-              ].map((node, i) => (
-                <div key={i} className="flex justify-between items-center group cursor-pointer">
-                  <span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{node.name}</span>
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${node.color}`}>{node.status}</span>
+          {/* --- BÊN PHẢI: WIDGET (Hẹp lại còn 4 cột, thu nhỏ padding) --- */}
+          <div className="col-span-12 lg:col-span-4 flex justify-end">
+            {/* Khung nhỏ lại (max-w-[420px]) và padding gọn gàng (p-8 lg:p-10) */}
+            <div className="bg-white/[0.05] backdrop-blur-3xl rounded-[32px] p-8 lg:p-10 border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] ring-1 ring-white/10 w-full max-w-[420px] transition-all duration-500 hover:bg-white/[0.08]">
+              <div className="flex justify-between items-center mb-10">
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
+                  CURRENT SALINITY
+                </p>
+                <div className="bg-mekong-critical/30 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[12px] font-black shadow-lg">
+                  <TrendingUp size={14} strokeWidth={3} /> +12%
                 </div>
-              ))}
+              </div>
+
+              {/* Số 2.8 khít khung hơn */}
+              <div className="flex items-baseline gap-3 mb-10">
+                <span className="text-8xl lg:text-[8.5rem] font-black tracking-tighter leading-none text-white drop-shadow-2xl">
+                  2.8
+                </span>
+                <span className="text-2xl font-black text-slate-500 uppercase tracking-widest opacity-60">
+                  g/L
+                </span>
+              </div>
+
+              {/* Danh sách trạm gọn gàng */}
+              <div className="space-y-4 pt-6 border-t border-white/10">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] mb-4">
+                  LIVE RIVER NODE STATUS
+                </p>
+                {[
+                  {
+                    name: "Station #082 - Tiền Giang",
+                    status: "OPTIMAL",
+                    color: "text-mekong-mint",
+                  },
+                  {
+                    name: "Station #045 - Mỹ Tho",
+                    status: "CRITICAL",
+                    color: "text-mekong-critical",
+                  },
+                  {
+                    name: "Station #109 - Chợ Lách",
+                    status: "MONITORING",
+                    color: "text-mekong-cyan",
+                  },
+                ].map((node, i) => (
+                  <div
+                    key={i}
+                    className="flex justify-between items-center py-1 group/item cursor-pointer"
+                  >
+                    <span className="text-[14px] font-bold text-slate-200 group-hover/item:text-white transition-colors">
+                      {node.name}
+                    </span>
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-widest ${node.color}`}
+                    >
+                      {node.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 2. MAIN LAYOUT GRID */}
+      {/* --- MAIN LAYOUT GRID: NEWS & SIDEBAR --- */}
       <div className="grid grid-cols-12 gap-10">
-        
-        {/* LEFT COLUMN - Tin tức & Nghiên cứu (70%) */}
+        {/* LEFT AREA: LATEST UPDATES & RESEARCH (8 Columns) */}
         <div className="col-span-12 lg:col-span-8 space-y-12">
-          
-          {/* Latest Updates Section */}
+          {/* --- LATEST UPDATES SECTION: COMPACT & CUSTOM IMAGES --- */}
           <section>
-            <div className="flex justify-between items-end mb-8">
-              <h2 className="text-3xl font-black text-mekong-navy tracking-tighter uppercase">Latest Updates</h2>
-              <button className="flex items-center gap-2 text-xs font-black text-mekong-teal uppercase tracking-widest hover:translate-x-1 transition-transform">
+            {/* --- LATEST UPDATES HEADER WITH DECORATIVE LINE --- */}
+            <div className="flex justify-between items-end mb-10">
+              <div className="space-y-3">
+                {" "}
+                {/* Bọc tiêu đề và đường gạch vào 1 khối để căn chỉnh */}
+                <h2 className="text-3xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
+                  Latest Updates
+                </h2>
+                {/* Đường gạch Teal đặc trưng - Giống hệt bên Upcoming Events */}
+                <div className="w-12 h-1.5 bg-mekong-teal rounded-full shadow-sm" />
+              </div>
+
+              <button className="flex items-center gap-2 text-[11px] font-black text-mekong-teal uppercase tracking-[0.2em] hover:translate-x-1 transition-all">
                 View All News <ArrowRight size={14} />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Card 1 */}
-              <Card isHoverable padding="none" className="overflow-hidden border-none group shadow-lg shadow-slate-200/50">
-                <div className="h-56 bg-[#006877] relative">
-                  <img src="https://images.unsplash.com/photo-1542601906990-b4d3fb773b09?q=80&w=1000" className="w-full h-full object-cover mix-blend-multiply opacity-80" alt="Irrigation" />
-                  <div className="absolute top-4 left-4 flex gap-2">
-                    <Badge className="bg-white/90 text-mekong-navy font-black text-[9px] border-none">Directives</Badge>
-                    <Badge className="bg-[#BA1A1A] text-white font-black text-[9px] border-none uppercase">Local</Badge>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
+              {/* CARD 1: DIRECTIVES */}
+              <Card
+                padding="none"
+                className="rounded-[40px] overflow-hidden border-none bg-white shadow-soft group cursor-pointer"
+              >
+                <div className="h-60 overflow-hidden relative">
+                  <img
+                    src="/src/assets/new-1.png" // <-- Thay bằng tên file ảnh thứ nhất của bạn
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    alt="Irrigation Schedule"
+                  />
+                  <div className="absolute top-6 left-6 flex gap-2">
+                    <span className="bg-white px-3 py-1 rounded-lg text-[10px] font-black text-mekong-navy uppercase tracking-widest shadow-sm">
+                      Directives
+                    </span>
+                    <span className="bg-red-500/80 backdrop-blur-sm px-3 py-1 rounded-lg text-[10px] font-black text-white uppercase tracking-widest shadow-sm">
+                      Local
+                    </span>
                   </div>
                 </div>
-                <CardContent className="p-8">
-                  <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.15em] mb-3">Government • 2 hours ago</p>
-                  <h3 className="text-xl font-black text-mekong-navy mb-4 leading-snug group-hover:text-mekong-teal transition-colors">
+
+                <CardContent className="p-7 lg:p-8 space-y-3">
+                  {" "}
+                  {/* Giảm padding từ 10 xuống 7/8 */}
+                  <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.2em]">
+                    GOVERNMENT • 2 HOURS AGO
+                  </p>
+                  <h3 className="text-[20px] font-black text-mekong-navy leading-[1.2] tracking-tight group-hover:text-mekong-teal transition-colors uppercase">
                     New Irrigation Schedule for Bến Tre Province Released
                   </h3>
-                  <p className="text-sm text-mekong-slate leading-relaxed font-medium mb-6 line-clamp-2">
-                    Official decree from the Ministry of Agriculture outlines specific hours for gate operation during peak tide cycles...
+                  <p className="text-[14px] text-slate-500 font-medium leading-relaxed line-clamp-2">
+                    Official decree from the Ministry of Agriculture outlines
+                    specific hours for gate operation during peak tide cycles...
                   </p>
-                  <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white shadow-sm" />
-                    <Bookmark size={18} className="text-slate-300 hover:text-mekong-navy cursor-pointer" />
+                  {/* Card Footer: Đã thu hẹp khoảng cách */}
+                  <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50">
+                    <div className="w-9 h-9 rounded-full border-2 border-white shadow-md overflow-hidden bg-slate-100">
+                      <img
+                        src="https://i.pravatar.cc/150?u=gov"
+                        alt="Author"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {/* Icon Bookmark - Đã fix lỗi mờ, sắc nét hơn */}
+                    <button className="p-2 -mr-2 rounded-full hover:bg-slate-50 transition-colors group">
+                      <Bookmark
+                        size={20}
+                        strokeWidth={2.5} // Tăng độ dày nét vẽ để icon rõ hơn
+                        className="text-slate-400 group-hover:text-mekong-navy transition-colors"
+                      />
+                    </button>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Card 2 */}
-              <Card isHoverable padding="none" className="overflow-hidden border-none group shadow-lg shadow-slate-200/50">
-                <div className="h-56 bg-[#00203F] relative">
-                  <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000" className="w-full h-full object-cover mix-blend-screen opacity-40" alt="AI System" />
-                  <Badge className="absolute top-4 left-4 bg-white/90 text-mekong-navy font-black text-[9px] border-none uppercase">Intelligence</Badge>
+              {/* CARD 2: INTELLIGENCE */}
+              <Card
+                padding="none"
+                className="rounded-[40px] overflow-hidden border-none bg-white shadow-soft group cursor-pointer"
+              >
+                <div className="h-60 overflow-hidden relative">
+                  <img
+                    src="/src/assets/new-2.png" // <-- Thay bằng tên file ảnh thứ hai của bạn
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    alt="AI Sluice Control"
+                  />
+                  <div className="absolute top-5 left-5">
+                    <Badge className="bg-white/95 text-mekong-navy font-black border-none shadow-sm">
+                      Intelligence
+                    </Badge>
+                  </div>
                 </div>
-                <CardContent className="p-8">
-                  <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.15em] mb-3">SALT Agent • 5 hours ago</p>
-                  <h3 className="text-xl font-black text-mekong-navy mb-4 leading-snug group-hover:text-mekong-teal transition-colors">
+
+                <CardContent className="p-7 lg:p-8 space-y-3">
+                  <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.2em]">
+                    SALT AGENT • 5 HOURS AGO
+                  </p>
+                  <h3 className="text-[20px] font-black text-mekong-navy leading-[1.2] tracking-tight group-hover:text-mekong-teal transition-colors uppercase">
                     Autonomous Sluice Control System Goes Live in Sóc Trăng
                   </h3>
-                  <p className="text-sm text-mekong-slate leading-relaxed font-medium mb-6 line-clamp-2">
-                    The new AI-driven infrastructure automatically closes gates based on live salinity sensor readings...
+                  <p className="text-[14px] text-slate-500 font-medium leading-relaxed line-clamp-2">
+                    The new AI-driven infrastructure automatically closes gates
+                    based on live salinity sensor readings...
                   </p>
-                  <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-                       <ShieldCheck size={14}/> AI Generated Insight
+
+                  {/* Card Footer: Đã thu hẹp khoảng cách */}
+                  <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} className="text-mekong-teal" />
+                      <span className="text-[10px] font-black text-mekong-teal uppercase tracking-widest">
+                        AI Generated Insight
+                      </span>
                     </div>
-                    <Bookmark size={18} className="text-slate-300 hover:text-mekong-navy cursor-pointer" />
+                    {/* Icon Bookmark - Đã fix lỗi mờ, sắc nét hơn */}
+                    <button className="p-2 -mr-2 rounded-full hover:bg-slate-50 transition-colors group">
+                      <Bookmark
+                        size={20}
+                        strokeWidth={2.5} // Tăng độ dày nét vẽ để icon rõ hơn
+                        className="text-slate-400 group-hover:text-mekong-navy transition-colors"
+                      />
+                    </button>
                   </div>
                 </CardContent>
               </Card>
             </div>
           </section>
 
-          {/* Scientific Insights Section */}
-          <section className="bg-[#00203F] rounded-[40px] p-10 lg:p-14 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-mekong-cyan/10 rounded-full blur-[100px]" />
-            
-            <div className="flex items-center gap-6 mb-12">
-               <div className="p-4 bg-mekong-cyan/20 rounded-2xl border border-mekong-cyan/30 text-mekong-cyan shadow-lg shadow-cyan-500/10">
-                 <Microscope size={32} />
-               </div>
-               <div>
-                  <h2 className="text-3xl font-black uppercase tracking-tighter">Scientific Insights</h2>
-                  <p className="text-sm text-slate-400 font-medium">Long-form research & delta hydrologic models</p>
-               </div>
+          {/* SCIENTIFIC INSIGHTS: Dark Section */}
+          {/* --- SECTION: SCIENTIFIC INSIGHTS (HIGH-END DARK VARIANT) --- */}
+          {/* --- SECTION: SCIENTIFIC INSIGHTS (ENHANCED TYPOGRAPHY) --- */}
+          <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] p-10 lg:p-14 text-white shadow-2xl border border-white/5">
+            {/* Ánh sáng nền (Giữ nguyên) */}
+            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-mekong-cyan/5 rounded-full blur-[120px] pointer-events-none" />
+
+            {/* Header Section */}
+            <div className="relative z-10 flex items-center gap-6 mb-20">
+              {" "}
+              {/* Tăng margin bottom lên 20 */}
+              <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
+                <Microscope size={40} strokeWidth={2.5} />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-none">
+                  Scientific Insights
+                </h2>
+                <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.3em] opacity-80">
+                  Long-form research & delta hydrologic models
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-12">
+            {/* List of Research Items */}
+            <div className="relative z-10 space-y-16">
+              {" "}
+              {/* Tăng khoảng cách giữa các bài viết lên 16 */}
               {[
-                { 
-                  tag: 'Research Paper', time: '12 min read', 
-                  title: 'Modeling the Impact of Upstream Damming on Delta Salinity Dynamics', 
-                  desc: 'A comprehensive study utilizing SALT\'s proprietary hydrologic agents to forecast long-term changes...',
-                  img: 'https://images.unsplash.com/photo-1532187863486-abf9d39d99c5?q=80&w=800'
+                {
+                  tag: "Research Paper",
+                  time: "12 MIN READ",
+                  title:
+                    "Modeling the Impact of Upstream Damming on Delta Salinity Dynamics",
+                  desc: "A comprehensive study utilizing SALT's proprietary hydrologic agents to forecast long-term changes in riverbed morphology and saline front movement.",
+                  img: "/src/assets/research-1.jpg",
                 },
-                { 
-                  tag: 'Delta Model V2.4', time: '8 min read', 
-                  title: 'Adaptive Agriculture: Transitioning to Salt-Tolerant Rice Varieties', 
-                  desc: 'How farmers in Tiền Giang are successfully piloting ST25 rice hybrids in brackish water environments...',
-                  img: 'https://images.unsplash.com/photo-1560493676-04071c5f467b?q=80&w=800'
-                }
+                {
+                  tag: "Delta Model V2.4",
+                  time: "8 MIN READ",
+                  title:
+                    "Adaptive Agriculture: Transitioning to Salt-Tolerant Rice Varieties",
+                  desc: "How farmers in Tiền Giang are successfully piloting ST25 rice hybrids in brackish water environments using real-time AI irrigation schedules.",
+                  img: "/src/assets/research-2.jpg",
+                },
               ].map((item, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-8 group cursor-pointer border-b border-white/10 pb-10 last:border-none last:pb-0">
-                  <div className="col-span-12 md:col-span-4 rounded-3xl overflow-hidden h-44 shadow-2xl">
-                    <img src={item.img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Research" />
+                <div
+                  key={idx}
+                  className="grid grid-cols-12 gap-12 group cursor-pointer border-b border-white/5 pb-16 last:border-none last:pb-0"
+                >
+                  {/* Khối Hình ảnh (Mở rộng chiều cao một chút để cân bằng với chữ to) */}
+                  <div className="col-span-12 md:col-span-4 h-60 rounded-[32px] overflow-hidden shadow-2xl border border-white/10 ring-1 ring-white/5 relative">
+                    <img
+                      src={item.img}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      alt="Research"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-mekong-navy/70 to-transparent" />
                   </div>
-                  <div className="col-span-12 md:col-span-8 flex flex-col justify-center">
-                    <div className="flex items-center gap-4 mb-3">
-                      <span className="text-[10px] font-black text-mekong-cyan uppercase tracking-widest">{item.tag}</span>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase">{item.time}</span>
+
+                  {/* Khối Nội dung - PHÓNG TO CHỮ */}
+                  <div className="col-span-12 md:col-span-8 flex flex-col justify-center space-y-6">
+                    <div className="flex items-center gap-6">
+                      {/* Nhãn Tag to hơn (13px) */}
+                      <span className="text-[13px] font-black text-mekong-cyan uppercase tracking-[0.25em]">
+                        {item.tag}
+                      </span>
+                      {/* Thời gian đọc to hơn (12px) */}
+                      <div className="flex items-center gap-2 text-[12px] font-black text-slate-500 uppercase tracking-widest">
+                        <Clock size={14} strokeWidth={3} />
+                        <span>{item.time}</span>
+                      </div>
                     </div>
-                    <h3 className="text-2xl font-black mb-3 group-hover:text-mekong-cyan transition-colors leading-tight">
+
+                    {/* TIÊU ĐỀ PHÓNG TO (32px) */}
+                    <h3 className="text-[32px] lg:text-[34px] font-black leading-[1.15] tracking-tight group-hover:text-mekong-cyan transition-colors duration-300">
                       {item.title}
                     </h3>
-                    <p className="text-sm text-slate-400 font-medium leading-relaxed mb-4 line-clamp-2">
+
+                    {/* MÔ TẢ PHÓNG TO (17px) */}
+                    <p className="text-[17px] text-slate-400 font-medium leading-relaxed opacity-90 max-w-4xl line-clamp-2 group-hover:opacity-100 transition-opacity">
                       {item.desc}
                     </p>
+
+                    <div className="pt-2 flex items-center gap-3 text-mekong-cyan text-[13px] font-black uppercase tracking-widest opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-500">
+                      Read Full Analysis <ArrowUpRight size={16} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -205,77 +393,195 @@ export const InformationHub = () => {
           </section>
         </div>
 
-        {/* RIGHT COLUMN - Widgets (30%) */}
+        {/* RIGHT AREA: EVENTS & STAY INFORMED (4 Columns) */}
         <div className="col-span-12 lg:col-span-4 space-y-8">
-          
-          {/* Upcoming Events Widget */}
-          <Card variant="white" className="border-none shadow-xl shadow-slate-200/50">
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-[0.2em] mb-8 border-b border-slate-100 pb-4">
-              Upcoming Events
-            </h3>
-            <div className="space-y-8">
+          {/* --- UPCOMING EVENTS: PROFESSIONAL REFINEMENT --- */}
+          {/* --- UPCOMING EVENTS: PROFESSIONAL STRIPE VERSION --- */}
+          <aside className="space-y-8">
+            {/* Section Header */}
+            <div className="space-y-3 mb-8 px-2">
+              <h2 className="text-xl font-black text-mekong-navy uppercase tracking-[0.15em]">
+                Upcoming Events
+              </h2>
+              <div className="w-12 h-1.5 bg-mekong-teal rounded-full shadow-sm shadow-mekong-teal/20" />
+            </div>
+
+            {/* Event List */}
+            <div className="space-y-5">
               {[
-                { date: 'March 30', title: 'Farmer Training Workshop', loc: 'Mỹ Tho Community Center', type: 'workshop' },
-                { date: 'April 05', title: 'Stakeholder Summit 2024', loc: 'Virtual / Hybrid (HCM City)', type: 'summit' },
-                { date: 'April 12', title: 'Emergency Drill: Peak Flow', loc: 'Bến Tre Operations Hub', type: 'emergency' },
-              ].map((event, i) => (
-                <div key={i} className="flex gap-6 group cursor-pointer">
-                  <div className="flex-shrink-0 w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center group-hover:bg-mekong-teal group-hover:text-white transition-all">
-                    <span className="text-[9px] font-black uppercase">{event.date.split(' ')[0]}</span>
-                    <span className="text-xl font-black leading-none">{event.date.split(' ')[1]}</span>
-                  </div>
-                  <div className="flex flex-col justify-center">
-                    <h4 className="text-sm font-black text-mekong-navy mb-1 group-hover:text-mekong-teal transition-colors leading-tight">{event.title}</h4>
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                      <MapPin size={10} className="text-mekong-teal" /> {event.loc}
+                {
+                  date: "MARCH 30",
+                  title: "Farmer Training Workshop",
+                  desc: "Salinity mitigation techniques for small-scale fruit orchards.",
+                  loc: "Mỹ Tho Community Center",
+                  icon: Calendar,
+                  color: "bg-mekong-teal", // Màu thanh dọc
+                  textColor: "text-mekong-teal",
+                },
+                {
+                  date: "APRIL 05",
+                  title: "Stakeholder Summit 2024",
+                  desc: "Annual review of Mekong-SALT hydrologic accuracy.",
+                  loc: "Virtual / Hybrid (HCM City)",
+                  icon: Users,
+                  color: "bg-mekong-cyan",
+                  textColor: "text-mekong-cyan",
+                },
+                {
+                  date: "APRIL 12",
+                  title: "Emergency Drill: Peak Flow",
+                  desc: "Testing rapid response protocols for sluice gate coordination.",
+                  loc: "Bến Tre Operations Hub",
+                  icon: AlertTriangle,
+                  color: "bg-mekong-critical",
+                  textColor: "text-mekong-critical",
+                },
+              ].map((event, idx) => (
+                <Card
+                  key={idx}
+                  padding="none"
+                  className="rounded-[32px] border border-slate-100 bg-white shadow-soft hover:shadow-[0_20px_40px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 group cursor-pointer overflow-hidden relative"
+                >
+                  {/* THANH MÀU DỌC - CHẠY KHÍT CARD */}
+                  <div
+                    className={`absolute top-0 left-0 w-2 h-full ${event.color} transition-all duration-500 group-hover:w-3`}
+                  />
+
+                  {/* NỘI DUNG CARD - Có padding-left (pl-8) để né thanh màu */}
+                  <div className="p-7 pl-9 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="bg-slate-50 text-slate-500 px-3 py-1 rounded-xl text-[10px] font-black tracking-widest border border-slate-100">
+                        {event.date}
+                      </span>
+                      <event.icon
+                        size={18}
+                        className={`${event.textColor} opacity-60 group-hover:opacity-100 transition-opacity`}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h4 className="text-[17px] font-black text-mekong-navy leading-tight group-hover:text-mekong-teal transition-colors">
+                        {event.title}
+                      </h4>
+                      <p className="text-[13px] text-slate-500 font-medium leading-relaxed opacity-85">
+                        {event.desc}
+                      </p>
+                    </div>
+
+                    <div
+                      className={`flex items-center gap-2 pt-1 text-[10px] font-black uppercase tracking-[0.2em] ${event.textColor}`}
+                    >
+                      <MapPin size={14} strokeWidth={2.5} />
+                      <span>{event.loc}</span>
                     </div>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
-            <Button variant="outline" className="w-full mt-10 font-black text-[10px] h-12 border-slate-200">View Full Calendar</Button>
-          </Card>
 
-          {/* Newsletter Widget */}
-          <Card variant="white" className="bg-[#ECFEFF] border-none shadow-sm relative overflow-hidden">
-            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-mekong-cyan/20 rounded-full blur-3xl" />
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest mb-3 relative z-10">Stay Informed</h3>
-            <p className="text-xs text-mekong-slate font-medium leading-relaxed mb-6 relative z-10">
-              Receive weekly salinity forecasts and critical river alerts directly in your inbox.
-            </p>
-            <div className="space-y-3 relative z-10">
-              <input 
-                type="email" 
-                placeholder="Email address" 
-                className="w-full bg-white border-none rounded-xl px-4 py-3 text-sm focus:ring-2 ring-mekong-teal/20 shadow-sm"
-              />
-              <Button variant="navy" className="w-full h-12 shadow-lg shadow-mekong-navy/20">Subscribe</Button>
+            {/* Button chuyên nghiệp */}
+            <button className="w-full py-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-[12px] font-black text-mekong-navy uppercase tracking-[0.25em] hover:bg-white hover:shadow-md hover:border-mekong-teal/30 transition-all active:scale-[0.98]">
+              View Full Calendar
+            </button>
+          </aside>
+
+          {/* Newsletter Card: Light Cyan BG */}
+          <Card
+            variant="white"
+            className="bg-[#ECFEFF] border-none shadow-sm relative overflow-hidden p-10"
+          >
+            <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-mekong-cyan/30 rounded-full blur-3xl" />
+            <div className="relative z-10 space-y-4">
+              <h3 className="text-sm font-black text-mekong-navy uppercase tracking-[0.2em]">
+                Stay Informed
+              </h3>
+              <p className="text-xs text-mekong-slate font-medium leading-relaxed">
+                Receive weekly salinity forecasts and critical river alerts
+                directly in your inbox.
+              </p>
+              <div className="space-y-3 pt-2">
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  className="w-full bg-white border-none rounded-xl px-4 py-3.5 text-xs font-bold text-mekong-navy focus:ring-2 ring-mekong-teal/20 shadow-sm"
+                />
+                <Button
+                  variant="navy"
+                  className="w-full h-12 shadow-xl shadow-mekong-navy/10"
+                >
+                  Subscribe
+                </Button>
+              </div>
             </div>
           </Card>
 
-          {/* Quick Support Links Footer Widget */}
-          <div className="grid grid-cols-2 gap-6 pt-4">
-             <div className="space-y-3">
-                <p className="text-[10px] font-black text-mekong-navy uppercase tracking-widest">Resources</p>
-                <ul className="space-y-2 text-[11px] font-bold text-slate-500">
-                  <li className="hover:text-mekong-teal cursor-pointer">API Documentation</li>
-                  <li className="hover:text-mekong-teal cursor-pointer">Open Data Initiative</li>
-                  <li className="hover:text-mekong-teal cursor-pointer">Research Grants</li>
+          {/* --- SIDEBAR FOOTER: COMPACT VERSION --- */}
+          <div className="mt-6 pt-6 border-t border-slate-200 space-y-8 animate-in fade-in duration-500">
+            {/* 1. HAI CỘT LIÊN KẾT (Đã thu hẹp gap và margin) */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Cột Resources */}
+              <div className="space-y-4">
+                <p className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em] border-b border-slate-100 pb-2">
+                  RESOURCES
+                </p>
+                <ul className="space-y-2">
+                  {["API Documentation", "Open Data", "Research Grants"].map(
+                    (item) => (
+                      <li
+                        key={item}
+                        className="text-[14px] font-bold text-slate-500 hover:text-mekong-teal hover:translate-x-1 transition-all cursor-pointer flex items-center gap-2 group"
+                      >
+                        <div className="w-1 h-1 rounded-full bg-slate-300 group-hover:bg-mekong-teal transition-colors" />
+                        {item}
+                      </li>
+                    ),
+                  )}
                 </ul>
-             </div>
-             <div className="space-y-3">
-                <p className="text-[10px] font-black text-mekong-navy uppercase tracking-widest">Connect</p>
-                <ul className="space-y-2 text-[11px] font-bold text-slate-500">
-                  <li className="hover:text-mekong-teal cursor-pointer">Ministry of Water</li>
-                  <li className="hover:text-mekong-teal cursor-pointer">Tech Support</li>
-                  <li className="hover:text-mekong-teal cursor-pointer">Partner Portal</li>
+              </div>
+
+              {/* Cột Connect */}
+              <div className="space-y-4">
+                <p className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em] border-b border-slate-100 pb-2">
+                  CONNECT
+                </p>
+                <ul className="space-y-2">
+                  {["Ministry of Water", "Tech Support", "Partner Portal"].map(
+                    (item) => (
+                      <li
+                        key={item}
+                        className="text-[14px] font-bold text-slate-500 hover:text-mekong-teal hover:translate-x-1 transition-all cursor-pointer flex items-center gap-2 group"
+                      >
+                        <div className="w-1 h-1 rounded-full bg-slate-300 group-hover:bg-mekong-teal transition-colors" />
+                        {item}
+                      </li>
+                    ),
+                  )}
                 </ul>
-             </div>
+              </div>
+            </div>
+
+            {/* 2. THÔNG TIN DỰ ÁN (Branding Block - Thu nhỏ padding) */}
+            <div className="space-y-3 px-4 py-5 bg-slate-50 rounded-2xl border border-slate-100 relative overflow-hidden group">
+              <div className="absolute top-0 left-0 w-1 h-full bg-mekong-teal opacity-60" />
+
+              <p className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em]">
+                MEKONG-SALT PROJECT
+              </p>
+              <p className="text-[13px] text-slate-500 font-semibold leading-relaxed opacity-90">
+                A collaborative platform for hydrologic intelligence, bringing
+                together live sensor data and agentic AI to protect the Mekong
+                Delta's agricultural future.
+              </p>
+
+              <div className="pt-1">
+                <span className="text-[9px] font-black bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-400 uppercase tracking-widest inline-block">
+                  System v4.2.1
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-
       </div>
-
     </div>
   );
 };

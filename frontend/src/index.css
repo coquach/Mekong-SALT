@@ -3,27 +3,30 @@
 /* --- 1. ĐỊNH NGHĨA THEME THEO BẢNG MÀU FIGMA --- */
 @theme {
   /* Màu sắc chủ đạo (Primary) */
-  --color-mekong-navy: #00203F;
-  --color-mekong-deep: #001C1D;
-  --color-mekong-slate: #64748B;
-  
+  --color-mekong-navy: #00203f;
+  --color-mekong-deep: #001c1d;
+  --color-mekong-slate: #64748b;
+
   /* Màu sắc tương tác (Interactive) */
   --color-mekong-teal: #006877;
-  --color-mekong-mint: #1BAEA6;
-  --color-mekong-cyan: #75E7FE;
-  
+  --color-mekong-mint: #1baea6;
+  --color-mekong-cyan: #75e7fe;
+
   /* Màu sắc trạng thái (Status) */
-  --color-mekong-critical: #BA1A1A;
-  --color-mekong-warning: #F59E0B;
-  --color-mekong-optimal: #2DD4BF;
-  --color-mekong-info: #0C355E;
-  --color-mekong-bg: #F8FAFC;
+  --color-mekong-critical: #ba1a1a;
+  --color-mekong-warning: #f59e0b;
+  --color-mekong-optimal: #2dd4bf;
+  --color-mekong-info: #0c355e;
+
+  /* ĐIỀU CHỈNH: Nền xám nhạt chuyên nghiệp để tôn vinh Card trắng */
+  --color-mekong-bg: #e2e8f0;
 
   /* Typography */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* Hiệu ứng đổ bóng (Shadows) */
-  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  /* Hiệu ứng đổ bóng (Shadows) - Đã làm đậm hơn một chút để nổi khối trên nền xám */
+  --shadow-soft:
+    0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
   --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
 
   /* Animation tùy chỉnh */
@@ -32,27 +35,45 @@
 
 /* --- 2. CÀI ĐẶT NỀN TẢNG (BASE STYLES) --- */
 @layer base {
-  *, ::after, ::before {
+  *,
+  ::after,
+  ::before {
     box-sizing: border-box;
   }
 
-  /* Fix lỗi layout của Vite: Tràn màn hình, không căn giữa */
-  html, body, #root {
+  /* Reset chuẩn cho ứng dụng Full-screen Dashboard */
+  html,
+  body,
+  #root {
     height: 100%;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    text-align: left !important; /* Xóa căn giữa của file cũ */
+    text-align: left !important;
+
+    /* Áp dụng nền xám Slate mới */
     background-color: var(--color-mekong-bg);
     color: var(--color-mekong-navy);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Reset margin cho các thẻ tiêu đề */
-  h1, h2, h3, h4, h5, h6, p {
+  /* Loại bỏ khoảng trống thừa của các thẻ text mặc định */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
     margin: 0;
+  }
+
+  /* Hiệu ứng bôi đen văn bản đặc trưng của dự án */
+  ::selection {
+    background-color: var(--color-mekong-cyan);
+    color: var(--color-mekong-navy);
   }
 }
 
@@ -63,7 +84,7 @@
   mask-image: linear-gradient(to right, black 50%, transparent 100%);
 }
 
-/* Thanh cuộn chuyên nghiệp */
+/* Thanh cuộn tinh tế kiểu Dashboard hiện đại */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -72,17 +93,21 @@
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #cbd5e1; /* slate-300 */
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #94a3b8; /* slate-400 */
 }
 
 /* Hiệu ứng Scan Radar cho Map */
 @keyframes scan {
-  0% { top: -10%; }
-  100% { top: 100%; }
+  0% {
+    top: -10%;
+  }
+  100% {
+    top: 100%;
+  }
 }
 .animate-scan {
   animation: scan 5s linear infinite;
