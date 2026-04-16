@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,10 @@ from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.goal import MonitoringGoal
 from app.models.incident import Incident
-from app.orchestration.reactive import ReactiveAdvanceResult, advance_plan_reactively
+from app.orchestration.lifecycle_graph import (
+    LifecycleAdvanceResult,
+    advance_plan_with_lifecycle_graph,
+)
 from app.repositories.action import ActionPlanRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.schemas.agent import AgentPlanRequest
@@ -38,7 +41,9 @@ class MonitoringCycleResult:
     risk_bundle: RiskEvaluationBundle | None = None
     incident: Incident | None = None
     plan_bundle: AgentPlanBundle | None = None
-    reactive_result: ReactiveAdvanceResult | None = None
+    lifecycle_result: LifecycleAdvanceResult | None = None
+    orchestration_path: Literal["lifecycle_graph"] | None = None
+    transition_log: list[dict[str, Any]] | None = None
     existing_plan: ActionPlan | None = None
     reason: str | None = None
 
@@ -61,13 +66,13 @@ async def run_monitoring_goal_cycle(
     redis_manager: RedisManager | None,
     settings: Settings | None = None,
 ) -> MonitoringCycleResult:
-    """Run observe -> risk -> incident -> optional reactive plan execution for one goal.
+    """Run observe -> risk -> incident -> lifecycle graph advancement for one goal.
 
     Dry-run still records deterministic risk and incident evidence so operators can
     inspect stability over time, but it deliberately skips autonomous plan creation.
     Active mode creates one plan when auto-plan is enabled and no active/simulated plan
-    already exists for the same incident, then advances it through the reactive
-    approval/execution pipeline according to settings.
+    already exists for the same incident, then advances it through the lifecycle
+    approval/execution/feedback/memory graph.
     """
     resolved_settings = settings or get_settings()
     risk_bundle = await evaluate_current_risk(
@@ -175,14 +180,16 @@ async def run_monitoring_goal_cycle(
             "source_incident_id": str(incident.id),
         },
     )
-    reactive_result = await advance_plan_reactively(
+    lifecycle_result = await advance_plan_with_lifecycle_graph(
         session,
         plan=plan_bundle.plan,
         settings=resolved_settings,
     )
-    if reactive_result.status == "executed":
+    orchestration_path: Literal["lifecycle_graph"] = "lifecycle_graph"
+
+    if lifecycle_result.status == "executed":
         status = "succeeded_plan_executed"
-    elif reactive_result.status == "awaiting_human_approval":
+    elif lifecycle_result.status == "awaiting_human_approval":
         status = "succeeded_pending_human"
     else:
         status = "succeeded_plan_created"
@@ -199,8 +206,10 @@ async def run_monitoring_goal_cycle(
         risk_bundle=risk_bundle,
         incident=incident,
         plan_bundle=plan_bundle,
-        reactive_result=reactive_result,
-        reason=reactive_result.reason,
+        lifecycle_result=lifecycle_result,
+        orchestration_path=orchestration_path,
+        transition_log=lifecycle_result.transition_log,
+        reason=lifecycle_result.reason,
     )
 
 

@@ -74,12 +74,14 @@ async def generate_agent_plan(
         retrieved_context = state["retrieved_context"]
         generated_plan = state["draft_plan"]
         validation_result = state["validation_result"]
+        transition_log = state.get("transition_log") or []
 
         await _capture_plan_observation(
             session=session,
             run=run,
             risk_bundle=resolved_risk_bundle,
             retrieved_context=retrieved_context,
+            transition_log=transition_log,
         )
         incident, incident_decision = await _resolve_plan_incident(
             session=session,
@@ -104,6 +106,7 @@ async def generate_agent_plan(
             generated_plan=generated_plan,
             validation_result=validation_result,
             retrieved_context=retrieved_context,
+            transition_log=transition_log,
         )
         finish_agent_run(
             run,
@@ -113,6 +116,7 @@ async def generate_agent_plan(
                 plan=plan,
                 validation_result=validation_result,
                 retrieved_context=retrieved_context,
+                transition_log=transition_log,
             ),
             risk_assessment_id=resolved_risk_bundle.assessment.id,
             incident_id=plan.incident_id,
@@ -144,13 +148,18 @@ async def _capture_plan_observation(
     run: AgentRun,
     risk_bundle: RiskEvaluationBundle,
     retrieved_context: dict[str, Any],
+    transition_log: list[dict[str, Any]],
 ) -> None:
     """Persist the observation snapshot used before committing a plan decision."""
     await capture_observation_snapshot(
         session,
         run=run,
         source="plan.pre_decision",
-        payload=_plan_observation_payload(risk_bundle, retrieved_context),
+        payload=_plan_observation_payload(
+            risk_bundle,
+            retrieved_context,
+            transition_log,
+        ),
         region_id=risk_bundle.assessment.region_id,
         station_id=risk_bundle.assessment.station_id,
         reading_id=risk_bundle.reading.id,
@@ -229,6 +238,7 @@ async def _write_plan_audit(
     generated_plan: GeneratedActionPlan,
     validation_result: PlanValidationResult,
     retrieved_context: dict[str, Any],
+    transition_log: list[dict[str, Any]],
 ) -> None:
     """Write the audit log entry for plan generation."""
     await write_audit_log(
@@ -248,6 +258,7 @@ async def _write_plan_audit(
             "confidence_score": generated_plan.confidence_score,
             "validation": validation_result.model_dump(mode="json"),
             "retrieval_trace": retrieved_context.get("retrieval_trace") or {},
+            "planning_transition_log": transition_log,
         },
     )
 
@@ -255,6 +266,7 @@ async def _write_plan_audit(
 def _plan_observation_payload(
     risk_bundle: RiskEvaluationBundle,
     retrieved_context: dict[str, Any],
+    transition_log: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build the observation snapshot payload for a planning run."""
     weather = risk_bundle.weather_snapshot
@@ -290,6 +302,7 @@ def _plan_observation_payload(
             else None
         ),
         "retrieval_trace": retrieved_context.get("retrieval_trace") or {},
+        "planning_transition_log": transition_log,
         "knowledge_context_preview": [
             {
                 "rank": item.get("rank"),
@@ -308,6 +321,7 @@ def _success_trace(
     plan: ActionPlan,
     validation_result: PlanValidationResult,
     retrieved_context: dict[str, Any],
+    transition_log: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build the terminal trace payload for a successful planning run."""
     return {
@@ -323,6 +337,7 @@ def _success_trace(
             "validation": validation_result.model_dump(mode="json"),
         },
         "retrieval_trace": retrieved_context.get("retrieval_trace") or {},
+        "planning_transition_log": transition_log,
     }
 
 

@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from app.core.config import Settings
 from app.models.action import ActionExecution, ActionPlan
 from app.models.approval import Approval
 from app.models.goal import MonitoringGoal
@@ -110,8 +111,8 @@ async def test_active_monitoring_skips_duplicate_open_plan(
     assert first.status == "succeeded_pending_human"
     assert first.incident is not None
     assert first.plan_bundle is not None
-    assert first.reactive_result is not None
-    assert first.reactive_result.status == "awaiting_human_approval"
+    assert first.lifecycle_result is not None
+    assert first.lifecycle_result.status == "awaiting_human_approval"
 
     second = await run_monitoring_goal_cycle(
         db_session,
@@ -178,3 +179,91 @@ async def test_active_monitoring_dry_run_skips_plan_creation(
     assert result.plan_bundle is None
     plans = (await db_session.scalars(select(ActionPlan))).all()
     assert plans == []
+
+
+@pytest.mark.asyncio
+async def test_active_monitoring_uses_lifecycle_graph(
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
+):
+    goal = MonitoringGoal(
+        name="Phase4-LifecycleGraph-Goal",
+        region_id=seeded_sensor_data["region"].id,
+        station_id=seeded_sensor_data["station_a"].id,
+        objective="Protect irrigation intake from salinity intrusion",
+        provider="mock",
+        warning_threshold_dsm=Decimal("2.50"),
+        critical_threshold_dsm=Decimal("4.00"),
+        evaluation_interval_minutes=1,
+        auto_plan_enabled=True,
+        is_active=True,
+    )
+    db_session.add(goal)
+    await db_session.commit()
+    await db_session.refresh(goal)
+
+    class StubProvider:
+        name = "phase4-lifecycle-provider"
+
+        async def generate_plan(self, *, objective, context):
+            return GeneratedActionPlan(
+                objective=objective,
+                summary="Lifecycle graph compatible plan.",
+                assumptions=["Operators monitor the dashboard."],
+                steps=[
+                    PlanStep(
+                        step_index=1,
+                        action_type=ActionType.NOTIFY_FARMERS,
+                        title="Notify farmers",
+                        instructions="Send advisory to avoid intake.",
+                        rationale="Early communication reduces exposure.",
+                        simulated=True,
+                    ),
+                    PlanStep(
+                        step_index=2,
+                        action_type=ActionType.WAIT_SAFE_WINDOW,
+                        title="Wait safe window",
+                        instructions="Delay intake until conditions improve.",
+                        rationale="Low-risk execution policy allows waiting actions.",
+                        simulated=True,
+                    ),
+                ],
+            )
+
+    async def fake_weather_snapshot(session, *, region, station, redis_manager):
+        return await _persist_stub_weather_snapshot(session, region_id=region.id)
+
+    monkeypatch.setattr(
+        "app.services.risk_service.get_or_fetch_weather_snapshot",
+        fake_weather_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.services.agent_planning_service.get_plan_provider",
+        lambda provider_name=None: StubProvider(),
+    )
+
+    result = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
+        settings=Settings(
+            reactive_auto_execute_enabled=True,
+        ),
+    )
+
+    assert result.orchestration_path == "lifecycle_graph"
+    assert result.status in {
+        "succeeded_plan_executed",
+        "succeeded_plan_created",
+    }
+    assert result.lifecycle_result is not None
+    assert result.transition_log is not None
+    assert [entry["node"] for entry in result.transition_log] == [
+        "classify_risk",
+        "approval_gate",
+        "execute",
+        "feedback",
+        "memory_write",
+    ]

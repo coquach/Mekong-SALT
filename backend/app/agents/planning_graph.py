@@ -32,6 +32,7 @@ class PlanningState(TypedDict, total=False):
     retrieved_context: dict[str, Any]
     draft_plan: GeneratedActionPlan
     validation_result: PlanValidationResult
+    transition_log: list[dict[str, Any]]
 
 
 class AgentPlanningWorkflow:
@@ -58,7 +59,10 @@ class AgentPlanningWorkflow:
         precomputed_risk_bundle: RiskEvaluationBundle | None = None,
     ) -> PlanningState:
         """Execute the planning workflow with an optional precomputed risk bundle."""
-        initial_state: PlanningState = {"request": request}
+        initial_state: PlanningState = {
+            "request": request,
+            "transition_log": [],
+        }
         if precomputed_risk_bundle is not None:
             initial_state["risk_bundle"] = precomputed_risk_bundle
         return await self._graph.ainvoke(initial_state)
@@ -79,16 +83,31 @@ class AgentPlanningWorkflow:
         return graph
 
     async def _observe(self, state: PlanningState) -> PlanningState:
-        return await observe_request_node(state)
+        updates = await observe_request_node(state)
+        updates["transition_log"] = self._append_transition(state, "observe")
+        return updates
 
     async def _assess_risk(self, state: PlanningState) -> PlanningState:
-        return await assess_risk_node(state, services=self._services)
+        updates = await assess_risk_node(state, services=self._services)
+        updates["transition_log"] = self._append_transition(state, "assess_risk")
+        return updates
 
     async def _retrieve_context(self, state: PlanningState) -> PlanningState:
-        return await retrieve_context_node(state, services=self._services)
+        updates = await retrieve_context_node(state, services=self._services)
+        updates["transition_log"] = self._append_transition(state, "retrieve_context")
+        return updates
 
     async def _draft_plan(self, state: PlanningState) -> PlanningState:
-        return await draft_plan_node(state, services=self._services)
+        updates = await draft_plan_node(state, services=self._services)
+        updates["transition_log"] = self._append_transition(state, "draft_plan")
+        return updates
 
     async def _validate_plan(self, state: PlanningState) -> PlanningState:
-        return await validate_plan_node(state)
+        updates = await validate_plan_node(state)
+        updates["transition_log"] = self._append_transition(state, "validate_plan")
+        return updates
+
+    def _append_transition(self, state: PlanningState, node: str) -> list[dict[str, Any]]:
+        transitions = list(state.get("transition_log") or [])
+        transitions.append({"node": node, "status": "completed"})
+        return transitions

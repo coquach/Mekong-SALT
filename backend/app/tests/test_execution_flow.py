@@ -132,14 +132,14 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     )
 
     assert result.status == "succeeded_plan_executed"
-    assert result.reactive_result is not None
-    assert result.reactive_result.execution_bundle is not None
+    assert result.lifecycle_result is not None
+    assert result.lifecycle_result.execution_bundle is not None
 
     plan = await db_session.get(ActionPlan, result.plan_bundle.plan.id)
     assert plan is not None
     assert plan.status == ActionPlanStatus.SIMULATED
 
-    execution_bundle = result.reactive_result.execution_bundle
+    execution_bundle = result.lifecycle_result.execution_bundle
     assert len(execution_bundle.executions) == 2
     assert execution_bundle.feedback.status == "insufficient_new_observation"
     assert len(execution_bundle.decision_logs) == 3
