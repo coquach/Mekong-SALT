@@ -16,6 +16,7 @@ from app.models.risk import RiskAssessment
 from app.repositories.incident import IncidentRepository
 from app.schemas.incident import IncidentCreate, IncidentUpdate
 from app.services.audit_service import write_audit_log
+from app.services.notification_service import create_incident_created_notifications
 
 INCIDENT_RISK_LEVELS = {RiskLevel.WARNING, RiskLevel.DANGER, RiskLevel.CRITICAL}
 
@@ -58,6 +59,13 @@ async def create_incident(
         incident_id=incident.id,
         summary=f"Incident created: {incident.title}",
         payload={"severity": incident.severity.value, "source": incident.source},
+    )
+    await create_incident_created_notifications(
+        session,
+        incident_id=incident.id,
+        title=incident.title,
+        severity=incident.severity.value,
+        source=incident.source,
     )
     await session.commit()
     await session.refresh(incident)
@@ -126,6 +134,13 @@ async def ensure_incident_for_assessment(
         incident_id=incident.id,
         summary=f"Incident opened from risk assessment {assessment.id}.",
         payload=incident.evidence,
+    )
+    await create_incident_created_notifications(
+        session,
+        incident_id=incident.id,
+        title=incident.title,
+        severity=incident.severity.value,
+        source=incident.source,
     )
     return IncidentDecisionResult(
         incident=incident,

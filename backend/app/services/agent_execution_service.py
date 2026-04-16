@@ -36,7 +36,10 @@ from app.services.internal_memory_service import (
     build_feedback_memory_case,
 )
 from app.services.audit_service import write_audit_log
-from app.services.notification_service import create_execution_alert_notifications
+from app.services.notification_service import (
+    create_execution_alert_notifications,
+    create_execution_summary_notifications,
+)
 
 
 @dataclass(slots=True)
@@ -224,6 +227,17 @@ async def execute_simulated_plan(
     )
     await decision_repo.add(feedback_log)
     decision_logs.append(feedback_log)
+
+    await create_execution_summary_notifications(
+        session,
+        incident_id=plan.incident_id,
+        execution_id=executions[-1].id if executions else None,
+        action_plan_id=plan.id,
+        outcome_class=feedback.outcome_class,
+        summary=feedback.summary,
+        execution_count=len(executions),
+        replan_recommended=feedback.replan_recommended,
+    )
 
     memory_case = build_feedback_memory_case(
         region_id=plan.region_id,

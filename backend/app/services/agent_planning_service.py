@@ -23,6 +23,7 @@ from app.services.agent_trace_service import (
 )
 from app.services.audit_service import write_audit_log
 from app.services.incident_service import ensure_incident_for_assessment, get_incident
+from app.services.notification_service import create_plan_created_notifications
 from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.services.risk_service import RiskEvaluationBundle
 
@@ -107,6 +108,13 @@ async def generate_agent_plan(
             validation_result=validation_result,
             retrieved_context=retrieved_context,
             transition_log=transition_log,
+        )
+        await create_plan_created_notifications(
+            session,
+            incident_id=plan.incident_id,
+            action_plan_id=plan.id,
+            objective=plan.objective,
+            status=plan.status.value,
         )
         finish_agent_run(
             run,
