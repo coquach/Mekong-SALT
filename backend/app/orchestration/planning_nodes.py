@@ -15,6 +15,7 @@ from app.agents.policy_guard import validate_generated_plan
 from app.agents.providers import PlanProvider
 from app.db.redis import RedisManager
 from app.repositories.region import RegionRepository
+from app.schemas.retrieval import RetrievalContext
 from app.schemas.risk import RiskEvaluationFilters
 from app.services.rag import retrieve_ranked_knowledge_context
 from app.services.risk_service import RiskEvaluationBundle, evaluate_current_risk
@@ -73,12 +74,20 @@ async def retrieve_context_node(
     region_repo = RegionRepository(services.session)
     region = await region_repo.get(risk_bundle.assessment.region_id)
     objective = state.get("objective") or "Protect irrigation water quality and reduce salinity risk."
-    knowledge_context = await retrieve_ranked_knowledge_context(
-        services.session,
-        objective=objective,
-        risk_bundle=risk_bundle,
+    retrieval_context = _validate_retrieval_context_contract(
+        await retrieve_ranked_knowledge_context(
+            services.session,
+            objective=objective,
+            risk_bundle=risk_bundle,
+        )
     )
-    retrieval_trace = _build_retrieval_trace(knowledge_context)
+    retrieval_context_payload = retrieval_context.model_dump(mode="json")
+    knowledge_context = retrieval_context_payload["evidence"]
+    retrieval_trace = {
+        "total_evidence": len(knowledge_context),
+        "source_counts": retrieval_context_payload["provenance"]["source_counts"],
+        "top_citations": retrieval_context_payload["ranking_metadata"]["top_citations"],
+    }
 
     retrieved_context = {
         "region": {
@@ -123,6 +132,7 @@ async def retrieve_context_node(
             if risk_bundle.weather_snapshot is not None
             else None
         ),
+        "retrieval_context": retrieval_context_payload,
         "knowledge_context": knowledge_context,
         "retrieval_trace": retrieval_trace,
     }
@@ -151,27 +161,6 @@ async def validate_plan_node(state: Mapping[str, Any]) -> dict[str, Any]:
     return {"validation_result": validation_result}
 
 
-def _build_retrieval_trace(knowledge_context: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build compact retrieval trace metadata for run/audit observability."""
-    source_counts: dict[str, int] = {}
-    top_citations: list[dict[str, Any]] = []
-
-    for item in knowledge_context:
-        source = str(item.get("evidence_source") or "unknown")
-        source_counts[source] = source_counts.get(source, 0) + 1
-        if len(top_citations) >= 5:
-            continue
-        top_citations.append(
-            {
-                "rank": item.get("rank"),
-                "score": item.get("score"),
-                "evidence_source": source,
-                "citation": item.get("citation"),
-            }
-        )
-
-    return {
-        "total_evidence": len(knowledge_context),
-        "source_counts": source_counts,
-        "top_citations": top_citations,
-    }
+def _validate_retrieval_context_contract(payload: RetrievalContext) -> RetrievalContext:
+    """Keep retrieval contract explicit at planning boundary."""
+    return payload

@@ -41,6 +41,13 @@ from app.schemas.knowledge import (
 )
 from app.schemas.notification import NotificationCollection, NotificationCreate, NotificationRead
 from app.schemas.region import RegionCreate, RegionRead
+from app.schemas.retrieval import (
+    RetrievalContext,
+    RetrievalEvidence,
+    RetrievalPolicyFlags,
+    RetrievalProvenance,
+    RetrievalRankingMetadata,
+)
 from app.schemas.risk import (
     AlertEventCreate,
     AlertEvaluationResponse,
@@ -112,6 +119,11 @@ __all__ = [
     "MonitoringGoalUpdate",
     "RegionCreate",
     "RegionRead",
+    "RetrievalContext",
+    "RetrievalEvidence",
+    "RetrievalPolicyFlags",
+    "RetrievalProvenance",
+    "RetrievalRankingMetadata",
     "RiskCurrentResponse",
     "RiskLatestResponse",
     "RiskAssessmentCreate",

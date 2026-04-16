@@ -151,6 +151,11 @@ async def test_retrieve_context_node_returns_compact_context(db_session, seeded_
     assert context["assessment"]["risk_level"] == "warning"
     assert context["assessment"]["trend_direction"] == "rising"
     assert context["weather_snapshot"] is None
+    assert "retrieval_context" in context
+    assert set(context["retrieval_context"]).issuperset(
+        {"evidence", "provenance", "ranking_metadata", "policy_flags"}
+    )
+    assert context["retrieval_context"]["policy_flags"]["requires_human_approval"] is True
 
 
 @pytest.mark.asyncio
@@ -310,6 +315,12 @@ async def test_retrieve_context_node_includes_ranked_rag_evidence(db_session, se
     retrieval_trace = result["retrieved_context"]["retrieval_trace"]
     assert retrieval_trace["total_evidence"] == len(knowledge_context)
     assert retrieval_trace["top_citations"]
+
+    retrieval_context = result["retrieved_context"]["retrieval_context"]
+    assert retrieval_context["evidence"] == knowledge_context
+    assert retrieval_context["provenance"]["source_counts"]
+    assert retrieval_context["ranking_metadata"]["top_citations"]
+    assert retrieval_context["policy_flags"]["deterministic_ranking"] is True
 
 
 @pytest.mark.asyncio

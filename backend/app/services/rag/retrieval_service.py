@@ -16,6 +16,12 @@ from app.models.enums import IncidentStatus
 from app.repositories.action import ActionPlanRepository
 from app.repositories.knowledge import KnowledgeDocumentRepository, SimilarCaseRepository
 from app.repositories.memory_case import MemoryCaseRepository
+from app.schemas.retrieval import (
+    RetrievalContext,
+    RetrievalPolicyFlags,
+    RetrievalProvenance,
+    RetrievalRankingMetadata,
+)
 from app.services.rag.vertex_vector_search_service import VertexVectorSearchService
 
 _DEFAULT_MAX_EVIDENCE = 8
@@ -44,7 +50,7 @@ async def retrieve_ranked_knowledge_context(
     objective: str,
     risk_bundle,
     max_evidence: int = _DEFAULT_MAX_EVIDENCE,
-) -> list[dict[str, Any]]:
+) -> RetrievalContext:
     """Build ranked RAG evidence from SOP docs, threshold docs, and similar cases."""
     settings = get_settings()
     rag_top_k = int(getattr(settings, "rag_retrieval_top_k", 8))
@@ -70,6 +76,8 @@ async def retrieve_ranked_knowledge_context(
     action_repo = ActionPlanRepository(session)
 
     evidence: list[dict[str, Any]] = []
+    vector_search_used = False
+    local_fallback_used = False
     if settings.rag_use_vertex_vector_search:
         try:
             evidence.extend(
@@ -82,11 +90,13 @@ async def retrieve_ranked_knowledge_context(
                     top_k=rag_top_k,
                 )
             )
+            vector_search_used = bool(evidence)
         except Exception:
             if not settings.rag_enable_local_fallback:
                 raise
 
     if not evidence and settings.rag_enable_local_fallback:
+        local_fallback_used = True
         sop_rows = await document_repo.list_ranked_chunk_candidates(
             category="sop",
             query_terms=query_terms,
@@ -154,6 +164,7 @@ async def retrieve_ranked_knowledge_context(
                         ),
                         timeout=2.5,
                     )
+                    vector_search_used = vector_search_used or bool(memory_case_evidence)
                 except Exception:
                     # Memory-case semantic lookup is best-effort and should not block planning.
                     memory_case_evidence = []
@@ -165,6 +176,7 @@ async def retrieve_ranked_knowledge_context(
                     query_terms=query_terms,
                     limit=4,
                 )
+                local_fallback_used = local_fallback_used or bool(memory_cases)
                 for case in memory_cases:
                     memory_case_evidence.append(
                         _build_memory_case_evidence(
@@ -183,7 +195,39 @@ async def retrieve_ranked_knowledge_context(
     ranked = sorted(deduped, key=lambda item: item["score"], reverse=True)[:max_evidence]
     for rank, item in enumerate(ranked, start=1):
         item["rank"] = rank
-    return ranked
+
+    source_counts = _build_source_counts(ranked)
+    ranking_metadata = RetrievalRankingMetadata(
+        max_evidence=max(max_evidence, 1),
+        top_k=max(rag_top_k, 1),
+        query_terms=query_terms,
+        top_citations=_build_top_citations(ranked),
+    )
+    provenance = RetrievalProvenance(
+        generated_at=datetime.now(UTC),
+        vector_search_enabled=bool(settings.rag_use_vertex_vector_search),
+        vector_search_used=vector_search_used,
+        local_fallback_enabled=bool(settings.rag_enable_local_fallback),
+        local_fallback_used=local_fallback_used,
+        source_counts=source_counts,
+        total_candidates=len(evidence),
+    )
+    policy_flags = RetrievalPolicyFlags(
+        simulation_only=True,
+        requires_human_approval=True,
+        allow_hardware_execution=False,
+        evidence_minimum_required=1,
+        deterministic_ranking=True,
+    )
+
+    return RetrievalContext.model_validate(
+        {
+            "evidence": ranked,
+            "provenance": provenance.model_dump(mode="json"),
+            "ranking_metadata": ranking_metadata.model_dump(mode="json"),
+            "policy_flags": policy_flags.model_dump(mode="json"),
+        }
+    )
 
 
 async def _retrieve_document_evidence_from_vertex(
@@ -412,6 +456,19 @@ def _build_document_evidence(
             "matched_terms": matched_terms,
             "tags": document.tags or [],
         },
+        "provenance": {
+            "backend": "knowledge_document_repository",
+            "entity_type": "knowledge_document",
+            "entity_id": str(document.id),
+            "chunk_id": str(chunk.id),
+            "source_uri": document.source_uri,
+        },
+        "ranking_metadata": {
+            "scoring_profile": "document_heuristic_v1",
+            "score_bias": score_bias,
+            "matched_terms": matched_terms,
+            "matched_term_count": len(matched_terms),
+        },
     }
 
 
@@ -492,6 +549,18 @@ def _build_case_evidence(
             "plan_id": str(latest_plan.id) if latest_plan is not None else None,
             "matched_terms": matched_terms,
         },
+        "provenance": {
+            "backend": "similar_case_repository",
+            "entity_type": "incident",
+            "entity_id": str(incident.id),
+            "plan_id": str(latest_plan.id) if latest_plan is not None else None,
+        },
+        "ranking_metadata": {
+            "scoring_profile": "similar_case_heuristic_v1",
+            "recency_bonus": round(recency_bonus, 3),
+            "matched_terms": matched_terms,
+            "matched_term_count": len(matched_terms),
+        },
     }
 
 
@@ -562,6 +631,21 @@ def _build_memory_case_evidence(
             "matched_terms": matched_terms,
             "keywords": memory_case.keywords or [],
         },
+        "provenance": {
+            "backend": "memory_case_repository",
+            "entity_type": "memory_case",
+            "entity_id": str(memory_case.id),
+            "incident_id": (
+                str(memory_case.incident_id)
+                if memory_case.incident_id is not None
+                else None
+            ),
+        },
+        "ranking_metadata": {
+            "scoring_profile": "memory_case_heuristic_v1",
+            "matched_terms": matched_terms,
+            "matched_term_count": len(matched_terms),
+        },
     }
 
 
@@ -617,6 +701,8 @@ def _dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for item in items:
         if item["evidence_type"] == "knowledge_document":
             key = ("knowledge", f"{item.get('document_id')}::{item.get('chunk_id')}")
+        elif item["evidence_type"] == "memory_case":
+            key = ("memory_case", str(item.get("memory_case_id")))
         else:
             key = ("case", str(item.get("incident_id")))
         if key in seen:
@@ -624,6 +710,28 @@ def _dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def _build_source_counts(knowledge_context: list[dict[str, Any]]) -> dict[str, int]:
+    source_counts: dict[str, int] = {}
+    for item in knowledge_context:
+        source = str(item.get("evidence_source") or "unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+    return source_counts
+
+
+def _build_top_citations(knowledge_context: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    top_citations: list[dict[str, Any]] = []
+    for item in knowledge_context[:5]:
+        top_citations.append(
+            {
+                "rank": item.get("rank"),
+                "score": item.get("score"),
+                "evidence_source": item.get("evidence_source"),
+                "citation": item.get("citation"),
+            }
+        )
+    return top_citations
 
 
 def _make_excerpt(text: str | None, *, limit: int = 280) -> str:
