@@ -17,10 +17,9 @@ from app.models.enums import ActionPlanStatus, ApprovalDecision, DecisionActorTy
 from app.repositories.decision import DecisionLogRepository
 from app.schemas.action import SimulatedExecutionRequest
 from app.schemas.approval import ApprovalRequest
+from app.services.approval import resolve_approval_gate_policy
 from app.services.execution import SimulatedExecutionBundle, execute_simulated_plan
 from app.services.approval import decide_plan
-
-HIGH_RISK_HITL_LEVELS = {RiskLevel.DANGER, RiskLevel.CRITICAL}
 
 
 @dataclass(slots=True)
@@ -50,35 +49,25 @@ def _append_transition(
     return transitions
 
 
-def _classify_risk_level(risk_level: RiskLevel | None) -> str:
-    if risk_level in {RiskLevel.CRITICAL, RiskLevel.DANGER}:
-        return "high"
-    if risk_level is RiskLevel.WARNING:
-        return "moderate"
-    if risk_level is RiskLevel.SAFE:
-        return "low"
-    return "unknown"
-
-
 async def classify_risk_node(state: Mapping[str, Any]) -> dict[str, Any]:
     """Classify risk to drive downstream approval and execution policy."""
     plan: ActionPlan = state["plan"]
     risk_level = plan.risk_assessment.risk_level if plan.risk_assessment is not None else None
-    risk_classification = _classify_risk_level(risk_level)
-    requires_human_approval = risk_level in HIGH_RISK_HITL_LEVELS if risk_level is not None else True
+    policy = resolve_approval_gate_policy(risk_level)
 
     return {
         "risk_level": risk_level,
-        "risk_classification": risk_classification,
-        "requires_human_approval": requires_human_approval,
+        "risk_classification": policy.risk_classification,
+        "requires_human_approval": policy.requires_human_approval,
         "transition_log": _append_transition(
             state,
             node="classify_risk",
             status="classified",
             details={
                 "risk_level": risk_level.value if risk_level is not None else None,
-                "risk_classification": risk_classification,
-                "requires_human_approval": requires_human_approval,
+                "risk_classification": policy.risk_classification,
+                "requires_human_approval": policy.requires_human_approval,
+                "policy_reason": policy.reason,
             },
         ),
     }

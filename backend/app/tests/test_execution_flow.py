@@ -105,7 +105,7 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: _ValidatedPlanProvider(),
+        lambda provider_name=None, planner=None: _ValidatedPlanProvider(),
     )
 
     goal = MonitoringGoal(
@@ -230,7 +230,10 @@ async def test_execute_simulated_returns_batch_transaction_and_replays_idempoten
     assert first_data["idempotent_replay"] is False
     assert first_data["batch"]["plan_id"] == str(plan.id)
     assert first_data["batch"]["step_count"] == 2
+    assert first_data["batch"]["execution_job_id"] == first_data["batch"]["id"]
+    assert first_data["batch"]["execution_job_status"] == first_data["batch"]["status"]
     assert len(first_data["executions"]) == 2
+    assert all(item["execution_job_id"] == first_data["batch"]["id"] for item in first_data["executions"])
     batch_id = first_data["batch"]["id"]
 
     second = await client.post(
@@ -241,10 +244,12 @@ async def test_execute_simulated_returns_batch_transaction_and_replays_idempoten
     second_data = second.json()["data"]
     assert second_data["idempotent_replay"] is True
     assert second_data["batch"]["id"] == batch_id
+    assert second_data["batch"]["execution_job_id"] == batch_id
     assert second_data["batch"]["step_count"] == 2
 
     detail = await client.get(f"/api/v1/execution-batches/{batch_id}")
     assert detail.status_code == 200
     detail_data = detail.json()["data"]
     assert detail_data["batch"]["id"] == batch_id
+    assert detail_data["batch"]["execution_job_id"] == batch_id
     assert detail_data["count"] == 2

@@ -16,6 +16,7 @@ from app.models.enums import ActionPlanStatus
 from app.repositories.action import ActionPlanRepository
 from app.repositories.approval import ApprovalRepository
 from app.schemas.approval import ApprovalRequest
+from app.services.approval.policy import resolve_approval_gate_policy
 from app.services.audit_service import write_audit_log
 
 
@@ -39,6 +40,19 @@ async def decide_plan(
             status_code=HTTPStatus.CONFLICT,
             code="action_plan_not_pending_approval",
             message="Only pending-approval plans can be approved or rejected.",
+        )
+
+    risk_level = plan.risk_assessment.risk_level if plan.risk_assessment is not None else None
+    approval_policy = resolve_approval_gate_policy(risk_level)
+    if (
+        payload.decision is ApprovalDecision.APPROVED
+        and actor_name == "lifecycle-orchestrator"
+        and approval_policy.requires_human_approval
+    ):
+        raise AppException(
+            status_code=HTTPStatus.CONFLICT,
+            code="high_risk_auto_approval_forbidden",
+            message="Lifecycle auto-approval is forbidden for high-risk plans.",
         )
 
     approval = Approval(
@@ -67,7 +81,15 @@ async def decide_plan(
         incident_id=plan.incident_id,
         action_plan_id=plan.id,
         summary=f"Plan {payload.decision.value} by {actor_name}.",
-        payload={"comment": payload.comment},
+        payload={
+            "comment": payload.comment,
+            "approval_policy": {
+                "risk_level": risk_level.value if risk_level is not None else None,
+                "risk_classification": approval_policy.risk_classification,
+                "requires_human_approval": approval_policy.requires_human_approval,
+                "reason": approval_policy.reason,
+            },
+        },
     )
     await session.commit()
     await session.refresh(approval)

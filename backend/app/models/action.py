@@ -1,5 +1,7 @@
 """Action plan and execution models."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -73,6 +75,11 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     audit_logs = relationship("AuditLog", back_populates="action_plan")
     agent_runs = relationship("AgentRun", back_populates="action_plan")
 
+    @property
+    def execution_jobs(self) -> list[ExecutionBatch]:
+        """Semantic alias for execution batches during terminology migration."""
+        return self.execution_batches
+
 
 class ExecutionBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Execution transaction grouping one simulated plan run."""
@@ -106,6 +113,26 @@ class ExecutionBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     action_plan = relationship("ActionPlan", back_populates="execution_batches")
     region = relationship("Region", back_populates="execution_batches")
     executions = relationship("ActionExecution", back_populates="execution_batch")
+
+    @property
+    def execution_job_id(self) -> UUID:
+        """Semantic alias for target execution job identifier."""
+        return self.id
+
+    @property
+    def execution_job_status(self) -> ExecutionStatus:
+        """Semantic alias for target execution job status."""
+        return self.status
+
+    @property
+    def execution_job_started_at(self) -> datetime | None:
+        """Semantic alias for target execution job start timestamp."""
+        return self.started_at
+
+    @property
+    def execution_job_completed_at(self) -> datetime | None:
+        """Semantic alias for target execution job completion timestamp."""
+        return self.completed_at
 
 
 class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -161,3 +188,11 @@ class ActionExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     audit_logs = relationship("AuditLog", back_populates="action_execution")
+
+    @property
+    def execution_job_id(self) -> UUID | None:
+        """Semantic alias for target execution job relation."""
+        return self.batch_id
+
+
+ExecutionJob = ExecutionBatch

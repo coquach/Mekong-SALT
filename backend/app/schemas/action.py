@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.models.enums import ActionPlanStatus, ActionType, ExecutionStatus
 from app.schemas.decision import DecisionLogRead
@@ -36,6 +36,7 @@ class ActionExecutionBase(ORMBaseSchema):
     """Shared action execution fields."""
 
     plan_id: UUID
+    batch_id: UUID | None = None
     region_id: UUID
     action_type: ActionType
     status: ExecutionStatus = ExecutionStatus.PENDING
@@ -52,6 +53,14 @@ class ActionExecutionBase(ORMBaseSchema):
 class ActionExecutionRead(EntityReadSchema, ActionExecutionBase):
     """Schema for returning an action execution."""
 
+    execution_job_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_job_aliases(self) -> "ActionExecutionRead":
+        if self.execution_job_id is None:
+            self.execution_job_id = self.batch_id
+        return self
+
 
 class ExecutionBatchRead(ORMBaseSchema):
     """Execution batch read model for one simulated transaction."""
@@ -66,6 +75,26 @@ class ExecutionBatchRead(ORMBaseSchema):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     step_count: int
+    execution_job_id: str | None = None
+    execution_job_status: str | None = None
+    execution_job_started_at: datetime | None = None
+    execution_job_completed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_job_aliases(self) -> "ExecutionBatchRead":
+        if self.execution_job_id is None:
+            self.execution_job_id = self.id
+        if self.execution_job_status is None:
+            self.execution_job_status = self.status
+        if self.execution_job_started_at is None:
+            self.execution_job_started_at = self.started_at
+        if self.execution_job_completed_at is None:
+            self.execution_job_completed_at = self.completed_at
+        return self
+
+
+class ExecutionJobRead(ExecutionBatchRead):
+    """Execution job semantic alias of execution batch payload."""
 
 
 class ExecutionBatchCollection(ORMBaseSchema):
@@ -75,10 +104,25 @@ class ExecutionBatchCollection(ORMBaseSchema):
     count: int
 
 
+class ExecutionJobCollection(ORMBaseSchema):
+    """Collection payload for execution job listing."""
+
+    items: list[ExecutionJobRead]
+    count: int
+
+
 class ExecutionBatchDetail(ORMBaseSchema):
     """Execution batch detail with step-level executions."""
 
     batch: ExecutionBatchRead
+    executions: list[ActionExecutionRead]
+    count: int
+
+
+class ExecutionJobDetail(ORMBaseSchema):
+    """Execution job detail with step-level execution records."""
+
+    execution_job: ExecutionJobRead
     executions: list[ActionExecutionRead]
     count: int
 
