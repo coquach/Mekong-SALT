@@ -20,7 +20,7 @@ import {
   Sliders,
 } from "lucide-react";
 
-// Import UI Components đã tối ưu ở các bước trước
+// Import UI Components đã tối ưu
 import { Card, CardContent } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -28,7 +28,7 @@ import { Badge } from "../components/ui/Badge";
 export const History = () => {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* --- 1. TOP NAVIGATION & NODE IDENTITY --- */}
+      {/* --- 1. ĐIỀU HƯỚNG ĐẦU TRANG & DANH TÍNH NÚT --- */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-200 pb-8">
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 bg-mekong-navy rounded-[20px] flex items-center justify-center text-white shadow-xl ring-4 ring-slate-100">
@@ -37,24 +37,30 @@ export const History = () => {
           <div className="space-y-1">
             <div className="flex items-center gap-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">
               <span className="bg-slate-100 px-2 py-0.5 rounded">
-                Telemetry Node
+                Nút truyền tin
               </span>
-              <span className="text-mekong-teal">Tien River / Region S-04</span>
+              <span className="text-mekong-teal">
+                Sông Tiền / Phân khu S-04
+              </span>
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-              Node 04 Deep Dive
+              Phân tích chuyên sâu Nút 04
             </h1>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1.5 rounded-[20px] border border-slate-200 shadow-inner">
-            {["Overview", "Forensics", "Forecast"].map((t, i) => (
+            {[
+              { label: "Tổng quan", active: false },
+              { label: "Pháp y dữ liệu", active: true },
+              { label: "Dự báo", active: false },
+            ].map((t, i) => (
               <button
-                key={t}
-                className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${i === 1 ? "bg-white text-mekong-navy shadow-md" : "text-slate-500 hover:text-mekong-navy"}`}
+                key={i}
+                className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${t.active ? "bg-white text-mekong-navy shadow-md" : "text-slate-500 hover:text-mekong-navy"}`}
               >
-                {t}
+                {t.label}
               </button>
             ))}
           </div>
@@ -67,7 +73,7 @@ export const History = () => {
         </div>
       </div>
 
-      {/* --- 2. SUMMARY DASHETTE --- */}
+      {/* --- 2. BẢNG TÓM TẮT NHANH (SUMMARY DASHETTE) --- */}
       <div className="flex justify-between items-start">
         <p className="text-base lg:text-lg text-mekong-slate font-medium max-w-2xl leading-relaxed">
           Phân tích lịch sử toàn diện và đánh giá rủi ro dựa trên AI cho hành
@@ -75,12 +81,12 @@ export const History = () => {
           thủy văn đệ quy v4.2.
         </p>
 
-        {/* Current Readout Card */}
+        {/* Thẻ đọc dữ liệu hiện tại */}
         <div className="bg-white border border-slate-100 p-6 shadow-xl rounded-[28px] flex items-center gap-8 min-w-[320px] relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-2 h-full bg-mekong-critical" />
           <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Live Salinity
+              Độ mặn trực tiếp
             </p>
             <div className="flex items-baseline gap-2">
               <span className="text-5xl font-black text-mekong-navy tracking-tighter">
@@ -96,15 +102,15 @@ export const History = () => {
               <TrendingUp size={14} strokeWidth={3} /> +100%
             </div>
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              Vs. Baseline
+              So với mức cơ sở
             </p>
           </div>
         </div>
       </div>
 
-      {/* --- 3. TREND ANALYSIS & BENCHMARKS --- */}
+      {/* --- 3. PHÂN TÍCH XU HƯỚNG & ĐIỂM CHUẨN --- */}
       <div className="grid grid-cols-12 gap-8 items-stretch">
-        {/* AREA CHART BLOCK (8 columns) */}
+        {/* KHỐI BIỂU ĐỒ (8 cột) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -114,14 +120,14 @@ export const History = () => {
             <div className="flex justify-between items-center mb-12">
               <div className="space-y-1">
                 <h3 className="text-xl font-black text-mekong-navy uppercase tracking-tighter">
-                  Longitudinal Trend Analysis
+                  Phân tích xu hướng thời gian
                 </h3>
                 <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest opacity-70">
-                  30-Day temporal salinity variance
+                  Biến thiên độ mặn trong chu kỳ 30 ngày
                 </p>
               </div>
               <div className="flex bg-slate-50 p-1.5 rounded-xl border border-slate-100">
-                {["1W", "1M", "3M"].map((period, i) => (
+                {["1 TUẦN", "1 THÁNG", "3 THÁNG"].map((period, i) => (
                   <button
                     key={period}
                     className={`px-5 py-2 text-[10px] font-black rounded-lg transition-all ${i === 1 ? "bg-mekong-navy text-white shadow-lg" : "text-slate-400 hover:text-mekong-navy"}`}
@@ -132,7 +138,7 @@ export const History = () => {
               </div>
             </div>
 
-            {/* HIGH-END SVG AREA CHART */}
+            {/* ĐỒ HỌA BIỂU ĐỒ SVG CAO CẤP */}
             <div className="relative flex-1 min-h-[320px] w-full px-4 group mt-4">
               <div className="absolute left-0 h-full flex flex-col justify-between text-[11px] font-black text-slate-300 pr-6 pb-8">
                 <span>4.0</span>
@@ -150,16 +156,16 @@ export const History = () => {
                 ))}
               </div>
 
-              {/* Danger Zone Indicator */}
+              {/* Chỉ báo vùng nguy hiểm */}
               <div className="absolute bottom-[52%] w-full pl-10 border-t-2 border-mekong-critical/30 border-dashed z-10 flex justify-end items-start pointer-events-none">
                 <div className="bg-red-50/90 backdrop-blur-sm px-4 py-1.5 rounded-xl border border-red-100 shadow-sm -mt-4 mr-6">
                   <span className="text-[10px] font-black text-mekong-critical uppercase tracking-[0.2em]">
-                    Danger Threshold (2.0 g/L)
+                    Ngưỡng nguy hiểm (2.0 g/L)
                   </span>
                 </div>
               </div>
 
-              {/* Chart Graphics */}
+              {/* Đồ họa biểu đồ thực tế */}
               <div className="absolute inset-0 pl-10 h-full pb-8">
                 <svg
                   className="w-full h-full overflow-visible"
@@ -192,20 +198,6 @@ export const History = () => {
                       />
                       <stop offset="100%" stopColor="#006877" stopOpacity="0" />
                     </linearGradient>
-                    <filter
-                      id="softGlow"
-                      x="-20%"
-                      y="-20%"
-                      width="140%"
-                      height="140%"
-                    >
-                      <feGaussianBlur stdDeviation="5" result="blur" />
-                      <feComposite
-                        in="SourceGraphic"
-                        in2="blur"
-                        operator="over"
-                      />
-                    </filter>
                   </defs>
                   <path
                     d="M 0 220 Q 150 230 300 190 T 500 170 T 750 140 T 1000 100 L 1000 300 L 0 300 Z"
@@ -217,7 +209,6 @@ export const History = () => {
                     stroke="url(#lineGrad)"
                     strokeWidth="10"
                     strokeLinecap="round"
-                    filter="url(#softGlow)"
                     className="animate-in slide-in-from-left-full duration-[2000ms] ease-out"
                   />
                   <g className="animate-pulse">
@@ -240,18 +231,18 @@ export const History = () => {
                 </svg>
               </div>
 
-              {/* Timeline labels */}
+              {/* Nhãn mốc thời gian */}
               <div className="absolute bottom-0 left-0 w-full pl-10 flex justify-between text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                <span>Mar 01</span>
-                <span className="opacity-30">Mar 10</span>
-                <span>Mar 20</span>
-                <span className="text-mekong-navy">Mar 29 (Live)</span>
+                <span>01 Tháng 3</span>
+                <span className="opacity-30">10 Tháng 3</span>
+                <span>20 Tháng 3</span>
+                <span className="text-mekong-navy">29 Tháng 3 (Trực tiếp)</span>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* HISTORICAL BENCHMARKS (4 columns) */}
+        {/* ĐIỂM CHUẨN LỊCH SỬ (4 cột) */}
         <div className="col-span-12 lg:col-span-4">
           <Card
             variant="white"
@@ -264,26 +255,26 @@ export const History = () => {
                   <HistoryIcon size={22} />
                 </div>
                 <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest leading-none">
-                  Historical Benchmarks
+                  Điểm chuẩn lịch sử
                 </h3>
               </div>
 
               <div className="space-y-6">
                 {[
                   {
-                    year: "March 2024 (Now)",
+                    year: "Tháng 3, 2024 (Nay)",
                     val: "2.8 g/L",
                     color: "text-mekong-critical",
                     active: true,
                   },
                   {
-                    year: "March 2023",
+                    year: "Tháng 3, 2023",
                     val: "1.4 g/L",
                     color: "text-mekong-navy",
                     active: false,
                   },
                   {
-                    year: "March 2022",
+                    year: "Tháng 3, 2022",
                     val: "1.1 g/L",
                     color: "text-mekong-navy",
                     active: false,
@@ -327,9 +318,9 @@ export const History = () => {
         </div>
       </div>
 
-      {/* --- AI DIAGNOSTICS & DIRECTIVES ROW (8 : 4 Ratio or 1:1 depending on preference) --- */}
+      {/* --- PHÂN TÍCH NGUYÊN NHÂN & CHỈ THỊ AI --- */}
       <div className="grid grid-cols-12 gap-8 items-stretch">
-        {/* KHỐI 1: AI RISK FORENSICS (CAUSAL ATTRIBUTION) - 6 Columns */}
+        {/* KHỐI 1: PHÁP Y RỦI RO AI (PHÂN TÍCH NGUYÊN NHÂN) */}
         <div className="col-span-12 lg:col-span-6">
           <Card
             variant="navy"
@@ -338,37 +329,35 @@ export const History = () => {
           >
             <div className="absolute top-0 right-0 w-80 h-80 bg-mekong-cyan/5 rounded-full blur-[100px] pointer-events-none" />
 
-            {/* Header Block */}
             <div className="p-10 pb-6 relative z-10">
               <div className="flex items-center gap-3 mb-10">
                 <div className="w-2 h-2 bg-mekong-cyan rounded-full animate-pulse shadow-[0_0_10px_#75E7FE]" />
                 <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">
-                  AI Risk Forensics
+                  Pháp y rủi ro AI
                 </span>
               </div>
               <h3 className="text-3xl font-black text-white mb-12 tracking-tighter leading-tight uppercase max-w-md">
-                Causal attribution <br /> for 2.8 g/L anomaly
+                Phân tích nguyên nhân <br /> cho bất thường 2.8 g/L
               </h3>
 
-              {/* Metrics List */}
               <div className="space-y-8">
                 {[
                   {
                     icon: Waves,
-                    label: "Tidal Surge",
+                    label: "Triều cường đột biến",
                     val: "+1.2m",
                     color: "text-mekong-cyan",
                   },
                   {
                     icon: Wind,
-                    label: "Wind Velocity",
-                    val: "12km/h SE",
+                    label: "Vận tốc gió",
+                    val: "12km/h ĐN",
                     color: "text-white",
                   },
                   {
                     icon: ArrowDownToLine,
-                    label: "Upstream Flow",
-                    val: "-22% vs Avg",
+                    label: "Lưu lượng thượng nguồn",
+                    val: "-22% so với TB",
                     color: "text-mekong-critical",
                   },
                 ].map((row, i) => (
@@ -394,7 +383,6 @@ export const History = () => {
               </div>
             </div>
 
-            {/* Bottom Insight Quote */}
             <div className="mt-auto p-8 bg-white/[0.03] backdrop-blur-md border-t border-white/5 relative z-10">
               <div className="flex gap-5 items-start">
                 <Info
@@ -411,51 +399,46 @@ export const History = () => {
           </Card>
         </div>
 
-        {/* KHỐI 2: AI ACTIVE DIRECTIVES - 6 Columns */}
+        {/* KHỐI 2: CHỈ THỊ AI ĐANG HIỆU LỰC */}
         <div className="col-span-12 lg:col-span-6">
           <Card
             variant="white"
             padding="none"
             className="rounded-[40px] shadow-2xl border border-slate-100 flex flex-col h-full overflow-hidden relative"
           >
-            {/* Thanh màu Navy ở đỉnh Card tạo sự phân cấp */}
             <div className="h-2 w-full bg-mekong-navy opacity-90" />
 
             <div className="p-10 flex-1 flex flex-col">
-              {/* Header Panel */}
               <div className="flex items-center gap-4 text-mekong-navy mb-14">
                 <div className="p-2.5 bg-mekong-cyan/10 rounded-xl text-mekong-teal border border-mekong-cyan/20">
                   <Zap size={22} fill="currentColor" />
                 </div>
                 <h3 className="text-[14px] font-black uppercase tracking-[0.25em] leading-none">
-                  AI Active Directives
+                  Chỉ thị AI đang hiệu lực
                 </h3>
               </div>
 
-              {/* Timeline Style List */}
               <div className="space-y-12 relative flex-1">
-                {/* Vertical Dotted Line */}
                 <div className="absolute top-2 left-1.5 bottom-8 w-px border-l-2 border-dashed border-slate-200" />
 
                 {[
                   {
-                    cat: "INFRASTRUCTURE",
+                    cat: "HẠ TẦNG",
                     msg: "Đề xuất đóng cống hoàn toàn thêm 4 chu kỳ triều.",
                     icon: Sliders,
                   },
                   {
-                    cat: "AGRICULTURE",
+                    cat: "NÔNG NGHIỆP",
                     msg: "Dừng mọi hoạt động lấy nước tại Phân khu S-12.",
                     icon: Waves,
                   },
                   {
-                    cat: "MONITORING",
+                    cat: "GIÁM SÁT",
                     msg: "Triển khai thiết bị quan trắc lưu động đến tọa độ Cửa Tiểu.",
                     icon: Signal,
                   },
                 ].map((item, i) => (
                   <div key={i} className="relative pl-12 group cursor-pointer">
-                    {/* Bullet Point */}
                     <div className="absolute top-1 left-0 w-3.5 h-3.5 rounded-full bg-white border-2 border-slate-200 group-hover:border-mekong-teal group-hover:bg-mekong-teal transition-all shadow-sm" />
 
                     <div className="space-y-2">
@@ -470,10 +453,9 @@ export const History = () => {
                 ))}
               </div>
 
-              {/* Call to Action Button */}
               <div className="mt-14">
                 <button className="w-full h-16 bg-[#00203F] text-white rounded-[24px] font-black text-[13px] uppercase tracking-[0.3em] flex items-center justify-center gap-4 shadow-xl hover:shadow-mekong-navy/30 hover:scale-[1.01] active:scale-95 transition-all group">
-                  <span>Execute All Directives</span>
+                  <span>Thực thi tất cả chỉ thị</span>
                   <ArrowUpRight
                     size={20}
                     className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"
@@ -485,7 +467,7 @@ export const History = () => {
         </div>
       </div>
 
-      {/* --- 5. SYSTEM BREACH BANNER --- */}
+      {/* --- PHẦN BANNER CẢNH BÁO VI PHẠM NGƯỠNG AN TOÀN --- */}
       <section className="bg-mekong-critical p-10 rounded-[48px] text-white shadow-[0_30px_60px_-12px_rgba(186,26,26,0.4)] flex flex-col md:flex-row justify-between items-center gap-8 animate-pulse relative overflow-hidden group">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 pointer-events-none" />
         <div className="flex items-center gap-8 relative z-10">
@@ -494,7 +476,7 @@ export const History = () => {
           </div>
           <div className="space-y-1">
             <h4 className="text-3xl font-black tracking-tighter uppercase leading-none">
-              Threshold Breach Detected
+              Phát hiện vượt ngưỡng an toàn
             </h4>
             <p className="text-[14px] font-black text-white/90 uppercase tracking-[0.2em]">
               CẢNH BÁO: ĐỘ MẶN 2.8 g/L VƯỢT NGƯỠNG AN TOÀN CHO LÚA ST25
@@ -505,7 +487,7 @@ export const History = () => {
           variant="outline"
           className="border-white text-white hover:bg-white hover:text-mekong-critical px-12 h-16 text-[13px] font-black relative z-10 shadow-2xl backdrop-blur-md"
         >
-          ACTIVATE EMERGENCY PROTOCOL
+          KÍCH HOẠT GIAO THỨC KHẨN CẤP
         </Button>
       </section>
     </div>

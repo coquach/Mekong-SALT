@@ -17,7 +17,7 @@ import {
   Search,
 } from "lucide-react";
 
-// Import UI Components đã build
+// Import các UI Components
 import {
   Card,
   CardContent,
@@ -31,11 +31,11 @@ import { Badge } from "../components/ui/Badge";
 export const ActionLogs = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* 1. PAGE HEADER SECTION */}
+      {/* 1. PHẦN ĐẦU TRANG (HEADER) */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
-            Intervention & Learning Hub
+            Trung tâm Can thiệp & Học tập
           </h1>
           <p className="text-base text-mekong-slate font-medium max-w-3xl leading-relaxed">
             Hệ thống kiểm toán toàn diện các hành động điều tiết cống tự động
@@ -48,22 +48,22 @@ export const ActionLogs = () => {
             variant="outline"
             className="flex-1 lg:flex-none h-14 px-8 border-slate-200 bg-white"
           >
-            <Share2 size={18} className="mr-2" /> Share Report
+            <Share2 size={18} className="mr-2" /> Chia sẻ báo cáo
           </Button>
           <Button
             variant="navy"
             className="flex-1 lg:flex-none h-14 px-8 shadow-xl shadow-mekong-navy/20"
           >
-            <Download size={18} className="mr-2" /> Export to DARD
+            <Download size={18} className="mr-2" /> Xuất dữ liệu Sở NN&PTNT
           </Button>
         </div>
       </div>
 
-      {/* 2. TOP ANALYTICS & FEEDBACK GRID */}
+      {/* 2. KHỐI PHÂN TÍCH & PHẢN HỒI */}
       <div className="grid grid-cols-12 gap-8">
-        {/* LEFT COLUMN: LEARNING & DAMAGES (4 cols) */}
+        {/* CỘT TRÁI: HỌC TẬP & THIỆT HẠI ĐÃ TRÁNH (4 cột) */}
         <div className="col-span-12 lg:col-span-4 space-y-8">
-          {/* Recent Learning Log - Trình bày tinh tế hơn Figma */}
+          {/* Nhật ký Học tập của AI */}
           <Card
             variant="white"
             className="border-l-4 border-l-mekong-navy shadow-soft rounded-[32px] p-8"
@@ -75,26 +75,26 @@ export const ActionLogs = () => {
               <div className="space-y-4">
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
-                    Recent Learning Log
+                    Nhật ký học tập gần đây
                   </p>
                   <p className="text-[15px] font-bold text-mekong-navy leading-relaxed italic">
-                    "Agent learned: Wind at level 6 requires 15% earlier gate
-                    closure to maintain goal."
+                    "Hệ thống ghi nhận: Gió cấp 6 yêu cầu đóng cống sớm hơn 15%
+                    để duy trì mục tiêu độ mặn."
                   </p>
                 </div>
                 <div className="flex justify-between items-center pt-2">
                   <Badge variant="cyan" className="px-3">
-                    Recursive Optimization
+                    Tối ưu hóa đệ quy
                   </Badge>
                   <span className="text-[10px] font-black text-slate-400">
-                    2h ago
+                    2 giờ trước
                   </span>
                 </div>
               </div>
             </div>
           </Card>
 
-          {/* Avoided Damages Card - Hiệu ứng Glow cao cấp */}
+          {/* Thiệt hại đã tránh được */}
           <Card
             variant="navy"
             padding="none"
@@ -104,24 +104,23 @@ export const ActionLogs = () => {
 
             <div className="relative z-10 space-y-2 flex-1">
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">
-                Avoided Damages (30D)
+                Thiệt hại đã tránh được (30 ngày)
               </p>
               <div className="flex items-baseline gap-3">
                 <span className="text-6xl font-black text-mekong-cyan tracking-tighter drop-shadow-lg">
-                  $4.2M
+                  105 Tỷ
                 </span>
                 <span className="text-xl font-bold text-slate-500 uppercase tracking-widest">
-                  USD
+                  VNĐ
                 </span>
               </div>
               <p className="text-[15px] text-slate-300 font-medium leading-relaxed pt-4 opacity-90">
                 Ước tính{" "}
                 <span className="text-white font-bold">1,420 Hecta</span> lúa đã
-                được bảo vệ khỏi sự xâm nhập của mặn trong chu kỳ vừa qua.
+                được bảo vệ khỏi sự xâm nhập mặn trong chu kỳ vừa qua.
               </p>
             </div>
 
-            {/* Bar Chart Visualization */}
             <div className="relative z-10 flex items-end gap-2.5 h-24 mt-10">
               {[40, 65, 35, 80, 55, 100, 70].map((h, i) => (
                 <div
@@ -134,7 +133,7 @@ export const ActionLogs = () => {
           </Card>
         </div>
 
-        {/* RIGHT COLUMN: CLOSED-LOOP FEEDBACK (8 cols) */}
+        {/* CỘT PHẢI: PHÂN TÍCH PHẢN HỒI VÒNG LẶP KÍN (8 cột) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -148,17 +147,17 @@ export const ActionLogs = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tighter leading-none">
-                    Closed-Loop Feedback Analysis
+                    Phân tích phản hồi vòng lặp kín
                   </h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                    Real-time Model Validation
+                    Xác thực mô hình thời gian thực
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100 shadow-sm">
                 <div className="w-2 h-2 bg-mekong-mint rounded-full animate-pulse" />
                 <span className="text-[10px] font-black text-mekong-navy uppercase tracking-widest">
-                  Active Audit
+                  Đang kiểm toán
                 </span>
               </div>
             </div>
@@ -166,8 +165,8 @@ export const ActionLogs = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1">
               {[
                 {
-                  node: "Hòa Định Gate",
-                  status: "Goal Achieved",
+                  node: "Cống Hòa Định",
+                  status: "Đạt mục tiêu",
                   color: "text-mekong-mint",
                   bg: "bg-mekong-mint/10",
                   desc: "Độ mặn duy trì dưới ngưỡng 0.5 g/L bất chấp triều cường cao hơn dự báo.",
@@ -175,10 +174,10 @@ export const ActionLogs = () => {
                 },
                 {
                   node: "Cống Xuân Hòa",
-                  status: "In Progress",
+                  status: "Đang xử lý",
                   color: "text-mekong-cyan",
                   bg: "bg-mekong-cyan/10",
-                  desc: "Nồng độ oxy đang ổn định tại Node 42 sau quá trình xả nước đẩy mặn.",
+                  desc: "Nồng độ oxy đang ổn định tại điểm nút số 42 sau quá trình xả nước đẩy mặn.",
                   eff: "88%",
                 },
               ].map((item, i) => (
@@ -204,7 +203,7 @@ export const ActionLogs = () => {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        Operation Efficiency
+                        Hiệu suất vận hành
                       </span>
                       <span
                         className={`text-2xl font-black ${item.color} tracking-tighter`}
@@ -226,9 +225,8 @@ export const ActionLogs = () => {
         </div>
       </div>
 
-      {/* 3. DETAILED INTERVENTION TABLE SECTION */}
+      {/* 3. BẢNG CHI TIẾT LỊCH SỬ CAN THIỆP */}
       <section className="bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden">
-        {/* Table Branding Header */}
         <div className="bg-mekong-navy px-10 py-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
@@ -236,10 +234,10 @@ export const ActionLogs = () => {
             </div>
             <div>
               <h3 className="text-xl font-black uppercase tracking-tighter leading-none">
-                Detailed Intervention History
+                Lịch sử can thiệp chi tiết
               </h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 opacity-80">
-                Full audit log of AI-Sluice gate operations
+                Nhật ký kiểm toán đầy đủ về vận hành cống tự động bằng AI
               </p>
             </div>
           </div>
@@ -251,7 +249,7 @@ export const ActionLogs = () => {
               />
               <input
                 type="text"
-                placeholder="Search logs..."
+                placeholder="Tìm kiếm nhật ký..."
                 className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-12 pr-4 text-xs font-bold text-white focus:bg-white/10 outline-none transition-all"
               />
             </div>
@@ -259,56 +257,55 @@ export const ActionLogs = () => {
               variant="outline"
               className="border-white/20 text-white hover:bg-white/10 px-6 h-11 text-[11px]"
             >
-              <Filter size={14} className="mr-2" /> FILTER
+              <Filter size={14} className="mr-2" /> BỘ LỌC
             </Button>
           </div>
         </div>
 
-        {/* Data Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                  Timestamp
+                  Thời gian
                 </th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                  Location / Node
+                  Vị trí / Điểm nút
                 </th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                  Action Taken
+                  Hành động
                 </th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                  AI Confidence
+                  Độ tin cậy AI
                 </th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">
-                  Verification
+                  Xác minh
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {[
                 {
-                  date: "Mar 24, 2024",
+                  date: "24 Tháng 3, 2024",
                   time: "14:22:10 GMT+7",
-                  loc: "Mỹ Thuận Bridge Sluice",
-                  action: "Gate Closure",
+                  loc: "Cống Cầu Mỹ Thuận",
+                  action: "Đóng cống ngăn mặn",
                   conf: "98.4%",
                   status: "verified",
                 },
                 {
-                  date: "Mar 24, 2024",
+                  date: "24 Tháng 3, 2024",
                   time: "12:05:44 GMT+7",
-                  loc: "Bình Đại Node #08",
-                  action: "Desalinization Pump",
+                  loc: "Nút Bình Đại #08",
+                  action: "Bơm đẩy mặn",
                   conf: "94.1%",
                   status: "verified",
                 },
                 {
-                  date: "Mar 24, 2024",
+                  date: "24 Tháng 3, 2024",
                   time: "09:15:22 GMT+7",
-                  loc: "Trà Vinh Diversion Wall",
-                  action: "Structural Bypass",
+                  loc: "Đập tràn Trà Vinh",
+                  action: "Xả tràn cấu trúc",
                   conf: "89.9%",
                   status: "pending",
                 },
@@ -374,25 +371,25 @@ export const ActionLogs = () => {
           </table>
         </div>
 
-        {/* Pagination Bar */}
+        {/* Thanh phân trang */}
         <div className="bg-slate-50 px-10 py-6 flex justify-between items-center border-t border-slate-100">
           <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-            Displaying 1-15 of 2,482 Action Logs
+            Hiển thị 1-15 trong tổng số 2,482 bản ghi
           </span>
           <div className="flex gap-4">
             <button className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-30 transition-all">
-              Previous
+              Trang trước
             </button>
             <button className="px-4 py-2 rounded-lg bg-mekong-navy text-white text-[10px] font-black uppercase tracking-widest hover:shadow-lg transition-all">
-              Next Page
+              Trang tiếp theo
             </button>
           </div>
         </div>
       </section>
 
-      {/* 4. BOTTOM ANALYTICS ROW: PERFORMANCE & DENSITY */}
+      {/* 4. BIỂU ĐỒ HIỆU SUẤT & BẢN ĐỒ MẬT ĐỘ DƯỚI CÙNG */}
       <div className="grid grid-cols-12 gap-8 pb-10">
-        {/* System Performance (Weekly) */}
+        {/* Hiệu suất hệ thống (Hàng tuần) */}
         <Card
           variant="white"
           padding="lg"
@@ -401,31 +398,29 @@ export const ActionLogs = () => {
           <div className="flex justify-between items-start">
             <div className="space-y-1">
               <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tighter">
-                System Performance
+                Hiệu suất hệ thống
               </h3>
               <p className="text-[11px] text-slate-400 font-black uppercase tracking-widest opacity-80">
-                Salinity prediction accuracy vs. actual sensors.
+                Độ chính xác dự báo mặn so với cảm biến thực tế.
               </p>
             </div>
             <div className="flex gap-6">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-mekong-teal" />{" "}
                 <span className="text-[10px] font-black uppercase text-slate-400">
-                  Actual
+                  Thực tế
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-mekong-navy" />{" "}
                 <span className="text-[10px] font-black uppercase text-slate-400">
-                  AI Prediction
+                  Dự báo AI
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Chart Graphic Area */}
           <div className="flex-1 relative mt-10 mb-6 flex items-end gap-3 px-2">
-            {/* Mô phỏng các vạch lưới biểu đồ (Grid lines) */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
               {[...Array(5)].map((_, i) => (
                 <div
@@ -435,7 +430,6 @@ export const ActionLogs = () => {
               ))}
             </div>
 
-            {/* Mô phỏng các cột dữ liệu rỗng (Placeholder) */}
             {[40, 60, 45, 90, 75, 85, 95].map((h, i) => (
               <div
                 key={i}
@@ -450,14 +444,14 @@ export const ActionLogs = () => {
                   style={{ height: `${h - 10}%` }}
                 />
                 <span className="absolute -bottom-8 text-[10px] font-black text-slate-400 uppercase">
-                  Day {i + 1}
+                  Ngày {i + 1}
                 </span>
               </div>
             ))}
           </div>
         </Card>
 
-        {/* Intervention Density Map (Phần chuyên nghiệp nhất từ Figma) */}
+        {/* Bản đồ mật độ can thiệp */}
         <Card
           variant="navy"
           padding="lg"
@@ -467,15 +461,13 @@ export const ActionLogs = () => {
 
           <div className="relative z-10 space-y-1">
             <h3 className="text-lg font-black uppercase tracking-tighter">
-              Intervention Density Map
+              Bản đồ mật độ can thiệp
             </h3>
             <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest opacity-80 leading-relaxed">
-              Concentration of AI interventions based on regional salinity
-              pressure.
+              Sự tập trung của các hành động điều tiết dựa trên áp lực mặn vùng.
             </p>
           </div>
 
-          {/* Grid Density Map (Mô phỏng 50 ô vuông dữ liệu) */}
           <div className="relative z-10 grid grid-cols-10 gap-1.5 my-12 px-2">
             {Array.from({ length: 50 }).map((_, i) => {
               const opacity = Math.random();
@@ -487,7 +479,7 @@ export const ActionLogs = () => {
                   style={{
                     backgroundColor: `rgba(117, 231, 254, ${opacity > 0.3 ? opacity : 0.05})`,
                   }}
-                  title={`Density Level: ${Math.round(opacity * 100)}%`}
+                  title={`Mức độ: ${Math.round(opacity * 100)}%`}
                 />
               );
             })}
@@ -495,10 +487,10 @@ export const ActionLogs = () => {
 
           <div className="relative z-10 flex justify-between items-center text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] border-t border-white/5 pt-6">
             <span className="flex items-center gap-2">
-              <MapPin size={12} /> COASTAL INLETS
+              <MapPin size={12} /> CỬA SÔNG VEN BIỂN
             </span>
             <span className="flex items-center gap-2">
-              UPPER DELTA <ArrowUpRight size={12} />
+              THƯỢNG NGUỒN DELTA <ArrowUpRight size={12} />
             </span>
           </div>
         </Card>

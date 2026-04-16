@@ -20,7 +20,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-// Import UI Components đã build
+// Import các UI Components
 import {
   Card,
   CardContent,
@@ -34,11 +34,11 @@ import { Badge } from "../components/ui/Badge";
 export const StrategyOrchestration = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* 1. PAGE HEADER SECTION */}
+      {/* 1. PHẦN ĐẦU TRANG (HEADER) */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
-            Strategy Orchestration
+            Điều phối Chiến lược
           </h1>
           <p className="text-base text-mekong-slate font-medium max-w-3xl leading-relaxed">
             Hệ thống SALT-Agent đang đánh giá dự báo thủy triều 48 giờ cùng các
@@ -49,21 +49,21 @@ export const StrategyOrchestration = () => {
           <div className="flex items-center gap-3 px-5 py-3 bg-white rounded-2xl border border-slate-100 shadow-sm flex-1 lg:flex-none justify-center">
             <div className="w-2 h-2 bg-mekong-mint rounded-full animate-pulse shadow-[0_0_8px_#1BAEA6]" />
             <span className="text-[11px] font-black text-mekong-navy uppercase tracking-widest">
-              Reasoning Engine: Active
+              Nhân logic: Đang hoạt động
             </span>
           </div>
           <Button
             variant="navy"
             className="flex-1 lg:flex-none h-14 px-8 shadow-xl shadow-mekong-navy/20"
           >
-            <Settings2 size={18} className="mr-2" /> Optimize Plan
+            <Settings2 size={18} className="mr-2" /> Tối ưu kế hoạch
           </Button>
         </div>
       </div>
 
-      {/* 2. MAIN WORKFLOW & MAPPING GRID */}
+      {/* 2. KHỐI QUY TRÌNH CHÍNH & BẢN ĐỒ TƯ DUY */}
       <div className="grid grid-cols-12 gap-8">
-        {/* Left Column: Workflow Stepper (8 cols) */}
+        {/* Cột trái: Tiến trình công việc (8 cột) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -76,22 +76,22 @@ export const StrategyOrchestration = () => {
                   <Zap size={18} fill="currentColor" />
                 </div>
                 <h3 className="text-[13px] font-black text-mekong-navy uppercase tracking-[0.2em]">
-                  Current Strategy Workflow
+                  Quy trình chiến lược hiện tại
                 </h3>
               </div>
               <Badge
                 variant="cyan"
                 className="bg-mekong-cyan/10 text-mekong-teal border-none px-4 py-1.5 font-black uppercase tracking-widest text-[10px]"
               >
-                Goal-Driven Planning
+                Lập kế hoạch theo mục tiêu
               </Badge>
             </div>
 
-            {/* Workflow Stepper Visualization */}
+            {/* Trực quan hóa tiến trình Workflow */}
             <div className="relative flex justify-between items-start px-4 mb-20">
-              {/* Background Connecting Line */}
+              {/* Đường kẻ nền kết nối */}
               <div className="absolute top-8 left-10 right-10 h-1 bg-slate-50 rounded-full" />
-              {/* Progress Line */}
+              {/* Đường tiến độ */}
               <div
                 className="absolute top-8 left-10 h-1 bg-mekong-teal rounded-full transition-all duration-1000 shadow-[0_0_10px_#006877]"
                 style={{ width: "45%" }}
@@ -101,42 +101,42 @@ export const StrategyOrchestration = () => {
                 {
                   id: 1,
                   icon: Database,
-                  label: "Data Acquisition",
-                  sub: "Sensor & API Mesh",
-                  status: "COMPLETED",
+                  label: "Thu thập dữ liệu",
+                  sub: "Cảm biến & API Mesh",
+                  status: "HOÀN THÀNH",
                   color: "teal",
                 },
                 {
                   id: 2,
                   icon: LineChart,
-                  label: "Prediction",
-                  sub: "Peak salinity in 45m",
-                  status: "COMPLETED",
+                  label: "Dự báo",
+                  sub: "Đỉnh mặn sau 45p",
+                  status: "HOÀN THÀNH",
                   color: "teal",
                 },
                 {
                   id: 3,
                   icon: Settings2,
-                  label: "Mitigation",
-                  sub: "Pre-emptive closure",
-                  status: "ACTIVE NOW",
+                  label: "Giảm thiểu",
+                  sub: "Đóng cống phòng ngừa",
+                  status: "ĐANG CHẠY",
                   active: true,
                   color: "cyan",
                 },
                 {
                   id: 4,
                   icon: Zap,
-                  label: "Execution",
-                  sub: "SMS → Close Gate",
-                  status: "QUEUED",
+                  label: "Thực thi",
+                  sub: "SMS → Đóng cống",
+                  status: "ĐANG CHỜ",
                   color: "slate",
                 },
                 {
                   id: 5,
                   icon: RotateCcw,
-                  label: "Feedback Loop",
-                  sub: "Evaluating result",
-                  status: "PENDING",
+                  label: "Phản hồi",
+                  sub: "Đánh giá kết quả",
+                  status: "CHƯA CHẠY",
                   color: "slate",
                 },
               ].map((step) => (
@@ -148,7 +148,7 @@ export const StrategyOrchestration = () => {
                     className={`w-16 h-16 rounded-[22px] flex items-center justify-center transition-all duration-500 shadow-md ${
                       step.active
                         ? "bg-mekong-cyan text-mekong-navy scale-110 shadow-xl shadow-mekong-cyan/30 border-4 border-white"
-                        : step.status === "COMPLETED"
+                        : step.status === "HOÀN THÀNH"
                           ? "bg-mekong-teal text-white"
                           : "bg-slate-100 text-slate-300"
                     }`}
@@ -157,7 +157,7 @@ export const StrategyOrchestration = () => {
                   </div>
                   <div className="mt-6 text-center space-y-1">
                     <p
-                      className={`text-[12px] font-black uppercase tracking-tighter ${step.active ? "text-mekong-navy" : "text-mekong-slate"}`}
+                      className={`text-[12px] font-black uppercase tracking-tighter ${step.active ? "text-mekong-navy" : "text-mekong-navy/60"}`}
                     >
                       {step.label}
                     </p>
@@ -168,7 +168,7 @@ export const StrategyOrchestration = () => {
                       className={`text-[9px] font-black uppercase mt-3 tracking-[0.2em] px-2 py-0.5 rounded-full ${
                         step.active
                           ? "bg-mekong-navy text-mekong-cyan animate-pulse"
-                          : step.status === "COMPLETED"
+                          : step.status === "HOÀN THÀNH"
                             ? "text-mekong-teal bg-mekong-teal/5"
                             : "text-slate-300"
                       }`}
@@ -180,14 +180,14 @@ export const StrategyOrchestration = () => {
               ))}
             </div>
 
-            {/* Sub-Card: Strategy Details */}
+            {/* Thẻ phụ: Chi tiết chiến lược */}
             <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 flex gap-6 items-start relative group hover:bg-slate-100/50 transition-all">
               <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-mekong-teal shadow-soft border border-slate-200">
                 <Info size={24} />
               </div>
               <div className="space-y-2">
                 <h4 className="text-[13px] font-black text-mekong-navy uppercase tracking-widest">
-                  Active Intervention Strategy #042-B
+                  Chiến lược can thiệp kích hoạt #042-B
                 </h4>
                 <p className="text-[14px] text-slate-500 leading-relaxed font-semibold opacity-90">
                   Agent đã xác định cửa sổ rủi ro cao trong khoảng{" "}
@@ -196,14 +196,14 @@ export const StrategyOrchestration = () => {
                   </span>
                   . Cảnh báo SMS sẽ được gửi đến 14 điều hành viên lúc 13:40.
                   Quy trình đóng cống Sluice-7 tự động sẽ bắt đầu lúc 14:00 để
-                  ngăn mặn xâm nhập.
+                  ngăn mặn xâm nhập nội đồng.
                 </p>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Right Column: Cognitive Node Mapping (4 cols) */}
+        {/* Cột phải: Bản đồ các nút nhận thức (4 cột) */}
         <div className="col-span-12 lg:col-span-4">
           <Card
             variant="navy"
@@ -218,33 +218,33 @@ export const StrategyOrchestration = () => {
               </div>
               <div>
                 <h3 className="text-lg font-black text-white uppercase tracking-tighter leading-none">
-                  Cognitive Node Mapping
+                  Bản đồ nút nhận thức
                 </h3>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2">
-                  Neural Connection Web
+                  Mạng lưới kết nối tư duy AI
                 </p>
               </div>
             </div>
 
-            {/* Interactive Diagram Center */}
+            {/* Sơ đồ tương tác trung tâm */}
             <div className="relative h-64 flex items-center justify-center">
-              {/* Central Core */}
+              {/* Lõi trung tâm */}
               <div className="w-20 h-20 bg-mekong-cyan rounded-[24px] flex items-center justify-center text-mekong-navy z-20 shadow-[0_0_40px_rgba(117,231,254,0.4)] border-4 border-white animate-pulse">
                 <Cpu size={32} strokeWidth={2.5} />
               </div>
 
-              {/* Peripheral Nodes Positioning */}
+              {/* Vị trí các nút ngoại vi */}
               {[
                 {
                   icon: Waves,
-                  label: "TIDE",
+                  label: "THỦY TRIỀU",
                   pos: "-top-4 left-1/2 -translate-x-1/2",
                 },
-                { icon: Wind, label: "WIND", pos: "top-1/4 -right-2" },
-                { icon: Radio, label: "SENSOR", pos: "top-1/4 -left-2" },
+                { icon: Wind, label: "GIÓ", pos: "top-1/4 -right-2" },
+                { icon: Radio, label: "CẢM BIẾN", pos: "top-1/4 -left-2" },
                 {
                   icon: HistoryIcon,
-                  label: "HISTORY",
+                  label: "LỊCH SỬ",
                   pos: "-bottom-4 left-1/2 -translate-x-1/2",
                 },
               ].map((node, i) => (
@@ -261,7 +261,7 @@ export const StrategyOrchestration = () => {
                 </div>
               ))}
 
-              {/* Connecting Grid Lines SVG */}
+              {/* Đường lưới kết nối SVG */}
               <svg
                 className="absolute inset-0 w-full h-full opacity-10 pointer-events-none"
                 viewBox="0 0 400 300"
@@ -305,7 +305,7 @@ export const StrategyOrchestration = () => {
             <div className="relative z-10 pt-10 border-t border-white/5 space-y-4">
               <div className="flex justify-between items-end">
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                  Processing Density
+                  Mật độ xử lý
                 </p>
                 <span className="text-sm font-mono font-black text-mekong-cyan shadow-sm shadow-mekong-cyan/20 px-2 py-0.5 rounded bg-white/5">
                   88 Gflops
@@ -319,9 +319,9 @@ export const StrategyOrchestration = () => {
         </div>
       </div>
 
-      {/* 3. LOWER CONTENT: LOGS & SETTINGS */}
+      {/* 3. NỘI DUNG PHÍA DƯỚI: NHẬT KÝ & CÀI ĐẶT */}
       <div className="grid grid-cols-12 gap-8">
-        {/* Live Reasoning Terminal (8 cols) */}
+        {/* Nhật ký suy luận trực tiếp (8 cột) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -332,14 +332,14 @@ export const StrategyOrchestration = () => {
               <div className="flex items-center gap-3 text-mekong-navy">
                 <Terminal size={22} />
                 <h3 className="text-base font-black uppercase tracking-widest">
-                  Live Reasoning Log
+                  Nhật ký suy luận hệ thống
                 </h3>
               </div>
               <Button
                 variant="outline"
                 className="h-10 text-[10px] font-black border-slate-200 px-4"
               >
-                <Download size={14} className="mr-2" /> EXPORT LOG
+                <Download size={14} className="mr-2" /> XUẤT NHẬT KÝ
               </Button>
             </div>
 
@@ -347,31 +347,31 @@ export const StrategyOrchestration = () => {
               {[
                 {
                   t: "14:22:10",
-                  cat: "CORE_PROCESS",
+                  cat: "LÕI_HỆ_THỐNG",
                   msg: "Vận tốc gió tăng lên 6 Bft, đẩy nhanh sự xâm nhập của nêm mặn thêm 12%... hệ thống đã điều chỉnh thời gian đóng cống sớm hơn.",
                   color: "border-l-mekong-teal text-mekong-navy",
                 },
                 {
                   t: "14:18:05",
-                  cat: "DATA_INGEST",
-                  msg: "Đang tiếp nhận dữ liệu đo đạc vệ tinh độ phân giải cao. Tính toán lại hệ số ma sát lòng sông cho mô hình lan truyền thượng nguồn.",
+                  cat: "NHẬN_DỮ_LIỆU",
+                  msg: "Đang tiếp nhận dữ liệu đo đạc vệ tinh độ phân giải cao. Tính toán lại hệ số ma sát lòng sông cho mô hình lan truyền.",
                   color: "border-l-slate-300 text-slate-500",
                 },
                 {
                   t: "14:15:52",
-                  cat: "PREDICTIVE_SYNC",
-                  msg: "Dữ liệu lịch sử từ đợt hạn mặn 2016 khớp 94.2%. Đang điều chỉnh ngưỡng nhạy cảm cho Gate-09.",
+                  cat: "DỰ_BÁO_ĐỒNG_BỘ",
+                  msg: "Dữ liệu lịch sử từ đợt hạn mặn 2016 khớp 94.2%. Đang điều chỉnh ngưỡng nhạy cảm cho Cống Gate-09.",
                   color: "border-l-slate-300 text-slate-500",
                 },
                 {
                   t: "14:10:30",
-                  cat: "DECISION_BRANCH",
+                  cat: "NHÁNH_QUYẾT_ĐỊNH",
                   msg: "Phát hiện ghi đè thủ công tại Gate-12. Đang tính toán lại luồng xâm nhập mặn dự kiến qua khu vực Delta-4.",
                   color: "border-l-mekong-navy text-mekong-navy",
                 },
                 {
                   t: "14:05:00",
-                  cat: "SYSTEM_HEARTBEAT",
+                  cat: "TRẠNG_THÁI_HỆ_THỐNG",
                   msg: "Tất cả 142 node cảm biến đang báo cáo trong tham số độ trễ định danh (45ms).",
                   color: "border-l-slate-300 text-slate-500",
                 },
@@ -399,7 +399,7 @@ export const StrategyOrchestration = () => {
           </Card>
         </div>
 
-        {/* Strategic Goal Settings (4 cols) */}
+        {/* Cài đặt mục tiêu chiến lược (4 cột) */}
         <div className="col-span-12 lg:col-span-4">
           <Card
             variant="white"
@@ -410,21 +410,21 @@ export const StrategyOrchestration = () => {
               <div className="flex items-center gap-3 text-mekong-navy">
                 <SlidersHorizontal size={22} />
                 <h3 className="text-base font-black uppercase tracking-widest leading-none">
-                  Strategic Goal Settings
+                  Cài đặt mục tiêu
                 </h3>
               </div>
               <p className="text-[12px] text-slate-500 font-medium leading-relaxed italic pl-9">
-                Các quan chức DARD được ủy quyền có thể ghi đè các tham số cơ sở
-                của AI.
+                Các chuyên viên quản lý được ủy quyền có thể điều chỉnh các tham
+                số cơ sở của AI.
               </p>
             </div>
 
             <div className="space-y-10 flex-1">
-              {/* Slider Mockup */}
+              {/* Ngưỡng độ mặn Slider */}
               <div className="space-y-4">
                 <div className="flex justify-between items-end">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Salinity Threshold
+                    Ngưỡng độ mặn
                   </label>
                   <span className="text-sm font-black text-mekong-navy bg-white px-3 py-1 rounded-lg border border-slate-200">
                     0.3 g/L
@@ -437,31 +437,31 @@ export const StrategyOrchestration = () => {
                 <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
                   <span>0.1 g/L</span>
                   <span className="text-mekong-teal/60 italic">
-                    Target: Planting season
+                    Mục tiêu: Mùa xuống giống
                   </span>
                   <span>1.0 g/L</span>
                 </div>
               </div>
 
-              {/* Agility Selector */}
+              {/* Lựa chọn độ linh hoạt */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Intervention Agility
+                    Độ nhạy can thiệp
                   </label>
                   <span className="text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-                    High (Proactive)
+                    Cao (Chủ động)
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-inner">
                   <button className="py-2.5 text-[9px] font-black uppercase text-slate-400 hover:text-mekong-navy">
-                    Conservative
+                    Thận trọng
                   </button>
                   <button className="py-2.5 text-[9px] font-black uppercase bg-mekong-navy text-mekong-cyan rounded-xl shadow-lg">
-                    Balanced
+                    Cân bằng
                   </button>
                   <button className="py-2.5 text-[9px] font-black uppercase text-slate-400 hover:text-mekong-navy">
-                    Aggressive
+                    Quyết liệt
                   </button>
                 </div>
               </div>
@@ -472,14 +472,14 @@ export const StrategyOrchestration = () => {
                 variant="navy"
                 className="w-full h-16 rounded-[24px] shadow-2xl flex gap-2"
               >
-                <CheckCircle2 size={20} /> Commit Overrides
+                <CheckCircle2 size={20} /> Lưu các thay đổi
               </Button>
             </div>
           </Card>
         </div>
       </div>
 
-      {/* 4. BOTTOM SUMMARY BAR */}
+      {/* 4. THANH TỔNG HỢP DƯỚI CÙNG */}
       <Card
         variant="white"
         padding="md"
@@ -488,17 +488,13 @@ export const StrategyOrchestration = () => {
         <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex items-center gap-6 flex-1">
             <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center p-4 relative overflow-hidden group-hover:bg-mekong-teal/5 transition-all">
-              <img
-                src="https://placehold.co/96x96"
-                className="w-full h-full object-cover rounded-xl grayscale group-hover:grayscale-0 transition-all opacity-40 group-hover:opacity-100"
-              />
               <div className="absolute inset-0 bg-mekong-teal/10 flex items-center justify-center text-mekong-teal">
                 <MapPin size={32} />
               </div>
             </div>
             <div className="space-y-1">
               <h4 className="text-xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-                Soc Trang Estuary Nodes
+                Nút hạ lưu Sóc Trăng
               </h4>
               <p className="text-[13px] text-slate-500 font-semibold max-w-xl">
                 Hiện đang giám sát 4 cống thủy lợi trọng yếu tại khu vực phía
@@ -511,7 +507,7 @@ export const StrategyOrchestration = () => {
           <div className="flex gap-12 text-right border-l border-slate-100 pl-12 h-16 items-center">
             <div className="space-y-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
-                Avg Salinity
+                Độ mặn TB
               </p>
               <p className="text-3xl font-black text-mekong-critical tracking-tighter leading-none">
                 0.52
@@ -519,7 +515,7 @@ export const StrategyOrchestration = () => {
             </div>
             <div className="space-y-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
-                Nodes Up
+                Trạm hoạt động
               </p>
               <p className="text-3xl font-black text-mekong-navy tracking-tighter leading-none">
                 42/42
