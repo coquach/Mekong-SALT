@@ -15,6 +15,11 @@ from pydantic import ValidationError
 from app.core.config import Settings, get_settings
 from app.db.session import AsyncSessionFactory, close_database_engine
 from app.schemas.sensor import SensorReadingIngestRequest
+from app.services.iot_ingest_observability import (
+    archive_dead_letter,
+    set_worker_metrics,
+    update_worker_metric,
+)
 from app.services.sensor_service import ingest_sensor_reading
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,7 @@ class MqttIngestWorker:
         self._disconnect_reason_code: int | None = None
         self._stopping = False
         self._client = self._build_client()
+        set_worker_metrics("mqtt", asdict(self._metrics))
 
     def _build_client(self) -> mqtt.Client:
         client = mqtt.Client(
@@ -185,9 +191,11 @@ class MqttIngestWorker:
         retain: bool,
     ) -> None:
         self._metrics.received_messages += 1
+        self._sync_metrics()
 
         if topic == self._settings.mqtt_topic_device_status:
             self._metrics.status_messages += 1
+            self._sync_metrics()
             await self._handle_device_status_message(payload_raw=payload_raw)
             return
 
@@ -206,6 +214,7 @@ class MqttIngestWorker:
             request_payload = SensorReadingIngestRequest.model_validate(mapped_payload)
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             self._metrics.parse_failures += 1
+            update_worker_metric("mqtt", last_error=str(exc))
             logger.warning("MQTT sensor payload rejected", extra={"reason": str(exc)})
             self._publish_dead_letter(topic=topic, payload_raw=payload_raw, reason=str(exc))
             return
@@ -215,11 +224,13 @@ class MqttIngestWorker:
                 await ingest_sensor_reading(session, request_payload)
         except Exception as exc:
             self._metrics.persist_failures += 1
+            update_worker_metric("mqtt", last_error=str(exc))
             logger.exception("MQTT sensor payload failed during persistence")
             self._publish_dead_letter(topic=topic, payload_raw=payload_raw, reason=str(exc))
             return
 
         self._metrics.ingested_success += 1
+        self._sync_metrics()
         if self._metrics.received_messages % 20 == 0:
             logger.info("MQTT ingest counters", extra=asdict(self._metrics))
 
@@ -301,11 +312,30 @@ class MqttIngestWorker:
         )
         if publish_info.rc == mqtt.MQTT_ERR_SUCCESS:
             self._metrics.dead_letter_published += 1
+            archived = archive_dead_letter(
+                settings=self._settings,
+                source="mqtt",
+                reason=reason,
+                payload_raw=payload_raw,
+                metadata={
+                    "source_topic": topic,
+                    "dead_letter_topic": self._settings.mqtt_topic_dead_letter,
+                },
+            )
+            if archived:
+                update_worker_metric(
+                    "mqtt",
+                    dead_letter_archived=int(self._metrics.dead_letter_published),
+                )
+            self._sync_metrics()
             return
         logger.error(
             "Failed to publish MQTT dead-letter payload",
             extra={"dead_letter_topic": self._settings.mqtt_topic_dead_letter},
         )
+
+    def _sync_metrics(self) -> None:
+        set_worker_metrics("mqtt", asdict(self._metrics))
 
 
 def start_mqtt_ingest_worker(*, settings: Settings | None = None) -> asyncio.Task[None]:

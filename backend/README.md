@@ -64,6 +64,15 @@ MQTT_BROKER_PORT=1883
 MQTT_TOPIC_SENSOR_READINGS=mekong/sensors/readings
 MQTT_TOPIC_DEVICE_STATUS=mekong/sensors/status
 MQTT_TOPIC_DEAD_LETTER=mekong/sensors/readings/dlq
+IOT_DLQ_ARCHIVE_ENABLED=true
+IOT_DLQ_ARCHIVE_PATH=artifacts/ingest_dlq_archive.jsonl
+
+PUBSUB_ENABLED=true
+PUBSUB_PROJECT_ID=your-gcp-project
+PUBSUB_SUBSCRIPTION_SENSOR_READINGS=mekong-sensors-readings-sub
+PUBSUB_DEAD_LETTER_TOPIC=mekong-sensors-readings-dlq
+PUBSUB_MAX_DELIVERY_ATTEMPTS=5
+PUBSUB_FLOW_MAX_MESSAGES=100
 ```
 
 Run MQTT scenario stream:

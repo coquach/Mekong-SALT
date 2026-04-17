@@ -62,12 +62,17 @@ class Settings(BaseSettings):
     mqtt_topic_dead_letter: str = "mekong/sensors/readings/dlq"
     mqtt_qos: int = 1
 
+    iot_dlq_archive_enabled: bool = True
+    iot_dlq_archive_path: str = "artifacts/ingest_dlq_archive.jsonl"
+
     pubsub_enabled: bool = False
     pubsub_project_id: str | None = None
     pubsub_subscription_sensor_readings: str | None = None
     pubsub_topic_sensor_events: str | None = None
     pubsub_dead_letter_topic: str | None = None
     pubsub_emulator_host: str | None = None
+    pubsub_max_delivery_attempts: int = 5
+    pubsub_flow_max_messages: int = 100
 
     earth_engine_enabled: bool = False
     earth_engine_project_id: str | None = None

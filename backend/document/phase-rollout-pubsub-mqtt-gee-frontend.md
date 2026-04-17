@@ -146,12 +146,16 @@ Started:
   - dead-letter publish to `mekong/sensors/readings/dlq` on parse/persist failures
   - runtime ingest counters in logs (success/fail/status/dlq)
 - Sensor ingest idempotency guard (`station_id + recorded_at + source`) to reduce duplicate writes.
+- Shared ingest observability registry + endpoint:
+  - `GET /api/v1/sensors/ingest/metrics`
+  - counters for MQTT/PubSub success/fail/retry/DLQ and Pub/Sub queue-lag aggregates
+- DLQ archive sink (file-based JSONL) for malformed/persist-failed messages.
 - Demo simulator upgrade:
   - `scripts/run_demo_simulation.py` now supports `--transport http|mqtt`
   - MQTT publisher CLI flags (`--mqtt-broker-url`, `--mqtt-broker-port`, `--mqtt-topic-readings`, `--mqtt-qos`, auth options)
   - same scenario catalog can now drive agentic flow via MQTT path.
 
 Next:
-- Add DLQ archive sink (DB/object storage) instead of topic-only DLQ.
-- Add ingest metrics endpoint/dashboard cards.
+- Add dashboard cards for ingest metrics endpoint values.
+- Add DB/object-storage archival backend option for DLQ sink (currently file-based JSONL).
 - Add DB-level unique constraint for hard idempotency under concurrent writes.
