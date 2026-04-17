@@ -204,8 +204,15 @@ Optional controls:
 
 - `RAG_USE_VERTEX_VECTOR_SEARCH=true`
 - `RAG_ENABLE_LOCAL_FALLBACK=true`
+- `RAG_STATIC_CORPUS_PROVIDER=vector_search|vertex_rag_engine_adapter`
 - `RAG_RETRIEVAL_TOP_K=8`
 - `RAG_CSV_REINDEX_TTL_DAYS=7`
+
+Note:
+
+- `vertex_rag_engine_adapter` currently runs through a dedicated adapter boundary and still uses
+	Vertex Vector Search as the backing data plane (transitional mode), while exposing
+	corpus-provider provenance in retrieval output.
 
 Ingest document/CSV sources into DB + Vertex index:
 
@@ -222,13 +229,19 @@ Ingest bundled sample docs (SOP + threshold + casebook + weather guidance):
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
 ```
 
-Sample files are stored under `document/rag_samples/`.
+Sample files are stored under `document/rag_samples/` with categorized subfolders:
+
+- `document/rag_samples/sop/`
+- `document/rag_samples/threshold/`
+- `document/rag_samples/casebook/`
+- `document/rag_samples/guideline/`
 
 Supported ingestion formats in Phase 1:
 
 - `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `log`
 - `csv` (row-aware normalization)
 - `docx` (requires `python-docx`)
+- `pdf` (requires `pypdf`)
 
 Governance behavior:
 

@@ -11,6 +11,10 @@ class RetrievalLanePolicy:
 
     use_vector_search: bool
     enable_local_fallback: bool
+    static_corpus_provider: str
+    static_retrieval_mode: str
+    shadow_primary_lane: str
+    shadow_min_overlap_ratio: float
     top_k: int
     static_local_limit: int
     memory_local_limit: int
@@ -25,6 +29,13 @@ def build_retrieval_lane_policy(settings) -> RetrievalLanePolicy:
     return RetrievalLanePolicy(
         use_vector_search=bool(getattr(settings, "rag_use_vertex_vector_search", True)),
         enable_local_fallback=bool(getattr(settings, "rag_enable_local_fallback", True)),
+        static_corpus_provider=str(getattr(settings, "rag_static_corpus_provider", "vector_search")),
+        static_retrieval_mode=str(getattr(settings, "rag_static_retrieval_mode", "vector")),
+        shadow_primary_lane=str(getattr(settings, "rag_shadow_primary_lane", "vector")),
+        shadow_min_overlap_ratio=max(
+            0.0,
+            min(1.0, float(getattr(settings, "rag_shadow_min_overlap_ratio", 0.2))),
+        ),
         top_k=max(1, int(getattr(settings, "rag_retrieval_top_k", 8))),
         static_local_limit=max(1, int(getattr(settings, "rag_static_local_limit", 4))),
         memory_local_limit=max(1, int(getattr(settings, "rag_memory_local_limit", 4))),

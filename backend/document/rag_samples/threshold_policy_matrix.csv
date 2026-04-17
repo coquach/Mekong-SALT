@@ -1,5 +1,0 @@
-policy_id,region_code,crop_group,warning_threshold_dsm,critical_threshold_dsm,max_safe_window_minutes,notes
-POL-TG-RICE-001,TIEN_GIANG,rice,2.5,4.0,120,"Apply conservative intake pause during high tide"
-POL-BT-SHRIMP-001,BEN_TRE,shrimp,3.0,5.0,90,"Aeration plan may continue under monitored salinity"
-POL-LA-MIXED-001,LONG_AN,mixed,2.3,3.8,100,"Favor advisory-first strategy for mixed crop zones"
-POL-VL-RICE-001,VINH_LONG,rice,2.4,3.9,110,"Escalate to approval workflow for repeated warnings"

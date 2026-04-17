@@ -41,6 +41,7 @@ class RetrievalProvenance(ORMBaseSchema):
     retrieval_backend: str = "rag_retrieval_service"
     vector_search_enabled: bool
     vector_search_used: bool
+    static_corpus_provider: str = "vector_search"
     local_fallback_enabled: bool
     local_fallback_used: bool
     source_counts: dict[str, int] = Field(default_factory=dict)

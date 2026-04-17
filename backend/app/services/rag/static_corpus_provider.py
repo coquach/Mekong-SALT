@@ -77,9 +77,60 @@ class VertexStaticCorpusProvider:
         ]
 
 
+class VertexRagEngineAdapterStaticCorpusProvider:
+    """Static corpus provider adapter for Vertex RAG Engine integration.
+
+    Transitional behavior currently delegates to Vector Search adapter while preserving
+    a dedicated integration boundary for future managed-corpus ingestion APIs.
+    """
+
+    def __init__(self, *, vector_service: VertexVectorSearchService | None = None) -> None:
+        self._fallback = VertexStaticCorpusProvider(vector_service=vector_service)
+
+    def is_configured(self) -> bool:
+        return self._fallback.is_configured()
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return await self._fallback.embed_texts(texts)
+
+    async def upsert_datapoints(self, datapoints: list[dict[str, Any]]) -> None:
+        enriched: list[dict[str, Any]] = []
+        for item in datapoints:
+            next_item = dict(item)
+            restricts = dict(next_item.get("restricts") or {})
+            restricts.setdefault("provider_path", ["vertex_rag_engine_adapter"])
+            next_item["restricts"] = restricts
+            enriched.append(next_item)
+        await self._fallback.upsert_datapoints(enriched)
+
+    async def remove_datapoints(self, datapoint_ids: list[str]) -> None:
+        await self._fallback.remove_datapoints(datapoint_ids)
+
+    async def find_neighbors(
+        self,
+        *,
+        query_embedding: list[float],
+        neighbor_count: int,
+        restricts: dict[str, list[str]] | None = None,
+    ) -> list[StaticCorpusNeighbor]:
+        return await self._fallback.find_neighbors(
+            query_embedding=query_embedding,
+            neighbor_count=neighbor_count,
+            restricts=restricts,
+        )
+
+
 def get_static_corpus_provider(
     *,
+    settings=None,
     vector_service: VertexVectorSearchService | None = None,
 ) -> StaticCorpusProvider:
     """Return configured static corpus provider adapter."""
+    provider_name = str(getattr(settings, "rag_static_corpus_provider", "vector_search")).strip().lower()
+    if provider_name in {"vertex_rag_engine", "vertex_rag_engine_adapter"}:
+        return VertexRagEngineAdapterStaticCorpusProvider(vector_service=vector_service)
     return VertexStaticCorpusProvider(vector_service=vector_service)
+
+
+# Backward-compatible alias for older imports.
+VertexRagEngineStaticCorpusProvider = VertexRagEngineAdapterStaticCorpusProvider

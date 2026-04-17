@@ -66,6 +66,17 @@ class VertexVectorSearchService:
                 contents=texts,
             )
         except Exception as exc:
+            error_text = str(exc)
+            if "invalid_grant" in error_text.lower():
+                raise AppException(
+                    status_code=503,
+                    code="vertex_auth_invalid_grant",
+                    message=(
+                        "Vertex authentication failed (invalid_grant). Refresh ADC credentials "
+                        "with 'gcloud auth application-default login' or configure a valid "
+                        "service account key/token."
+                    ),
+                ) from exc
             raise AppException(
                 status_code=503,
                 code="vertex_embedding_failed",
@@ -180,7 +191,7 @@ class VertexVectorSearchService:
             )
 
         request = aiplatform_v1.UpsertDatapointsRequest(
-            index=self._settings.vertex_vector_search_index,
+            index=self._resolve_index_resource_name(),
             datapoints=built,
         )
         client.upsert_datapoints(request=request)
@@ -225,7 +236,7 @@ class VertexVectorSearchService:
         )
 
         request = aiplatform_v1.FindNeighborsRequest(
-            index_endpoint=self._settings.vertex_vector_search_index_endpoint,
+            index_endpoint=self._resolve_index_endpoint_resource_name(),
             deployed_index_id=self._settings.vertex_vector_search_deployed_index_id,
             queries=[query],
             return_full_datapoint=False,
@@ -261,7 +272,25 @@ class VertexVectorSearchService:
             client_options={"api_endpoint": f"{self._settings.vertex_ai_location}-aiplatform.googleapis.com"}
         )
         request = aiplatform_v1.RemoveDatapointsRequest(
-            index=self._settings.vertex_vector_search_index,
+            index=self._resolve_index_resource_name(),
             datapoint_ids=[str(item) for item in datapoint_ids],
         )
         client.remove_datapoints(request=request)
+
+    def _resolve_index_resource_name(self) -> str:
+        index_value = str(self._settings.vertex_vector_search_index or "").strip()
+        if "/" in index_value:
+            return index_value
+        return (
+            f"projects/{self._settings.vertex_ai_project}/"
+            f"locations/{self._settings.vertex_ai_location}/indexes/{index_value}"
+        )
+
+    def _resolve_index_endpoint_resource_name(self) -> str:
+        endpoint_value = str(self._settings.vertex_vector_search_index_endpoint or "").strip()
+        if "/" in endpoint_value:
+            return endpoint_value
+        return (
+            f"projects/{self._settings.vertex_ai_project}/"
+            f"locations/{self._settings.vertex_ai_location}/indexEndpoints/{endpoint_value}"
+        )

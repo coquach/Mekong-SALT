@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     gemini_model: Literal["gemini-2.5-flash"] = "gemini-2.5-flash"
     rag_use_vertex_vector_search: bool = True
     rag_enable_local_fallback: bool = True
+    rag_static_corpus_provider: Literal["vector_search", "vertex_rag_engine_adapter"] = "vector_search"
+    rag_static_retrieval_mode: Literal["vector", "local", "shadow"] = "vector"
+    rag_shadow_primary_lane: Literal["vector", "local"] = "vector"
+    rag_shadow_min_overlap_ratio: float = 0.2
+    rag_static_direct_embedding_enabled: bool = True
     rag_embedding_model: str = "text-embedding-005"
     rag_retrieval_top_k: int = 8
     rag_static_local_limit: int = 4
@@ -128,6 +133,17 @@ class Settings(BaseSettings):
     def enforce_gemini_flash_model(cls, _value: str | None) -> str:
         """Force Gemini Flash 2.5 as the planning model."""
         return "gemini-2.5-flash"
+
+    @field_validator("rag_static_corpus_provider", mode="before")
+    @classmethod
+    def normalize_static_corpus_provider(cls, value: str | None) -> str:
+        """Normalize legacy provider names to explicit adapter naming."""
+        normalized = str(value or "vector_search").strip().lower()
+        if normalized == "vertex_rag_engine":
+            return "vertex_rag_engine_adapter"
+        if normalized in {"vector_search", "vertex_rag_engine_adapter"}:
+            return normalized
+        return "vector_search"
 
 
 

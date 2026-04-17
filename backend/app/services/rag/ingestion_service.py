@@ -50,6 +50,19 @@ async def ingest_knowledge_file_to_vertex(
 ) -> IngestionResult:
     """Ingest txt/md/csv/docx content and upsert vectors to Vertex Vector Search."""
     settings = get_settings()
+    static_corpus_provider = str(getattr(settings, "rag_static_corpus_provider", "vector_search")).lower()
+    index_provider_name = (
+        "vertex_rag_engine_adapter"
+        if static_corpus_provider in {"vertex_rag_engine", "vertex_rag_engine_adapter"}
+        else "vertex_vector_search"
+    )
+    if document_type.lower() == "memory_case":
+        raise AppException(
+            status_code=400,
+            code="rag_ingest_invalid_static_entity_type",
+            message="memory_case data must be indexed only via memory_case_vector_service.",
+        )
+
     path = Path(file_path)
     if not path.exists() or not path.is_file():
         raise AppException(
@@ -58,7 +71,7 @@ async def ingest_knowledge_file_to_vertex(
             message=f"Knowledge source '{file_path}' was not found.",
         )
 
-    content = _load_content(path)
+    content = _sanitize_text(_load_content(path))
     if not content.strip():
         raise AppException(
             status_code=400,
@@ -112,6 +125,7 @@ async def ingest_knowledge_file_to_vertex(
     )
 
     should_reindex = force_reindex
+    existing_chunk_count = 0
     if existing_document is not None and not force_reindex:
         should_reindex = _should_reindex_existing(
             ext=ext,
@@ -120,12 +134,15 @@ async def ingest_knowledge_file_to_vertex(
             now=now,
             csv_ttl_days=settings.rag_csv_reindex_ttl_days,
         )
+        existing_chunk_count = await repository.count_chunks_for_document(existing_document.id)
+        provider_sync_status = str(existing_document.provider_sync_status or "").lower().strip()
+        if provider_sync_status in {"failed", "syncing", "pending"} or existing_chunk_count == 0:
+            should_reindex = True
 
     if existing_document is not None and not should_reindex:
-        chunk_count = await repository.count_chunks_for_document(existing_document.id)
         return IngestionResult(
             document_id=str(existing_document.id),
-            chunk_count=chunk_count,
+            chunk_count=existing_chunk_count,
             source_uri=existing_document.source_uri,
             version=int(existing_metadata.get("document_version") or 1),
             reindexed=False,
@@ -158,12 +175,12 @@ async def ingest_knowledge_file_to_vertex(
         "content_sha256": content_hash,
         "file_last_modified_at": datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat(),
         "last_indexed_at": now.isoformat(),
-        "index_provider": "vertex_vector_search",
+        "index_provider": index_provider_name,
         "version_history": version_history,
     }
 
     vector_service = VertexVectorSearchService()
-    static_provider = get_static_corpus_provider(vector_service=vector_service)
+    static_provider = get_static_corpus_provider(settings=settings, vector_service=vector_service)
     if existing_document is not None:
         old_chunk_ids = await repository.list_chunk_ids_for_document(existing_document.id)
         if old_chunk_ids:
@@ -180,7 +197,7 @@ async def ingest_knowledge_file_to_vertex(
         existing_document.effective_date = _parse_effective_date_or_raise(resolved_effective_date)
         existing_document.content_sha256 = content_hash
         existing_document.document_version = document_version
-        existing_document.index_provider = "vertex_vector_search"
+        existing_document.index_provider = index_provider_name
         existing_document.last_indexed_at = now
         existing_document.provider_retry_count = int(existing_document.provider_retry_count or 0)
         document = existing_document
@@ -197,7 +214,7 @@ async def ingest_knowledge_file_to_vertex(
             effective_date=_parse_effective_date_or_raise(resolved_effective_date),
             content_sha256=content_hash,
             document_version=document_version,
-            index_provider="vertex_vector_search",
+            index_provider=index_provider_name,
             provider_sync_status="pending",
             provider_retry_count=0,
             provider_error=None,
@@ -213,6 +230,16 @@ async def ingest_knowledge_file_to_vertex(
         chunks = [content.strip()]
 
     try:
+        if not bool(getattr(settings, "rag_static_direct_embedding_enabled", True)):
+            raise AppException(
+                status_code=503,
+                code="rag_static_direct_embedding_disabled",
+                message=(
+                    "Direct static chunk embedding is disabled. Enable it or switch to "
+                    "provider-managed corpus sync path."
+                ),
+            )
+
         vectors = await static_provider.embed_texts(chunks)
 
         db_chunks: list[EmbeddedChunk] = []
@@ -239,6 +266,7 @@ async def ingest_knowledge_file_to_vertex(
                     "datapoint_id": str(chunk.id),
                     "feature_vector": vector,
                     "restricts": {
+                        "entity_type": ["knowledge_document"],
                         "document_type": [document_type],
                         "region_scope": [str((metadata_payload or {}).get("region_code") or "global")],
                         "source_key": [resolved_source_key],
@@ -335,13 +363,15 @@ def _load_content(path: Path) -> str:
         return _load_csv_content(path)
     if ext == ".docx":
         return _load_docx_content(path)
+    if ext == ".pdf":
+        return _load_pdf_content(path)
 
     raise AppException(
         status_code=400,
         code="rag_ingest_file_type_not_supported",
         message=(
             "Unsupported file type for ingestion. Supported: txt, md, rst, json, "
-            "yaml, yml, log, csv, docx."
+            "yaml, yml, log, csv, docx, pdf."
         ),
     )
 
@@ -377,8 +407,28 @@ def _load_docx_content(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _load_pdf_content(path: Path) -> str:
+    try:
+        pypdf_module = importlib.import_module("pypdf")
+        PdfReader = getattr(pypdf_module, "PdfReader")
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise AppException(
+            status_code=400,
+            code="rag_ingest_pdf_dependency_missing",
+            message="PDF ingestion requires pypdf. Install it to ingest .pdf files.",
+        ) from exc
+
+    reader = PdfReader(str(path))
+    lines: list[str] = []
+    for page in getattr(reader, "pages", []) or []:
+        text = (page.extract_text() or "").strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
 def _chunk_text(text: str, *, chunk_size: int, chunk_overlap: int) -> list[str]:
-    clean = " ".join(text.split())
+    clean = " ".join(_sanitize_text(text).split())
     if not clean:
         return []
 
@@ -401,7 +451,12 @@ def _estimate_token_count(text: str) -> int:
 
 
 def _summarize_for_document(text: str, limit: int = 260) -> str:
-    compact = " ".join(text.split())
+    compact = " ".join(_sanitize_text(text).split())
     if len(compact) <= limit:
         return compact
     return compact[: limit - 3].rstrip() + "..."
+
+
+def _sanitize_text(text: str) -> str:
+    # PostgreSQL text fields reject NUL bytes; strip them from extracted content.
+    return text.replace("\x00", "")

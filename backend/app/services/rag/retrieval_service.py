@@ -105,6 +105,7 @@ async def retrieve_ranked_knowledge_context(
         generated_at=datetime.now(UTC),
         vector_search_enabled=policy.use_vector_search,
         vector_search_used=broker_result.vector_search_used,
+        static_corpus_provider=policy.static_corpus_provider,
         local_fallback_enabled=policy.enable_local_fallback,
         local_fallback_used=broker_result.local_fallback_used,
         source_counts=source_counts,
