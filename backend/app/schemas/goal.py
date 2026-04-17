@@ -73,6 +73,7 @@ class MonitoringGoalRead(EntityReadSchema):
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     last_run_plan_id: UUID | None = None
+    last_processed_reading_id: UUID | None = None
 
 
 class MonitoringGoalCollection(ORMBaseSchema):

@@ -59,6 +59,7 @@ async def evaluate_current_risk(
     *,
     filters: RiskEvaluationFilters,
     redis_manager: RedisManager | None,
+    target_reading: SensorReading | None = None,
     trigger_source: str = "risk.current",
     trigger_payload: dict[str, Any] | None = None,
 ) -> RiskEvaluationBundle:
@@ -66,7 +67,7 @@ async def evaluate_current_risk(
     region_repo = RegionRepository(session)
     reading_repo = SensorReadingRepository(session)
 
-    reading = await _resolve_target_reading(session, filters)
+    reading = target_reading or await resolve_target_reading(session, filters)
     region = await region_repo.get(reading.station.region_id)
     if region is None:
         raise AppException(
@@ -311,7 +312,7 @@ async def evaluate_alerts(
     )
 
 
-async def _resolve_target_reading(
+async def resolve_target_reading(
     session: AsyncSession,
     filters: RiskEvaluationFilters,
 ) -> SensorReading:
@@ -394,6 +395,14 @@ async def _resolve_target_reading(
         reverse=True,
     )
     return candidate_readings[0]
+
+
+async def _resolve_target_reading(
+    session: AsyncSession,
+    filters: RiskEvaluationFilters,
+) -> SensorReading:
+    """Backward-compatible alias for internal callers."""
+    return await resolve_target_reading(session, filters)
 
 
 def _build_alert_title(bundle: RiskEvaluationBundle) -> str:

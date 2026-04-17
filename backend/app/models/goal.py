@@ -59,7 +59,14 @@ class MonitoringGoal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("action_plans.id", ondelete="SET NULL"),
         nullable=True,
     )
+    last_processed_reading_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sensor_readings.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     region = relationship("Region", back_populates="monitoring_goals")
     station = relationship("SensorStation", back_populates="monitoring_goals")
     last_run_plan = relationship("ActionPlan")
+    last_processed_reading = relationship("SensorReading")

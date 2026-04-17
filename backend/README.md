@@ -53,6 +53,14 @@ Standalone worker:
 ./.venv/Scripts/python.exe -m app.workers.active_monitoring_worker
 ```
 
+Demo UI (Gradio control center):
+
+```bash
+./.venv/Scripts/python.exe gradio_app/demo_app.py
+```
+
+Open `http://127.0.0.1:7860` to run scenarios and monitor plans/runs in one screen.
+
 ## Optional: run backend in Docker too
 
 ```bash

@@ -26,4 +26,5 @@ def goal_to_read(goal: MonitoringGoal) -> MonitoringGoalRead:
         last_run_at=goal.last_run_at,
         last_run_status=goal.last_run_status,
         last_run_plan_id=goal.last_run_plan_id,
+        last_processed_reading_id=goal.last_processed_reading_id,
     )

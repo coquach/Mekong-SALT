@@ -28,7 +28,11 @@ from app.schemas.risk import RiskEvaluationFilters
 from app.services.approval_service import decide_plan
 from app.services.agent_planning_service import AgentPlanBundle, generate_agent_plan
 from app.services.incident_service import ensure_incident_for_assessment
-from app.services.risk_service import RiskEvaluationBundle, evaluate_current_risk
+from app.services.risk_service import (
+    RiskEvaluationBundle,
+    evaluate_current_risk,
+    resolve_target_reading,
+)
 
 MonitoringMode = Literal["dry_run", "active"]
 logger = logging.getLogger(__name__)
@@ -78,13 +82,31 @@ async def run_monitoring_goal_cycle(
     approval/execution/feedback/memory graph.
     """
     resolved_settings = settings or get_settings()
+    filters = RiskEvaluationFilters(
+        station_id=goal.station_id,
+        region_id=goal.region_id,
+    )
+    target_reading = await resolve_target_reading(session, filters)
+    if goal.last_processed_reading_id == target_reading.id:
+        await _mark_goal_cycle(
+            session,
+            goal,
+            status="skipped_no_new_reading",
+            plan_id=goal.last_run_plan_id,
+            processed_reading_id=target_reading.id,
+        )
+        return MonitoringCycleResult(
+            goal_id=goal.id,
+            mode=mode,
+            status="skipped_no_new_reading",
+            reason="Latest target reading has already been processed.",
+        )
+
     risk_bundle = await evaluate_current_risk(
         session,
-        filters=RiskEvaluationFilters(
-            station_id=goal.station_id,
-            region_id=goal.region_id,
-        ),
+        filters=filters,
         redis_manager=redis_manager,
+        target_reading=target_reading,
         trigger_source="monitoring.worker.observe_risk",
         trigger_payload={
             "goal_id": str(goal.id),
@@ -105,6 +127,7 @@ async def run_monitoring_goal_cycle(
             goal,
             status="dry_run_observed",
             plan_id=None,
+            processed_reading_id=risk_bundle.reading.id,
         )
         return MonitoringCycleResult(
             goal_id=goal.id,
@@ -121,6 +144,7 @@ async def run_monitoring_goal_cycle(
             goal,
             status="succeeded_no_incident",
             plan_id=None,
+            processed_reading_id=risk_bundle.reading.id,
         )
         return MonitoringCycleResult(
             goal_id=goal.id,
@@ -136,6 +160,7 @@ async def run_monitoring_goal_cycle(
             goal,
             status="succeeded_auto_plan_disabled",
             plan_id=None,
+            processed_reading_id=risk_bundle.reading.id,
         )
         return MonitoringCycleResult(
             goal_id=goal.id,
@@ -161,6 +186,7 @@ async def run_monitoring_goal_cycle(
             goal,
             status="skipped_existing_plan",
             plan_id=existing_plan.id,
+            processed_reading_id=risk_bundle.reading.id,
         )
         return MonitoringCycleResult(
             goal_id=goal.id,
@@ -209,6 +235,7 @@ async def run_monitoring_goal_cycle(
         goal,
         status=status,
         plan_id=plan_bundle.plan.id,
+        processed_reading_id=risk_bundle.reading.id,
     )
     return MonitoringCycleResult(
         goal_id=goal.id,
@@ -352,10 +379,12 @@ async def _mark_goal_cycle(
     *,
     status: str,
     plan_id: UUID | None,
+    processed_reading_id: UUID | None,
 ) -> None:
     goal.last_run_at = datetime.now(UTC)
     goal.last_run_status = status
     goal.last_run_plan_id = plan_id
+    goal.last_processed_reading_id = processed_reading_id
     await session.commit()
 
 

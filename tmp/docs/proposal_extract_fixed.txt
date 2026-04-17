@@ -1,0 +1,309 @@
+P1: HỒ SƠ DỰ ÁN
+P2: GDGoC HACKATHON VIETNAM 2026
+P3: Tên đội: AGentFlow
+P4: Thành Viên
+P6: 1. Tổng quan dự án
+P7: 1.1 Tên dự án
+P8: Mekong-SALT: Mekong Salinity Action & Logic Tactician
+P9: 1.2 Mô tả ngắn gọn
+P10: Keyword: Xâm nhập mặn, đồng bằng sông Cửu Long, đỉnh mặn, cơ chế Reactive, AI Agent.
+P11: Hiện nay, Xâm nhập mặn (XNM) ở Đồng bằng sông Cửu Long đã trở thành một bài toán đa biến phức tạp và nghiêm trọng, khi những tác động do biến đổi khí hậu và hàng loạt hoạt động phát triển của các quốc gia có chung lưu vực làm cho việc dự đoán mức độ xâm nhập mặn không còn chính xác. Từ đó, những kế hoạch được đưa ra trước đó không còn là giải pháp phù hợp để chống lại diễn biến xâm nhập mặn thực tế, dẫn đến thiệt hại to lớn về hoa màu, cây trồng, nguồn nước, đất đai canh tác và tác động nghiêm trọng đến sinh hoạt của các hộ dân trong vùng, ước tính thiệt hại lên đến hơn 70.000 tỷ VNĐ mỗi năm.
+P12: Các hệ thống cảnh báo hiện nay hoạt động theo cơ chế Reactive - bị động trong việc phản ứng với những đợt xâm nhập mà đỉnh mặn* có thể tăng cao vượt mức hoặc giảm sâu trong thời gian ngắn (theo giờ), dẫn đến độ trễ trong việc lên kế hoạch ứng phó kịp thời và đưa ra quyết định hành động tiếp theo. Đặc biệt, điểm nghẽn của hệ thống là hoàn toàn phụ thuộc vào con người trong việc thực hiện hành động ngăn chặn xâm nhập mặn. Điều này chính là nguyên nhân đã gây ra thiệt hại lên đến 15.183 tỷ VNĐ trong đợt hạn mặn lịch sử năm 2015-2016 khi diễn biến xâm nhập mặn trở nên bất thường so với dự báo.
+P13: Để giải quyết điểm nghẽn đó, nhóm đề xuất giải pháp Mekong-SALT - một AI Agent dựa trên tập dữ liệu thu thập được từ đó hệ thống tự đưa ra dự báo, tự nghĩ kế hoạch ứng phó với các tình huống xâm nhập đã dự tính trước hoặc những đợt xâm nhập bất thường nhờ vào dữ liệu thu thập real-time và tự đưa ra hành động cần thiết (có sự cho phép của người giám sát) để giảm thiểu thiệt hại hoặc ngăn chặn những đợt mặn hoàn toàn.
+P14: Sản phẩm là công cụ hỗ trợ mạnh mẽ cho cho các cơ quan Bộ/Sở Nông nghiệp & Phát triển Nông thôn (DARD), Ban quản lý các dự án Thủy lợi trong việc chủ động phòng tránh và khắc phục các thiệt hại do xâm nhập mặn tại vùng đồng bằng sông Cửu Long. Ngoài ra, sản phẩm còn giúp ích cho Nông dân - người trực tiếp chịu thiệt hại, trong việc tiếp cận thông tin xâm nhập mặn nhanh chóng và chính xác.
+P15: (*) Đỉnh mặn: giá trị nồng độ mặn cao nhất đạt được tại một địa điểm hoặc trạm đo đạc cụ thể trong một khoảng thời gian nhất định (trong ngày, trong tuần hoặc trong cả mùa khô)
+P17: Hình 1: Minh họa cho Mekong-SALT trên nền tảng Website
+P18: 1.3 Dự án sử dụng Agentic AI như thế nào?
+P19: Keyword: Agentic AI, tự động, Chatbot, APIs thời tiết, PLC, cảm biến.
+P20: Trong trường hợp XNM diễn biến phức tạp, mô hình AI đơn giản chỉ đưa ra một báo động rằng:
+P21: “Nồng độ mặn ở lưu vực hành lang Tiền Giang - Bến Tre đã vượt quá 2 g/L - mức Nguy hiểm”
+P22: Từ sau đó, con người sẽ là nhân tố thiết yếu để lên kế hoạch cần thiết ứng phó với từng mức độ xâm nhập và quyết định những hành động thực tế được thực hiện để giảm thiểu thiệt hại.
+P23: Khác với mô hình trên, dự án Mekong-SALT của nhóm là một Agentic AI dựa trên 4 tiêu chí:
+P24: Goal-drive
+P25: Agent của nhóm không phải Chatbot - không đợi lệnh từ con người - mà luôn vận hành dựa trên một mục tiêu được thiết lập sẵn:
+P26: "Giữ nồng độ mặn tại lưu vực hành lang Tiền Giang - Bến Tre dưới 0.5 g/L - mức An toàn"
+P27: Mọi phân tích và hành động của Agent đều xoay quanh việc tối ưu hóa mục tiêu này thay vì chỉ phản hồi các báo động đơn lẻ, không mang nhiều giá trị thực tế.
+P28: Planning
+P29: Agent của nhóm không chỉ đưa ra một hành động mà là một chuỗi chiến lược tối ưu được cá nhân hóa cho từng ngữ cảnh thực tế.
+P30: Ví dụ: Giả sử Agent ghi nhận nồng độ mặn tại trạm quan trắc Hòa Định (Tiền Giang) đang tăng lên nhanh chóng (đạt 1.5 g/L) trong khi triều cường cũng đang lên và gió chướng mạnh cấp 6.
+P31: AI đơn giản: báo động thực hiện đóng cống ngay lập tức - hành động có thể gây kẹt tàu thuyền hoặc làm sốc nước cho cây trồng, dẫn đến thiệt hại vẫn ở mức đáng báo động.
+P32: Agent của nhóm: thực hiện chuỗi hành động để giảm thiểu thiệt hại về mức thấp nhất:
+P33: Agent tính toán và dự đoán xâm nhập sẽ chạm đến các vùng ven (như cống Cây Cồng, Hai Tân) trong vòng 45 phút tới.
+P34: Phát thông báo khẩn cấp cho người giám sát để theo dõi diễn biến bất thường và cho các chủ tàu trong khu vực để di chuyển ra khỏi cống trong 20 phút theo lộ trình định sẵn để tránh tắc nghẽn tàu thuyền tại vị trí nguy hiểm.
+P35: Kích hoạt thiết bị đóng cống (PLC) sau 20 phút và hệ thống bơm nước ngọt từ các kênh nội đồng để duy trì độ ẩm đất, tránh việc đất bị "sốc mặn", hành động được thực hiện nếu có sự chấp thuận của người giám sát (on-click).
+P36: Agent tiếp tục theo dõi cảm biến để chủ động giám sát và hiệu chỉnh kế hoạch.
+P37: Autonomy
+P38: Agent của nhóm hoạt động như một cộng sự thông minh, biết tự mình quan sát, tự đưa ra quyết định và “tự” thực hiện hành động nhằm hạn chế sự phụ thuộc vào con người.
+P39: Tự mình giám sát: Agent luôn ở trạng thái "thức" 24/7 để thu thập dữ liệu cần thiết lấy từ các APIs thời tiết, cơ sở dữ liệu hệ thống và các trạm cảm biến tại thời điểm nhạy cảm (mùa khô, diễn biến thời tiết bất thường,...).
+P40: Tự quyết định và Hành động: Agent “tự” động kích hoạt các thiết bị ngoại vi như PLC cống thủy lợi hay hệ thống bơm tưới dựa trên kế hoạch đã lập (nếu được chấp thuận).
+P41: Tự báo cáo: Agent sẽ luôn gửi thông tin log hành động đã thực hiện đến người giám sát.
+P42: Feedback Loop
+P43: Sau mỗi hành động, Agent liên tục giám sát trạng thái từ các cảm biến để đánh giá hiệu quả. Nếu nồng độ mặn không giảm như dự kiến, Agent sẽ tự phân tích lỗi, điều chỉnh chiến thuật ngay lập tức và lưu trải nghiệm này để làm giàu "vốn kinh nghiệm" cho các tình huống tương lai.
+P44: 2. Vấn đề và giải pháp
+P45: 2.1 Đặt vấn đề
+P46: Keyword: Đồng bằng sông Cửu Long, xâm nhập mặn, ranh mặn, nước ngọt tự nhiên.
+P48: Hình 2: Tỷ trọng Sản lượng lúa gạo năm 2024 của ĐBSCL so với Cả nước
+P49: Đồng bằng sông Cửu Long (ĐBSCL) không chỉ là vựa lúa lớn nhất Việt Nam, đóng góp hơn 50% sản lượng lúa gạo cả nước mà còn là trung tâm sản xuất nông nghiệp trọng điểm, cung cấp hơn 60% sản lượng thủy sản và hơn 70% sản lượng trái cây của cả nước.
+P50: Tuy nhiên trong thập kỷ qua, Xâm nhập mặn (XNM) ở vùng đồng bằng sông Cửu Long đã trở thành một thách thức đe dọa nghiêm trọng đến nền kinh tế trọng yếu của vùng.
+P51: Xâm nhập mặn là hiện tượng nước mặn từ biển tiến sâu vào đất liền thông qua các cửa sông và hệ thống kênh rạch, thay thế dần nguồn nước ngọt tự nhiên. Mức độ và phạm vi của một đợt xâm nhập mặn phụ thuộc vào nhiều yếu tố cơ bản đan xen như: điều kiện địa hình, chế độ thủy triều, lưu lượng dòng chảy thượng nguồn.
+P52: Trong đợt hạn mặn 2019-2020, ranh mặn* tiến sâu vào đất liền tới 110 km, xuất hiện sớm hơn trung bình hàng năm từ 2,5 đến 3,5 tháng và kéo dài thêm 30 ngày khiến gần 40.000 hộ gia đình rơi vào cảnh thiếu nước khẩn cấp, đe dọa phá hủy 30.000 hecta lúa, 20.000 hecta cây ăn trái và hàng ngàn hecta hoa màu. Gần đây nhất, trong mùa khô năm 2025-2026, ranh mặn 4g/L tiếp tục lấn sâu từ 42-55 km ở các cửa sông chính, và chạm mốc 65-70 km tại các hệ thống sông Vàm Cỏ và Cái Lớn, đe dọa trực tiếp đến các trạm lấy nước và hệ thống thủy lợi nội đồng. Ước lượng thiệt hại kinh tế do XNM tại ĐBSCL có thể lên tới hơn 70.000 tỷ VNĐ mỗi năm.
+P54: Hình 3: Bản đồ Xâm nhập mặn vào mùa khô tại Đồng bằng sông Cửu Long năm 2020
+P55: https://mekong.ctu.edu.vn/
+P56: Tính cấp thiết của vấn đề này không còn nằm ở yếu tố mùa vụ truyền thống mà nằm ở sự phức tạp của các nguyên nhân gây ra xâm nhập mặn. Xâm nhập mặn giờ đây là một bài toán đa biến, không chỉ do hiện tượng El Nino hay thủy triều dâng, mà còn bị chi phối mạnh mẽ bởi biến đổi khí hậu và tác nhân con người, bao gồm hệ thống đập thủy điện, tình trạng khai thác cát lòng sông quá mức, sụt lún đất do khai thác nguồn nước ngầm và các diễn biến thời tiết phức tạp. Trong tương lai gần, các dự án mới can thiệp dòng chảy sông Mekong như kênh đào Funan Techo có nguy cơ làm giảm từ 50% đến 70% lượng nước ngọt về ĐBSCL trong mùa khô, khiến thảm họa xâm nhập mặn trở nên nghiêm trọng và khó lường hơn bao giờ hết.
+P57: Đây chính là điểm chết của các hệ thống hiện tại khi khả năng thích ứng và ứng phó với những thay đổi bất thường (điều mà những hiện tượng thời tiết thường xảy ra nếu gặp điều kiện khí hậu thuận lợi hoặc không lường trước được kế hoạch phát triển của các quốc gia chung lưu vực) vẫn chưa được tối ưu hay các hệ thống cũng gặp khó khăn trong việc thay đổi công nghệ hiệu quả để thích ứng nhanh chóng với những biến động thực tế.
+P58: Mặc dù các hệ thống dự báo truyền thống và các công trình kiểm soát mặn như siêu cống Cái Lớn - Cái Bé, đã phần nào phát huy tác dụng trong việc giảm thiểu thiệt hại do xâm nhập mặn. Tuy nhiên quá trình ứng phó vẫn rất bị động và thiếu khả năng đồng bộ hóa, phân tích lượng dữ liệu khổng lồ. Ngoài ra, bởi vì có sự can thiệp của con người vào trong quá trình ứng phó nên tồn tại rất nhiều những bước gây lãng phí thời gian mà ta hoàn toàn có thể lược bỏ đi nhưng vẫn không gây ảnh hưởng đến mục tiêu “giảm thiểu thiệt hại’ nếu Agent hoàn toàn tự vận hành toàn bộ quá trình này. (có con người chốt kế hoạch cuối)
+P59: (*) Ranh mặn: là đường ranh giới hoặc ngưỡng đo lường được sử dụng để xác định mức độ nồng độ muối (g/L) tiến sâu vào đất liền thông qua các cửa sông, hệ thống kênh rạch (tính bằng km).
+P60: 2.2 Câu hỏi đặt ra
+P61: Làm thế nào để AI có thể đưa ra dự báo chính xác về mức độ xâm nhập mặn tại một khu vực cụ thể dựa trên lượng dữ liệu đa biến khổng lồ (thủy văn, thời tiết, ảnh vệ tinh)?
+P62: Làm thế nào để AI có thể tự động giải quyết các nhiệm vụ phân tích phức tạp mà không cần sự can thiệp liên tục của con người?
+P63: Làm thế nào để AI có thể tự mình xây dựng một chuỗi kế hoạch hành động logic, nhanh chóng để ứng phó ngay lập tức với các đợt mặn bất thường?
+P64: Làm thế nào để AI có thể tự thực hiện các hành động thực tế (như điều khiển hạ tầng cống, hệ thống bơm) để ngăn chặn XNM mà không phụ thuộc vào yếu tố con người?
+P65: Làm sao để đảm bảo quá trình thực thi này diễn ra an toàn, chính xác và đồng bộ trên toàn hệ thống?
+P66: Làm sao để chúng ta có thể tin tưởng hoàn toàn vào các quyết định và hành động mà AI tự đưa ra?
+P67: Làm thế nào để đảm bảo hệ thống hoạt động một cách minh bạch, có khả năng tự học hỏi từ sai sót và báo cáo kịp thời cho người giám sát?
+P68: 2.3 Nghiên cứu khoa học, dự án ứng dụng mô hình AI vào Xâm nhập mặn
+P69: Hệ thống dự báo hạn mặn của Ủy hội sông Mê Công (MRC): Cung cấp dự báo mực nước và độ mặn chi tiết theo từng giờ tại bất kỳ vị trí nào trong khu vực Đồng bằng sông Cửu Long với thời hạn dự báo lên đến 30 ngày. Tuy nhiên, khả năng của hệ thống cũng chỉ dừng lại ở mức đưa ra dự báo theo cơ chế Reactive.
+P70: Hệ thống tương tự: NướcGPT.
+P72: Tự động hóa vận hành cống ngăn mặn tại Thái Bình: Hệ thống dựa trên mực nước thực đo và tích hợp với mô hình dự báo ngắn hạn để đưa ra lệnh đóng mở cổng tự động. Hệ thống đã phần nào tiếp cận đến Agentic AI, tuy nhiên, hệ thống vẫn còn khá thô sơ, chưa thể tự đưa ra dự báo và lập kế hoạch ứng phó để giảm thiểu thiệt hại về mức thấp nhất.
+P73: Hệ thống tương tự: RYNAN Technologies Tập trung hạ tầng thiết bị, Mekong DSF, DSS DELTA.
+P74: 2.4 Giải pháp đề xuất
+P75: Dự án Mekong-SALT là một Hệ sinh thái Kỹ thuật số tích hợp trên nền tảng Web và Mobile. Giải pháp này lấy Agentic AI làm nhân tố cốt lõi để chuyển đổi mô hình ứng phó xâm nhập mặn từ Reactive sang Proactive.
+P76: 2.4.1 Cấu trúc hạ tầng “Brain - Framework - Tools”
+P77: Bộ não (Brain) - Gemini 2.5 Pro: Đóng vai trò AI xử lý nhanh và phân tích đa phương tiện, được tích hợp trong hệ thống gồm IoT pipeline và Google Earth Engine để phân tích dữ liệu cảm biến và ảnh vệ tinh.
+P78: Hệ thần kinh (Framework) - Vertex AI Agent Builder: Quản lý trạng thái và điều phối luồng suy nghĩ thông qua Reasoning Engine. Sử dụng kỹ thuật Chain-of-Thought (CoT) để Agent tự phản biện và lập kế hoạch chiến lược đa bước thay vì chỉ đưa ra cảnh báo đơn lẻ.
+P79: Cánh tay (Tools) -  GCP Ecosystem: Thông qua cơ chế Function Calling, Agent có khả năng "gọi" các công cụ ngoại vi một cách tự động:
+P80: Google Cloud Pub/Sub: Tiếp nhận luồng dữ liệu (streaming data) từ hàng trăm cảm biến IoT dọc theo các tuyến sông.
+P81: Cloud Functions: Thực hiện các lệnh tác động vật lý xuống PLC điều khiển cống hoặc gửi thông báo cá nhân hóa qua Zalo.
+P82: Vertex AI Vector Search: Truy xuất kho tri thức (RAG) về quy trình thủy lợi của Chính phủ và dữ liệu lịch sử mặn 20 năm để đối chiếu kịch bản.
+P83: Dữ liệu: https://portal.mrcmekong.org/
+P84: 2.4.2 Cơ chế vận hành của Agentic AI
+P85: Mekong-SALT vận hành theo một chu kỳ logic khép kín gồm 5 bước, hạn chế sự chậm trễ do yếu tố con người:
+P86: Goal-driven
+P87: Gemini 2.5 Pro luôn duy trì mục tiêu bất biến trong System Prompt:
+P88: "Giữ độ mặn tại vùng sầu riêng lưu vực hành lang Tiền Giang - Bến Tre dưới 0.5g/L"
+P89: Nó tự quét dữ liệu toàn hệ thống 24/7 mà không cần kích hoạt thủ công.
+P90: Observation
+P91: Agent thu thập dữ liệu đồng thời từ trạm IoT (độ mặn, mực nước), các API thời tiết (hướng gió chướng, triều cường) và ảnh vệ tinh để có cái nhìn toàn cảnh về mức độ và diễn biến xâm nhập mặn tại thời điểm truy xuất.
+P92: Planning
+P93: Agent sử dụng Vertex AI Agent Builder sẽ giả lập kịch bản:
+P94: "Nếu gió chướng mạnh cấp 6 kết hợp triều cường, mặn sẽ vào sâu bao nhiêu?”
+P95: “Nếu đóng cống ngay lập tức có gây kẹt tàu, sốc mặn cho cây trồng không?"
+P96: “Nếu đóng cổng ngay thì thiệt hại dự tính có ít hơn đợi 20p điều phối tàu thuyền không?”
+P97: Từ đó, nó tự tạo ra một bản lộ trình gồm nhiều bước hành động tối ưu.
+P98: Execution
+P99: Agent tự động gọi API thực hiện kế hoạch: (Planning)  → Con người cho phép (on-click)  → Thông báo cho dân → Điều phối theo kế hoạch → Điều khiển PLC đóng cống → Kích hoạt bơm nội đồng.
+P100: Tuy nhiên, người giám sát (được quyền truy cập vào hệ thống) có thể tắt trạng thái tự động và ghi đè lên quyết định của AI nếu cần thiết.
+P101: Feedback Loop
+P102: Sau hành động, Agent kiểm tra lại các cảm biến. Nếu nồng độ mặn không giảm như dự tính, nó sẽ tự phân tích:
+P103: "Do cống rò rỉ hay do kế hoạch chưa đủ mạnh hay quyết định không chính xác?"
+P104: Agent sẽ ghi lại bộ ba dữ liệu (Ngữ cảnh, Hành động, Kết quả) làm "Long-term memory".
+P105: Sau đó điều chỉnh chiến thuật ngay lập tức và cũng lưu vào bộ nhớ vector để làm giàu kinh nghiệm xử lý. Điều này dựa trên chỉ số “tự tin” của AI và rủi ro dự tính trước khi thực hiện hành động để đánh giá tính chính xác của hành động đó.
+P106: Agent của nhóm không chỉ là một bảng điều khiển (Dashboard). Nó là một Active Intelligence. Bằng cách kết hợp giữa sức mạnh suy luận của LLM thế hệ mới và hạ tầng IoT mạnh mẽ, Mekong-SALT chuyển dịch mô hình ứng phó từ Reactive sang Proactive.
+P107: Agent có 4 chức năng chính:
+P108: Giám sát Mục tiêu cốt lõi thông minh
+P109: Lập kế hoạch chiến lược đa bước
+P110: Thực thi tự động và Kết nối Tool mạnh mẽ
+P111: Vòng lặp phản hồi và Tự tối ưu hóa hệ thống
+P112: Các tính năng này giúp Mekong-SALT không chỉ là một công cụ hỗ trợ người dùng, mà là một cộng sự tự vận hành, đủ khả năng thay thế con người trong phần lớn các tình huống xâm nhập, nhất là những đợt khẩn cấp giữa đêm khuya hoặc tại các khu vực hẻo lánh.
+P113: 2.4.3 Hệ thống tính năng trên nền tảng Web/Mobile
+P114: Giao diện của Mekong-SALT không chỉ là một bảng hiển thị số liệu đơn thuần mà là một trung tâm điều hành minh bạch hóa quá trình tư duy và ra quyết định của AI Agent.
+P115: Hệ thống bao gồm 4 platform tính năng cốt lõi:
+P116: Link Figma Website cơ bản: Figma
+P118: Hình 4: Minh họa trang Web Mekong-SALT với 4 Platform chính
+P119: Trung tâm Thông tin - Information Hub:
+P120: Cảnh báo Đỉnh mặn: Tự động phát hiện và hiển thị các thông báo khẩn cấp về thời điểm mặn xâm nhập cao nhất, kèm khuyến nghị cụ thể để nông dân kịp thời tích trữ nước ngọt để sử dụng khi cần thiết.
+P121: Quản lý Chỉ thị: Cập nhật các lịch trình tưới tiêu mới từ Bộ/Sở Nông nghiệp (DARD) và các tin tức về triển khai hạ tầng IoT tự động tại địa phương.
+P122: Kho tri thức Khoa học: Cung cấp các bài phân tích sâu về tác động thủy văn thượng nguồn và các mô hình canh tác thích ứng bền vững.
+P123: Bảng điều khiển Giám sát - Monitoring Dashboard:
+P124: Chỉ số Thủy văn Real-time: Theo dõi liên tục nồng độ mặn, mực nước thủy triều, tốc độ và hướng gió từ mạng lưới cảm biến IoT.
+P125: Mekong AI Sentinel: Widget chuyên biệt hiển thị luồng suy nghĩ trực tiếp của Agent, giúp người dùng nắm bắt thông tin chính xác tại từng trạm quan trắc.
+P126: Bản đồ Điểm nóng: Sử dụng Heatmap để xác định trực quan các khu vực đang chịu áp lực mặn lớn nhất trong vùng hành lang Tiền Giang - Bến Tre.
+P127: Quản trị Chiến lược - Agent Logic:
+P128: Vận hành Agent: Sơ đồ hóa quy trình vận hành 5 bước của Agent.
+P129: Đảm bảo tính minh bạch: Nhật ký suy luận chi tiết theo cơ chế CoT, minh bạch hóa lý do tại sao AI đưa ra một hành động cụ thể tại một thời điểm nhất định.
+P130: Điều chỉnh thông số: Cho phép cán bộ kỹ thuật tùy chỉnh ngưỡng mặn an toàn và điều chỉnh mức độ can thiệp (Conservative, Balanced, hoặc Aggressive) tùy theo tình hình thực tế.
+P131: Nhật ký Can thiệp & Học tập - Action Logs:
+P132: Đo lường Tác động: Thống kê giá trị thiệt hại kinh tế dự kiến đã tránh được và diện tích hoa màu được bảo vệ thành công nhờ sự can thiệp của AI.
+P133: Đánh giá thực tế: Đánh giá hiệu quả thực tế của các hành động tự trị để AI tự điều chỉnh và tối ưu hóa mô hình trong các lần tiếp theo.
+P134: Lưu trữ sự kiện: Lưu trữ toàn bộ lịch sử can thiệp kèm theo tọa độ, sự kiện kích hoạt, mức độ tự tin của AI và xác minh kết quả từ các cảm biến.
+P135: 3. Công nghệ dự kiến sử dụng
+P136: 3.1 Công nghệ AI
+P137: Gemini 2.5 Pro
+P138: Vai trò: Đóng vai trò là bộ não thực hiện suy luận (Reasoning) và lập kế hoạch (Planning).
+P139: Lý do lựa chọn: Khả năng Multimodal cho phép mô hình xử lý đồng thời dữ liệu từ cảm biến, ảnh vệ tinh và các văn bản quy trình kỹ thuật.
+P140: Ứng dụng: Phân tích đồng thời dòng log từ cảm biến IoT, báo cáo thủy văn dạng văn bản và ảnh vệ tinh để lập kế hoạch ứng phó phù hợp.
+P141: Vertex AI Agent Builder and Reasoning Engine
+P142: Vai trò: Quản lý trạng thái và điều phối luồng suy nghĩ của Agent.
+P143: Kỹ thuật sử dụng: Triển khai Chain-of-Thought (CoT) để Agent trình bày rõ ràng từng bước suy luận trước khi thực thi lệnh.
+P144: Vertex AI Vector Search
+P145: Vai trò: Cung cấp "trí nhớ dài hạn" cho Agent.
+P146: Ứng dụng: Lưu trữ vector hóa các quy trình vận hành thủy lợi của Chính phủ và dữ liệu mặn lịch sử 20 năm. Agent sẽ truy xuất các kịch bản tương tự trong quá khứ để đưa ra quyết định có độ tin cậy cao nhất và rủi ro thấp nhất.
+P147: 3.2 Hạ tầng
+P148: Google Cloud Platform
+P149: Vai trò: Cung cấp hệ sinh thái tích hợp từ quản lý thiết bị IoT đến các mô hình AI Agent.
+P150: Nền tảng Backend & Database - Firebase:
+P151: NoSQL: Lưu trữ dữ liệu cấu trúc về nồng độ mặn, mực nước và nhật ký hành động.
+P152: Edge Functions: Chạy các đoạn mã logic phía server để gọi API đến thiết bị điều khiển cống (PLC) hoặc gửi thông báo Zalo/SMS cá nhân hóa.
+P153: Realtime: Tự động đẩy dữ liệu mới nhất từ cảm biến lên Dashboard của người dùng ngay lập tức mà không cần tải lại trang.
+P154: Phân tích không gian - Google Earth Engine:
+P155: Vai trò: Cung cấp dữ liệu vệ tinh đa thời gian.
+P156: Ứng dụng: Theo dõi chỉ số độ ẩm đất và điều kiện địa hình để đánh giá tác động thực tế của xâm nhập mặn trên diện rộng, giúp Agent đưa ra cảnh báo sớm cho các vùng chưa có trạm cảm biến.
+P157: IoT & Stream - Google Cloud Pub/Sub:
+P158: Vai trò: Tiếp nhận luồng dữ liệu thời gian thực từ hàng trăm cảm biến độ mặn dọc theo các cửa sông chính.
+P159: Dòng dữ liệu IoT - MQTT (Mosquitto):
+P160: Vai trò: Giao thức truyền tin nhẹ nhàng, ổn định cho các thiết bị IoT tại vùng sâu vùng xa có kết nối mạng yếu.
+P163: 3.3 Công nghệ phát triển
+P164: Backend Framework - FastAPI (Python):
+P165: Tận dụng hiệu suất cao và khả năng xử lý bất đồng bộ (Asynchronous) để kết nối mượt mà giữa logic AI (LangGraph) và cơ sở dữ liệu.
+P166: Frontend Framework - Next.js & Tailwind CSS:
+P167: Xây dựng Dashboard quản trị hiện đại, tối ưu hóa tốc độ tải trang và tương thích hoàn hảo trên mọi thiết bị di động của nông dân.
+P168: Google Maps API:
+P169: Tích hợp bản đồ nhiệt (Heatmap) nồng độ mặn trực quan, giúp người dùng dễ dàng nhận diện các "điểm nóng" xâm nhập mặn theo thời gian thực.
+P170: 3.4. Điểm mạnh cạnh tranh
+P171: Mekong-SALT không chỉ là một hệ thống giám sát mà là một Kỹ sư thủy lợi kỹ thuật số có khả năng tư duy, hành động và học hỏi liên tục, từ đó thay đổi hoàn toàn cách tiếp cận vấn đề xâm nhập mặn nhờ vào những lợi thế cạnh tranh cốt lõi sau:
+P172: Từ Reactive sang Proactive
+P173: Các hệ thống truyền thống chỉ đưa ra báo động khi nồng độ mặn đã vượt ngưỡng, dẫn đến độ trễ lớn trong việc ứng phó. Mekong-SALT sử dụng khả năng dự báo của Gemini 2.5 Pro để nhận diện nguy cơ từ sớm, tự động lập kế hoạch và thực hiện hành động ngăn chặn trước khi đỉnh mặn kịp tấn công.
+P174: Tối ưu hóa chuỗi hành động
+P175: Giải pháp sở hữu khả năng lập kế hoạch thông minh (Planning) thay vì hành động máy móc. Agent biết cân nhắc các yếu tố an toàn và kinh tế như: thông báo cho tàu thuyền trước khi đóng cống, tính toán thời gian đóng cống an toàn để tránh sốc mặn cho cây trồng, đảm bảo sinh kế cho người dân không bị gián đoạn đột ngột.
+P176: Hệ thống tự học và Trí nhớ dài hạn
+P177: Nhờ vào Vertex AI Vector Search , Agent có khả năng lưu trữ các tình huống đã xử lý thành "kinh nghiệm". Nếu một hành động không đạt hiệu quả như mong đợi, Agent sẽ tự phân tích lỗi, điều chỉnh chiến thuật ngay lập tức và ghi nhớ để không lặp lại sai lầm trong tương lai, giúp hệ thống ngày càng thông minh hơn.
+P178: Khả năng thực thi tự trị
+P179: Trong các đợt mặn diễn biến bất thường (nhất là vào ban đêm), sự can thiệp của con người thường quá chậm. Mekong-SALT hạn chế "điểm nghẽn" này bằng cách tự động (được cho phép) gọi các API để điều khiển hạ tầng cống (PLC) và gửi báo cáo hành động tức thời, đảm bảo bảo vệ mùa màng 24/7 mà không cần sự can thiệp liên tục của con người.
+P180: Tính khả thi
+P181: Dự án tận dụng các gói hỗ trợ miễn phí cho sinh viên và các công cụ mã nguồn mở, giúp tối ưu hóa chi phí triển khai ban đầu ở mức cực thấp so với các công cụ tối ưu trong tương lai.
+P182: 4. Đối tượng sử dụng
+P183: Sở Nông nghiệp & Phát triển Nông thôn (DARD) và Ban quản lý Thủy lợi
+P184: Vấn đề: Lượng dữ liệu gửi về rất lớn và cùng lúc nên không xử lý kịp, không thể tối ưu cho toàn vùng (chỉ có thể xử lý cục bộ), bị chậm trễ trong quyết định và tính minh bạch.
+P185: Hỗ trợ ra quyết định chiến lược: Sản phẩm giúp các cơ quan chủ động phòng tránh và khắc phục thiệt hại trên diện rộng.
+P186: Tối ưu hóa nguồn lực vận hành: Giảm bớt áp lực cho đội ngũ cán bộ kỹ thuật trong việc trực chiến và vận hành thủ công các siêu cống ngăn mặn.
+P187: Số hóa dữ liệu thủy lợi: Cung cấp kho dữ liệu phân tích xu hướng từ Firebase để hỗ trợ công tác quy hoạch vùng trồng và lịch mùa vụ chính xác hơn.
+P188: Doanh nghiệp Vận tải đường Thủy và Logistics
+P189: Vấn đề: Không thể tiếp cận nhanh chóng đến thông tin vận hành đường thủy và thông tin về mức độ mặn để đưa ra giải pháp vận hành hiệu quả, họ như “người mù phải đi vào hang cọp”.
+P190: Đảm bảo an toàn giao thông: Thông qua các cảnh báo sớm, tàu có thể điều chỉnh lộ trình di chuyển, tránh tình trạng bị mắc kẹt do các cống ngăn mặn đóng đột ngột.
+P191: Bảo vệ phương tiện: Cung cấp dữ liệu về nồng độ mặn giúp các doanh nghiệp vận tải điều phối tàu thuyền đi vào vùng nước an toàn, hạn chế sự ăn mòn máy móc do nước mặn xâm nhập sâu.
+P193: Nông dân và các Hộ sản xuất quy mô nhỏ
+P194: Vấn đề: Họ không được tiếp cận thông tin đúng lúc và kịp thời, không biết làm gì nếu không có kinh nghiệm và cũng phụ thuộc hoàn toàn vào kinh nghiệm cá nhân (điều không còn chính xác với những biến đổi về khí hậu và địa hình), đặc biệt họ không thể giám sát 24/7.
+P195: Nhóm ưu tiên hàng đầu: Đây là những người trực tiếp chịu thiệt hại nặng nề nhất về kinh tế và sinh kế do xâm nhập mặn.
+P196: Nhận cảnh báo cá nhân hóa: Thay vì những thông tin chung chung trên báo đài, nông dân nhận được thông báo cụ thể cho đúng khu vực ruộng vườn của mình qua Zalo/SMS.
+P197: Lá chắn bảo vệ 24/7: Agent giúp nông dân "canh vườn" và tự động kích hoạt bơm nước ngọt dự trữ ngay cả khi họ đang ngủ hoặc không có mặt tại địa phương.
+P198: 5. Tính khả thi
+P199: 5.1. Kế hoạch phát triển
+P200: Giai đoạn 1: Hackathon
+P201: Mục tiêu: Xây dựng Minimum Viable Product (MVP) = Core + Giả lập + Dashboard.
+P202: Hệ thống suy luận: Hoàn thiện kỹ thuật Prompt Engineering trên Gemini 2.5 Pro để Agent hiểu mục tiêu "Giữ độ mặn dưới 0.5g/L".
+P203: Mô phỏng hành động: Chạy các đoạn mã logic phía server để gọi API có thể thực hiện lệnh đóng/mở cống ảo dựa trên dữ liệu giả lập.
+P204: Giao diện quản lý: Hoàn thiện Dashboard hiển thị bản đồ nhiệt nồng độ mặn bằng Next.js và Google Map.
+P205: Chứng thực giá trị đến cộng đồng: “Giảm thiểu 15-20% rủi ro mất trắng cho 500 hộ dân tại Tiền Giang trong 3 tháng thử nghiệm”  làm Social Proof để chứng minh lợi nhuận tiềm năng cho người dùng, nhà đầu tư, người quan tâm đến dự án.
+P206: Hoàn thiện Roadmap phát triển hệ thống (Web - App): Xây dựng lộ trình phát triển công nghệ rõ ràng (thay thế công nghệ hiện tại với những công nghệ tối ưu hơn) với từng giai đoạn kêu gọi vốn đầu tư ban đầu đến khi bắt đầu quá trình hoàn vốn, dự tính rủi ro công nghệ và tỷ lệ sản phẩm thành công, biên lợi nhuận có thể đạt được.
+P207: Giai đoạn 2: Thương mại hóa & Vận hành tự trị (3 - 6 tháng)
+P208: Mục tiêu: Triển khai mô hình doanh thu định kỳ (SaaS) và kết nối Agentic AI với hạ tầng IoT thực địa.
+P209: Tối ưu mô hình Core AI: Nâng cấp Gemini 2.5 Pro lên 3.0 nhằm tối ưu tốc độ xử lý.
+P210: Kết nối IoT thực tế: Lắp đặt bộ công cụ cảm biến để thử nghiệm tại một khu vực cụ thể (ví dụ: lưu vực hành lang sông Tiền Giang và Bến Tre) nhằm lấy dữ liệu thủy văn thực.
+P211: Cải thiện khả năng lập kế hoạch: Nâng cấp cơ chế Chain-of-Thought (CoT) để Agent có thể xử lý kịch bản phức tạp hơn, bao gồm việc dự báo đỉnh mặn dựa trên ảnh vệ tinh.
+P212: Tiến hành thực hiện song song 2 mô hình kinh doanh cốt lõi:
+P213: Mô hình B2C (Freemium): Cung cấp cảnh báo mặn miễn phí qua Zalo/SMS; thu phí thuê bao cho tính năng “AI tự động điều khiển cống 24/7”.
+P214: Mô hình B2B (Logistics): Cung cấp dữ liệu nồng độ mặn cho các doanh nghiệp vận tải đường thủy để bảo vệ phương tiện khỏi ăn mòn, tránh kẹt cống đột ngột.
+P215: Giai đoạn 3: Hệ sinh thái Multi-Agent & Số hóa vùng (1 năm trở lên)
+P216: Mục tiêu: Trở thành hạ tầng dữ liệu thủy văn cốt lõi, mở rộng quy mô toàn vùng ĐBSCL.
+P217: Hợp tác liên ngành: Kết nối Mekong-SALT với hệ thống dữ liệu của các Sở Nông nghiệp & Phát triển Nông thôn (DARD) để đồng bộ hóa việc điều tiết nước trên toàn tỉnh.
+P218: Phát triển ứng dụng di động: Ra mắt ứng dụng di động chính thức tích hợp cảnh báo cá nhân hóa và hỗ trợ AI tư vấn canh tác cho nông dân.
+P219: Hệ thống đa Agent: Phát triển mạng lưới nhiều Agent phối hợp với nhau dọc theo các tuyến sông Tiền và sông Hậu để tạo ra một hàng rào ngăn mặn thông minh cấp vùng.
+P220: Thực thi mô hình B2G (Chính phủ): Trước hết là hợp tác thử nghiệm với các Hợp tác xã nông nghiệp cụ thể để lấy niềm tin và kết quả thực tế tại khu vực làm bước đệm.
+P221: Sau đó, suy nghĩ đến hợp tác với các Sở Nông nghiệp (DARD) để đồng bộ hóa việc điều tiết nước toàn tỉnh, chuyển dịch chi phí vận hành thủ công sang hệ thống tự trị.
+P222: DaaS (Data as a Service): Bán báo cáo phân tích dữ liệu rủi ro mặn cho các công ty bảo hiểm nông nghiệp và ngân hàng để thẩm định các khoản vay nông nghiệp.
+P223: 5.2. Ngân sách dự kiến
+P224: 5.2.1 Ngân sách phần mềm
+P225: Chi phí các mô hình AI và công nghệ sử dụng dựa trên thông tin các gói cơ bản cho doanh nghiệp hiện tại.
+P226: Đơn vị tính: VNĐ
+P235: 5.2.2 Ngân sách phần cứng (Thiết bị ngoại vi)
+P236: Mỗi cụm nút bao gồm hệ thống giám sát và điều khiển tự động cho một khu vực cống thủy lợi.
+P237: 5.2.3 Ngân sách Vận hành & Phát triển Thương mại
+P238: R&D và Bảo trì hệ thống: Duy trì đội ngũ kỹ sư tối ưu hóa mô hình Agent Reasoning Loop.
+P239: Sales & Marketing (B2B/B2G): Hoạt động tiếp cận các doanh nghiệp Logistics và các Sở Nông nghiệp (DARD) để triển khai diện rộng.
+P240: Chi phí CSKH: Hệ thống gửi thông báo cá nhân hóa qua Zalo/SMS cho hàng ngàn hộ nông dân.
+P241: 5.2.4 Kế hoạch dòng tiền (Sản phẩm đã hoàn thiện)
+P242: Kế hoạch được đưa ra dựa trên hiểu biết cá nhân của nhóm về quy trình kinh doanh và phát triển nên có thể có nhiều sai số so với những con số hay chi phí thực tế.
+P243: Đơn vị tính: Triệu VNĐ
+P249: Chi phí đầu tư thiết bị: Chiếm tỷ trọng lớn nhất do đặc thù cần lắp đặt cảm biến thực địa tại các cửa sông. Tuy nhiên, chi phí này sẽ giảm dần theo quy mô nhờ tối ưu hóa chuỗi cung ứng.
+P250: Chi phí AI & Cloud: Tăng dần theo lượng dữ liệu và số lượng người dùng truy cập Dashboard, nhưng được tối ưu hóa nhờ cấu trúc Serverless (Cloud Run) của GCP.
+P251: Quý 1 & 2: Tập trung vào việc chứng thực giá trị. Doanh thu chủ yếu đến từ các hợp đồng tư vấn dữ liệu (B2B) và các gói tài trợ công nghệ.
+P252: Quý 3 & 4: Bắt đầu ghi nhận dòng tiền ổn định từ các hợp đồng B2G (Quản lý hệ thống cống cho tỉnh) và phí thuê bao SaaS từ các trang trại lớn.
+P253: Dựa trên tốc độ tăng trưởng doanh thu từ các hộ sản xuất và doanh nghiệp logistics, dự án dự kiến sẽ đạt điểm hòa vốn vào cuối Quý 4 hoặc đầu Năm thứ 2, khi số lượng nút lắp đặt đủ lớn để tối ưu hóa chi phí vận hành AI trên mỗi đơn vị diện tích bảo vệ.
+P254: Kế hoạch này dựa trên tiềm năng giảm thiểu thiệt hại 70.000 tỷ VNĐ mỗi năm tại ĐBSCL. Việc AI Agent tự động hóa vận hành sẽ giúp tiết kiệm ít nhất 30% chi phí quản lý so với phương pháp truyền thống.
+P255: 6. Hạn chế của hệ thống (dựa trên sản phẩm hoàn thiện)
+P256: Sự phụ thuộc vào Cloud: Nếu mất kết nối internet (điều thường xuyên xảy ra ở vùng ven biển), bộ não Agent trên Cloud sẽ bị cắt đứt với tools IoT PLC tại địa phương. Từ đó dù đã lên kế hoạch chính xác để giảm thiệt hại nhưng vẫn không thể ngăn chặn.
+P257: Giải pháp: sử dụng Edge AI (xử lý tại chỗ) thay thế khi gặp sự cố kết nối mạng từ đó phần nào giảm sự phụ thuộc vào Cloud nhưng không khuyến khích sử dụng hoặc MQTT như ban đầu.
+P258: Lắp đặt và bảo trì các cảm biến: Ngân sách cho phần cứng hiện tại là khá thấp so với các thiết bị chuẩn công nghiệp chịu được mặn, cũng như ngăn chặn bị ăn mòn. Kể cả việc bảo trì chúng cũng gặp nhiều khó khăn vào mùa mưa. (nếu tự chủ phần cứng)
+P259: Thách thức về Tài chính: Vốn đầu tư ban đầu cho các thiết bị phần cứng rất cao và chi phí vận hành các mô hình AI, Cloud cũng tăng tỷ lệ thuận với số lượng người dùng.
+P260: Khó khăn trong việc tiếp cận thị trường: Mô hình B2G cực kỳ khó triển khai, đòi hỏi quy trình vô cùng phức tạp. Ngoài ra, việc người dân phải chi trả một phần phí để duy trì hệ thống cũng là rào cản bởi thói quen chi trả của các hộ sản xuất nhỏ.
+P261: Vấn đề niềm tin: Dù có sự can thiệp của con người ở những bước cuối cùng trong quy trình đưa ra một quyết định thực thi thì việc để AI hoàn toàn tự trị trong các quyết định trước đó như tính toán và lập kế hoạch đòi hỏi mức độ tin tưởng tuyệt đối từ người giám sát và cộng đồng.
+P262: 7. Tài liệu tham khảo
+P263: [1] Tran Thuy Tien và cộng sự. (2025). Forecasting Water Level of the Vietnamese Mekong Delta Integrating the Harmonic Tidal Method and Deep Learning Model. Advances in Artificial Intelligence and Machine Learning,
+P264: [2] Phan Đình Khôi và cộng sự. (2022). Lựa chọn mô hình sản xuất của hộ trồng lúa trong điều kiện xâm nhập mặn ở Đồng bằng sông Cửu Long. Tạp chí Kinh tế Phát triển, số 297 (tháng 3/2022), tr. 74-82.
+P265: [3] Trần Ngọc Lam Tuyền và cộng sự. (2022). Đánh giá tác động ngập nước và xâm nhập mặn đến hoạt động quân sự khu vực Đồng bằng sông Cửu Long và tình hình ứng phó tại các đơn vị. Tạp chí Nghiên cứu KH&CN quân sự, số Đặc san Viện Nhiệt đới Môi trường (12-2022), tr. 167-177.
+P266: [4] Phạm Văn Giáp và cộng sự. (2024). Mối quan hệ giữa xâm nhập mặn Đồng bằng sông Cửu Long với dòng chảy thượng lưu Mê Công và triều ven biển. Tạp chí Khoa học và Công nghệ Thủy lợi, số 85, tr. 15-24. Truy cập tại: https://vawr.org.vn/Upload/BaibaoKH/pham-van-giap-85-2024.pdf.
+P267: [5] Tổng cục Thống kê. Trang thông tin điện tử Tổng cục Thống kê (GSO). Truy cập tại: https://www.nso.gov.vn/ 
+
+[6] Google. Mô hình AI và các tools cho Development. Truy cập tại: https://developers.googleblog.com/
+P268: 8. Thông tin liên hệ
+P269: Email: trangiahien058@gmail.com
+P270: Số điện thoại: 0363663009
+Facebook: https://www.facebook.com/trangiahin.058/
+
+[TABLE 1]
+R1: STT | Họ và tên | Vai trò
+R2: 1 | Trần Gia Hiển | Trưởng nhóm
+R3: 2 | Quách Vĩnh Cơ | Thành viên
+R4: 3 | Huỳnh Trần Xuân Tiên | Thành viên
+
+[TABLE 2]
+R1: Hạng mục | Công nghệ/Thiết bị | Chi phí dự kiến (VND/Tháng) | Ghi chú
+R2: MVP (HACKATHON) | MVP (HACKATHON) | MVP (HACKATHON) | MVP (HACKATHON)
+R3: Mô hình AI | Gemini 2.5 Pro | 0 | Tận dụng gói miễn phí cho nhà phát triển và sinh viên
+R4: Planning | Vertex AI Agent Builder | 0 | Sử dụng Credit hỗ trợ
+R5: Hạ tầng và Database | Firebase | 0 | Quản lý dữ liệu cho giai đoạn thử nghiệm.
+R6: Bản đồ | Google Maps API | 0 | Sử dụng gói miễn phí cho tài khoản mới.
+R7: Giả lập phần cứng | API Simulation Logic | 0 | Chạy các đoạn mã logic phía server để điều khiển cống ảo.
+
+[TABLE 3]
+R1: RELEASE PRODUCT | RELEASE PRODUCT | RELEASE PRODUCT | RELEASE PRODUCT
+R2: Hạ tầng Cloud | GCP (Cloud Run, Pub/Sub, BigQuery) | 10.000.000 | Đảm bảo tính sẵn sàng cao và xử lý luồng dữ liệu thời gian thực.
+R3: Mô hình AI | Gemini 3.0 Pro & Vertex AI Agent Builder | 15.000.000 | Phí API dựa trên token xử lý đa phương thức
+R4: Dữ liệu & Tìm kiếm | Vertex AI Vector Search | 5.000.000 | Duy trì "Trí nhớ dài hạn" và kho dữ liệu RAG.
+R5: Bản đồ & Vệ tinh | Google Earth Engine & Mapbox Enterprise | 8.000.000 | Phí bản quyền bản đồ nhiệt và phân tích ảnh vệ tinh sức khỏe cây trồng.
+
+[TABLE 4]
+R1: Hạng mục | Chi phí dự kiến (VND/Cụm) | Ghi chú
+R2: KẾT NỐI VỚI BÊN THỨ 3 | KẾT NỐI VỚI BÊN THỨ 3 | KẾT NỐI VỚI BÊN THỨ 3
+R3: TẤT CẢ | Thỏa thuận | Tận dụng hạ tầng có sẵn từ đối tác uy tín (như RYNAN Technologies)
+R4: TỰ CHỦ | TỰ CHỦ | TỰ CHỦ
+R5: Bộ kit cảm biến công nghiệp | 25.000.000 | Bao gồm sensor nồng độ mặn (industrial grade), mực nước, và trạm đo gió
+R6: Hệ thống điều khiển PLC & Actuator | 40.000.000 | Thiết bị điều khiển mô-tơ cổng tự động qua Cloud Functions
+R7: Hạ tầng truyền dẫn | 5.000.000 | Bộ Gateway kết nối 4G/LoRaWAN để đảm bảo liên lạc vùng sâu vùng xa
+
+[TABLE 5]
+R1: Hạng mục | Quý 1  / (R&D & Pilot) | Quý 2 /  (Market Entry) | Quý 3 (Expansion) | Quý 4  / (Scale & Optimization)
+R2: INFLOW | 900 | 250 | 750 | 1.200
+R3: Vốn đầu tư/Hợp đồng tài trợ | 800 | 0 | 0 | 0
+R4: Doanh thu B2C (Nông dân - Gói Premium) | 0 | 50 | 150 | 300
+R5: Doanh thu B2B (Logistics/Bảo hiểm - DaaS) | 0 | 200 | 300 | 500
+R6: Hợp đồng B2G (Sở Nông nghiệp - DARD) | 100 | 0 | 300 | 400
+
+[TABLE 6]
+R1: OUTFLOW | (650) | (450) | (750) | (950)
+R2: Chi phí cảm biến tự chủ | (250) | (150) | (300) | (450)
+R3: Chi phí AI & Cloud (Gemini/GCP) | (90) | (120) | (150) | (180)
+R4: Lương nhân sự & Chuyên gia | (240) | (120) | (200) | (220)
+R5: Marketing, Sales & Vận hành | (70) | (60) | (100) | (100)
+
+[TABLE 7]
+R1: DÒNG TIỀN THUẦN (NET) | +250 | (200) | 0 | +250
+
+[TABLE 8]
+R1: SỐ DƯ CUỐI (CUMULATIVE) | 250 | 50 | 50 | 300
+
+[TABLE 9]
+R1: Đối tượng | Khoản tiết kiệm chính | Mức tiết kiệm dự tính / (so với trước khi áp dụng)
+R2: Cơ quan Nhà nước | Chi phí nhân lực và vận hành | Hơn 30%
+R3: Doanh nghiệp Vận tải | Bảo trì tàu thuyền | 15 - 20%
+R4: Hộ gia đình | Bảo vệ nông sản và Vốn đầu tư | 80 -100% (rủi ro mất trắng)
