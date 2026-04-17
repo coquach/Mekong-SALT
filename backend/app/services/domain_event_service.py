@@ -7,8 +7,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.db.redis import RedisManager
 from app.models.domain_event import DomainEvent
 from app.repositories.domain_event import DomainEventRepository
+
+_signal_redis_manager: RedisManager | None = None
 
 
 class DomainEventNotificationDispatcher(Protocol):
@@ -50,7 +54,33 @@ async def append_domain_event(
         execution_batch_id=execution_batch_id,
         payload=body,
     )
-    return await DomainEventRepository(session).add(event)
+    persisted = await DomainEventRepository(session).add(event)
+    await _publish_domain_event_signal(session, persisted)
+    return persisted
+
+
+async def _publish_domain_event_signal(
+    session: AsyncSession,
+    event: DomainEvent,
+) -> None:
+    """Best-effort redis wake signal; DB event row remains source of truth."""
+    _ = session
+    redis_manager = _get_signal_redis_manager()
+    settings = get_settings()
+    await redis_manager.publish_signal(
+        settings.domain_event_signal_channel,
+        payload={
+            "cursor": event.sequence,
+            "event_type": event.event_type,
+        },
+    )
+
+
+def _get_signal_redis_manager() -> RedisManager:
+    global _signal_redis_manager
+    if _signal_redis_manager is None:
+        _signal_redis_manager = RedisManager(get_settings().redis_url)
+    return _signal_redis_manager
 
 
 async def append_domain_event_and_dispatch(

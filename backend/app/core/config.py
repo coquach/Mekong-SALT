@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
 
     redis_url: str = "redis://localhost:6379/0"
+    domain_event_signal_channel: str = "domain-events:wake"
     external_context_cache_ttl_seconds: int = 600
     weather_snapshot_freshness_minutes: int = 30
     risk_rule_version: str = "v1"

@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.responses import success_response
+from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import AsyncSessionFactory, get_db_session
 from app.schemas.common import SuccessResponse
 from app.schemas.dashboard import DashboardSummary, DashboardTimeline
@@ -55,6 +57,7 @@ async def dashboard_timeline(
 async def dashboard_stream(
     request: Request,
     cursor: int | None = Query(default=None, ge=0),
+    redis_manager: RedisManager | None = Depends(get_redis_manager),
 ):
     """Server-Sent Events stream with durable cursor-based event delivery."""
 
@@ -66,6 +69,7 @@ async def dashboard_stream(
         last_summary_at = 0.0
         poll_interval_seconds = 1.5
         summary_interval_seconds = 12.0
+        signal_channel = get_settings().domain_event_signal_channel
 
         yield "retry: 2000\n\n"
         while not await request.is_disconnected():
@@ -107,7 +111,15 @@ async def dashboard_stream(
 
             if not emitted:
                 yield ": keepalive\n\n"
-            await asyncio.sleep(poll_interval_seconds)
+                if redis_manager is not None:
+                    await redis_manager.wait_for_signal(
+                        signal_channel,
+                        timeout_seconds=poll_interval_seconds,
+                    )
+                else:
+                    await asyncio.sleep(poll_interval_seconds)
+            else:
+                await asyncio.sleep(0)
 
     return StreamingResponse(_events(), media_type="text/event-stream")
 

@@ -58,6 +58,33 @@ class RedisManager:
         except Exception:
             logger.exception("Redis set failed for key %s", key)
 
+    async def publish_signal(self, channel: str, payload: dict[str, Any] | None = None) -> None:
+        """Publish a lightweight JSON signal for subscribers."""
+        try:
+            await self.client.publish(channel, json.dumps(payload or {}))
+        except Exception:
+            logger.exception("Redis publish failed for channel %s", channel)
+
+    async def wait_for_signal(self, channel: str, timeout_seconds: float) -> bool:
+        """Wait for one signal message, returning True when any payload is received."""
+        pubsub = self.client.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=timeout_seconds,
+            )
+            return message is not None
+        except Exception:
+            logger.exception("Redis wait failed for channel %s", channel)
+            return False
+        finally:
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:
+                logger.exception("Redis unsubscribe failed for channel %s", channel)
+            await pubsub.aclose()
+
     async def acquire_lock(self, key: str, token: str, ttl_seconds: int) -> bool:
         """Acquire a short-lived Redis lock using SET NX EX semantics."""
         try:
