@@ -154,6 +154,9 @@ Approval and feedback boundaries:
 ## Monitoring Goals
 
 - `POST /api/v1/goals`: create goal with `thresholds`, `evaluation_interval_minutes`, and `is_active`.
+- Goal thresholds now accept either:
+	- `warning_threshold_dsm` + `critical_threshold_dsm` (canonical)
+	- `warning_threshold_gl` + `critical_threshold_gl` (auto-converted to dS/m)
 - `auto_plan_enabled`: lets the worker create a plan automatically in active mode.
 - `GET /api/v1/goals` and `GET /api/v1/goals/{goal_id}`: read goals.
 - `PATCH /api/v1/goals/{goal_id}`: update thresholds, interval, active flag, objective, target.
@@ -164,6 +167,20 @@ Data constraints are enforced at both API and database levels:
 - `critical_threshold_dsm > warning_threshold_dsm`
 - `evaluation_interval_minutes >= 1`
 - `is_active` controls whether the worker evaluates the goal.
+
+## Salinity Unit Policy
+
+The backend canonical unit is `dS/m` for storage, rules, and comparisons.
+For proposal/business communication, API responses additionally expose equivalent `g/L`.
+
+- Conversion factor: `1 dS/m ~= 0.64 g/L`
+- Risk-rule thresholds (canonical):
+	- safe: `< 1.00 dS/m` (`~< 0.64 g/L`)
+	- warning: `>= 1.00` and `< 2.50 dS/m` (`~0.64-1.59 g/L`)
+	- danger: `>= 2.50` and `< 4.00 dS/m` (`~1.60-2.55 g/L`)
+	- critical: `>= 4.00 dS/m` (`~>= 2.56 g/L`)
+
+This normalization removes ambiguity between proposal narratives (`g/L`) and backend rules (`dS/m`).
 
 ## Active Monitoring Worker
 
@@ -191,6 +208,8 @@ pytest app/tests/test_active_monitoring_worker.py app/tests/test_agent_run_trace
 ```
 
 ## Vertex Vector Search RAG (Phase 1)
+
+Detailed operations guide: `document/rag-operations-guide.md`
 
 Planning context retrieval is now Vertex-first when `RAG_USE_VERTEX_VECTOR_SEARCH=true`.
 The workflow embeds query text with Vertex, searches your deployed Vertex index,

@@ -11,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.salinity_units import dsm_to_gl
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.db.redis import RedisManager
@@ -142,6 +143,11 @@ async def evaluate_current_risk(
                     "id": str(reading.id),
                     "recorded_at": reading.recorded_at.isoformat(),
                     "salinity_dsm": str(reading.salinity_dsm),
+                    "salinity_gl": (
+                        str(dsm_to_gl(reading.salinity_dsm))
+                        if reading.salinity_dsm is not None
+                        else None
+                    ),
                     "water_level_m": str(reading.water_level_m),
                 },
                 "previous_reading": (
@@ -149,6 +155,11 @@ async def evaluate_current_risk(
                         "id": str(previous_reading.id),
                         "recorded_at": previous_reading.recorded_at.isoformat(),
                         "salinity_dsm": str(previous_reading.salinity_dsm),
+                        "salinity_gl": (
+                            str(dsm_to_gl(previous_reading.salinity_dsm))
+                            if previous_reading.salinity_dsm is not None
+                            else None
+                        ),
                     }
                     if previous_reading is not None
                     else None
@@ -176,6 +187,11 @@ async def evaluate_current_risk(
                     "trend_direction": evaluation.trend_direction.value,
                     "trend_delta_dsm": (
                         str(evaluation.trend_delta_dsm)
+                        if evaluation.trend_delta_dsm is not None
+                        else None
+                    ),
+                    "trend_delta_gl": (
+                        str(dsm_to_gl(evaluation.trend_delta_dsm))
                         if evaluation.trend_delta_dsm is not None
                         else None
                     ),
@@ -423,5 +439,7 @@ def _build_alert_message(bundle: RiskEvaluationBundle) -> str:
     return (
         f"{bundle.assessment.summary} "
         f"Station={bundle.reading.station.code}, "
+        f"salinity={bundle.reading.salinity_dsm} dS/m"
+        f"/~{dsm_to_gl(bundle.reading.salinity_dsm)} g/L, "
         f"wind={wind_context}, tide={tide_context}."
     )

@@ -11,6 +11,8 @@ import time
 from typing import Any, Callable
 from urllib import error, parse, request
 
+from app.core.salinity_units import dsm_to_gl
+
 UTC = timezone.utc
 
 
@@ -118,6 +120,14 @@ def _to_decimal(raw: Any, *, fallback: str) -> Decimal:
 
 def _format_decimal(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _format_salinity_dual(value_dsm: str | Decimal | None) -> str:
+    if value_dsm is None:
+        return "- dS/m / - g/L"
+    value_decimal = _to_decimal(value_dsm, fallback="0.00")
+    value_gl = dsm_to_gl(value_decimal)
+    return f"{_format_decimal(value_decimal)} dS/m (~{value_gl} g/L)"
 
 
 def _http_json(
@@ -357,7 +367,7 @@ def _ingest_sensor_profile(
         emitted.append(payload)
         print(
             f"[OK] Emitted frame {index}/{len(profile.frames)} "
-            f"salinity={frame.salinity_dsm} dS/m note={frame.note or '-'}"
+            f"salinity={_format_salinity_dual(frame.salinity_dsm)} note={frame.note or '-'}"
         )
 
         pause = max(frame_pause_seconds, frame.pause_seconds)
@@ -433,7 +443,7 @@ def _inject_post_execute_reading_and_evaluate_feedback(
     )
     print(
         "[OK] Injected post-execute reading "
-        f"station={station_code} salinity={ingest_payload['salinity_dsm']} dS/m"
+        f"station={station_code} salinity={_format_salinity_dual(ingest_payload['salinity_dsm'])}"
     )
 
     evaluated = _http_json(
@@ -460,6 +470,7 @@ def _inject_post_execute_reading_and_evaluate_feedback(
         "ingested_reading_id": ingested.get("id"),
         "ingested_recorded_at": ingested.get("recorded_at"),
         "ingested_salinity_dsm": ingested.get("salinity_dsm"),
+        "ingested_salinity_gl": str(dsm_to_gl(_to_decimal(ingested.get("salinity_dsm"), fallback="0.00"))),
         "feedback_outcome_class": feedback.get("outcome_class"),
         "feedback_status": feedback.get("status"),
         "feedback_summary": feedback.get("summary"),

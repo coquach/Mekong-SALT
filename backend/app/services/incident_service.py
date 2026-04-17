@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.salinity_units import dsm_to_gl
 from app.core.exceptions import AppException
 from app.models.enums import AuditEventType, IncidentStatus, RiskLevel
 from app.models.incident import Incident
@@ -142,8 +143,18 @@ async def ensure_incident_for_assessment(
         evidence={
             "risk_assessment_id": str(assessment.id),
             "salinity_dsm": str(assessment.salinity_dsm) if assessment.salinity_dsm is not None else None,
+            "salinity_gl": (
+                str(dsm_to_gl(assessment.salinity_dsm))
+                if assessment.salinity_dsm is not None
+                else None
+            ),
             "trend_direction": assessment.trend_direction.value,
             "trend_delta_dsm": str(assessment.trend_delta_dsm) if assessment.trend_delta_dsm is not None else None,
+            "trend_delta_gl": (
+                str(dsm_to_gl(assessment.trend_delta_dsm))
+                if assessment.trend_delta_dsm is not None
+                else None
+            ),
             "rationale": assessment.rationale,
         },
         opened_at=datetime.now(UTC),

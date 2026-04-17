@@ -7,6 +7,9 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
+from pydantic import model_validator
+
+from app.core.salinity_units import dsm_to_gl
 from app.schemas.action import FeedbackEvaluation
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
 
@@ -24,9 +27,16 @@ class FeedbackSnapshotRead(EntityReadSchema):
     captured_at: datetime
     reading_recorded_at: datetime | None = None
     salinity_dsm: Decimal | None = None
+    salinity_gl: Decimal | None = None
     water_level_m: Decimal | None = None
     source: str
     payload: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_salinity_units(self) -> "FeedbackSnapshotRead":
+        if self.salinity_gl is None and self.salinity_dsm is not None:
+            self.salinity_gl = dsm_to_gl(self.salinity_dsm)
+        return self
 
 
 class OutcomeEvaluationRead(EntityReadSchema):
@@ -52,13 +62,26 @@ class OutcomeEvaluationRead(EntityReadSchema):
         "insufficient_new_observation",
     ]
     baseline_salinity_dsm: Decimal | None = None
+    baseline_salinity_gl: Decimal | None = None
     latest_salinity_dsm: Decimal | None = None
+    latest_salinity_gl: Decimal | None = None
     delta_dsm: Decimal | None = None
+    delta_gl: Decimal | None = None
     summary: str
     replan_recommended: bool
     replan_reason: str | None = None
     evaluator_name: str
     payload: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_salinity_units(self) -> "OutcomeEvaluationRead":
+        if self.baseline_salinity_gl is None and self.baseline_salinity_dsm is not None:
+            self.baseline_salinity_gl = dsm_to_gl(self.baseline_salinity_dsm)
+        if self.latest_salinity_gl is None and self.latest_salinity_dsm is not None:
+            self.latest_salinity_gl = dsm_to_gl(self.latest_salinity_dsm)
+        if self.delta_gl is None and self.delta_dsm is not None:
+            self.delta_gl = dsm_to_gl(self.delta_dsm)
+        return self
 
 
 class FeedbackLifecycleRead(ORMBaseSchema):

@@ -11,6 +11,7 @@ from typing import Any, Mapping
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.salinity_units import dsm_to_gl
 from app.agents.policy_guard import validate_generated_plan
 from app.agents.providers import PlanProvider
 from app.db.redis import RedisManager
@@ -101,6 +102,7 @@ async def retrieve_context_node(
             "station_code": risk_bundle.reading.station.code,
             "recorded_at": risk_bundle.reading.recorded_at.isoformat(),
             "salinity_dsm": str(risk_bundle.reading.salinity_dsm),
+            "salinity_gl": str(dsm_to_gl(risk_bundle.reading.salinity_dsm)),
             "water_level_m": str(risk_bundle.reading.water_level_m),
         },
         "assessment": {
@@ -108,6 +110,11 @@ async def retrieve_context_node(
             "trend_direction": risk_bundle.assessment.trend_direction.value,
             "trend_delta_dsm": (
                 str(risk_bundle.assessment.trend_delta_dsm)
+                if risk_bundle.assessment.trend_delta_dsm is not None
+                else None
+            ),
+            "trend_delta_gl": (
+                str(dsm_to_gl(risk_bundle.assessment.trend_delta_dsm))
                 if risk_bundle.assessment.trend_delta_dsm is not None
                 else None
             ),

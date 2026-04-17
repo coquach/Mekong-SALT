@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
+from app.core.salinity_units import dsm_to_gl
 from app.models.enums import ActionPlanStatus, ActionType, ExecutionStatus
 from app.schemas.decision import DecisionLogRead
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
@@ -153,11 +154,24 @@ class FeedbackEvaluation(ORMBaseSchema):
     # Backward compatibility field for current clients. Keep until FE migration completes.
     status: Literal["improved", "not_improved", "no_change", "insufficient_new_observation"]
     baseline_salinity_dsm: Decimal | None = None
+    baseline_salinity_gl: Decimal | None = None
     latest_salinity_dsm: Decimal | None = None
+    latest_salinity_gl: Decimal | None = None
     delta_dsm: Decimal | None = None
+    delta_gl: Decimal | None = None
     summary: str
     replan_recommended: bool = False
     replan_reason: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_salinity_units(self) -> "FeedbackEvaluation":
+        if self.baseline_salinity_gl is None and self.baseline_salinity_dsm is not None:
+            self.baseline_salinity_gl = dsm_to_gl(self.baseline_salinity_dsm)
+        if self.latest_salinity_gl is None and self.latest_salinity_dsm is not None:
+            self.latest_salinity_gl = dsm_to_gl(self.latest_salinity_dsm)
+        if self.delta_gl is None and self.delta_dsm is not None:
+            self.delta_gl = dsm_to_gl(self.delta_dsm)
+        return self
 
 
 class SimulatedExecutionResponse(ORMBaseSchema):

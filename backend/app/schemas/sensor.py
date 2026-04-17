@@ -5,8 +5,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from app.core.salinity_units import are_units_consistent, dsm_to_gl, gl_to_dsm
 from app.models.enums import StationStatus
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
 
@@ -68,7 +69,14 @@ class SensorReadingCreate(SensorReadingBase):
 class SensorReadingRead(EntityReadSchema, SensorReadingBase):
     """Schema for returning a sensor reading."""
 
+    salinity_gl: Decimal | None = None
     station: SensorStationSummary
+
+    @model_validator(mode="after")
+    def normalize_salinity_read_units(self) -> "SensorReadingRead":
+        if self.salinity_gl is None:
+            self.salinity_gl = dsm_to_gl(self.salinity_dsm)
+        return self
 
 
 class SensorReadingIngestRequest(ORMBaseSchema):
@@ -76,7 +84,8 @@ class SensorReadingIngestRequest(ORMBaseSchema):
 
     station_code: str = Field(max_length=50)
     recorded_at: datetime
-    salinity_dsm: Decimal
+    salinity_dsm: Decimal | None = Field(default=None, gt=0)
+    salinity_gl: Decimal | None = Field(default=None, gt=0)
     water_level_m: Decimal
     wind_speed_mps: Decimal | None = None
     wind_direction_deg: int | None = None
@@ -85,6 +94,27 @@ class SensorReadingIngestRequest(ORMBaseSchema):
     battery_level_pct: Decimal | None = None
     source: str = Field(default="simulator", max_length=100)
     context_payload: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_salinity_input_units(self) -> "SensorReadingIngestRequest":
+        if self.salinity_dsm is None and self.salinity_gl is None:
+            raise ValueError("Either salinity_dsm or salinity_gl is required.")
+
+        if self.salinity_dsm is None:
+            self.salinity_dsm = gl_to_dsm(self.salinity_gl)
+
+        if self.salinity_dsm is None:
+            raise ValueError("Unable to normalize salinity_dsm from provided values.")
+
+        if self.salinity_gl is None:
+            self.salinity_gl = dsm_to_gl(self.salinity_dsm)
+        elif not are_units_consistent(
+            salinity_dsm=self.salinity_dsm,
+            salinity_gl=self.salinity_gl,
+        ):
+            raise ValueError("salinity_dsm and salinity_gl are inconsistent.")
+
+        return self
 
 
 class SensorStationUpdate(ORMBaseSchema):

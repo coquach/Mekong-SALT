@@ -11,7 +11,7 @@ This folder contains normalized source documents for RAG ingestion and retrieval
 ## Conventions
 - Language: English (international-readable baseline)
 - Date format: ISO 8601 (`YYYY-MM-DD`)
-- Units: explicit SI-compatible notation where applicable (`dS/m`, `minutes`)
+- Units: explicit SI-compatible notation where applicable (`dS/m`, `g/L`, `minutes`)
 - IDs: stable and version-aware (`DOC-ID`, `POL-*`, `CASE-*`)
 - Metadata keys: consistent snake_case labels
 
@@ -23,3 +23,8 @@ This folder contains normalized source documents for RAG ingestion and retrieval
 ## Intended Use
 - Input for `scripts/ingest_rag_samples.py`.
 - Retrieval quality baseline for lane and shadow-mode comparisons.
+
+## Update Workflow (Important)
+- `scripts/ingest_rag_samples.py` only ingests new sources; existing `source_uri` entries are skipped.
+- After editing any sample file, re-sync that file with `scripts/ingest_rag_source.py` to refresh chunks/vectors.
+- Keep a stable `source_uri`/`source_key` per logical document to preserve version traceability.

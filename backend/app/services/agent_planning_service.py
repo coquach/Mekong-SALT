@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.planning_graph import AgentPlanningWorkflow
 from app.agents.providers import get_plan_provider
+from app.core.salinity_units import dsm_to_gl
 from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.agent_run import AgentRun
@@ -306,6 +307,7 @@ def _plan_observation_payload(
             "id": str(risk_bundle.reading.id),
             "recorded_at": risk_bundle.reading.recorded_at.isoformat(),
             "salinity_dsm": str(risk_bundle.reading.salinity_dsm),
+            "salinity_gl": str(dsm_to_gl(risk_bundle.reading.salinity_dsm)),
             "water_level_m": str(risk_bundle.reading.water_level_m),
         },
         "assessment": {

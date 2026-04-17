@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.salinity_units import dsm_to_gl
 from app.models.action import ActionExecution, ActionPlan
 from app.models.enums import ActionPlanStatus, IncidentStatus, NotificationStatus
 from app.models.incident import Incident
@@ -63,6 +64,11 @@ async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
         active_notifications=int(active_notifications or 0),
         latest_risk_level=latest_risk.risk_level.value if latest_risk is not None else None,
         latest_salinity_dsm=str(latest_reading.salinity_dsm) if latest_reading is not None else None,
+        latest_salinity_gl=(
+            str(dsm_to_gl(latest_reading.salinity_dsm))
+            if latest_reading is not None
+            else None
+        ),
         latest_station_code=latest_reading.station.code if latest_reading is not None and latest_reading.station is not None else None,
         simulated_executions_today=int(simulated_executions_today or 0),
     )
@@ -89,6 +95,11 @@ async def get_dashboard_timeline(session: AsyncSession, *, limit: int = 72) -> D
             station_code=assessment.station.code if assessment.station is not None else None,
             risk_level=assessment.risk_level.value,
             salinity_dsm=str(assessment.salinity_dsm) if assessment.salinity_dsm is not None else None,
+            salinity_gl=(
+                str(dsm_to_gl(assessment.salinity_dsm))
+                if assessment.salinity_dsm is not None
+                else None
+            ),
         )
         for assessment in assessments
     ]

@@ -13,7 +13,10 @@ import json
 SCENARIOS = {
     "critical-timeout-replan": {
         "title": "Critical Risk -> Pending Approval -> Timeout Auto-Reject -> Replan",
-        "objective": "Send escalating sensor frames to trigger critical plan and timeout recovery.",
+        "objective": (
+            "Send escalating sensor frames to trigger critical plan and timeout recovery "
+            "(canonical dS/m, display g/L)."
+        ),
         "preconditions": [
             "Backend API is running.",
             "ACTIVE_MONITORING_MODE=active.",
@@ -40,7 +43,10 @@ SCENARIOS = {
     },
     "fast-approve-execute": {
         "title": "Fast Approve -> Simulated Execution -> Feedback + Memory",
-        "objective": "Send high-risk sensor stream, approve, and execute simulated batch end-to-end.",
+        "objective": (
+            "Send high-risk sensor stream, approve, and execute simulated batch end-to-end "
+            "with dual-unit salinity traces."
+        ),
         "preconditions": [
             "Backend API is running.",
             "Seed/setup data is available.",
@@ -58,6 +64,7 @@ SCENARIOS = {
         "highlights": [
             "Sensor feed triggers agentic planning first.",
             "Execution remains simulated but fully traceable with logs/batch.",
+            "Salinity values are shown as dS/m and equivalent g/L.",
             "Use --no-post-execute-reading if you want to disable feedback-probe injection.",
         ],
     },

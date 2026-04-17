@@ -136,6 +136,7 @@ def main() -> None:
     print("[NEXT] Target one station: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --station-code GOCONG-01")
     print("[NEXT] Launch Gradio demo: ./.venv/Scripts/python.exe gradio_app/demo_app.py")
     print("[NEXT] Watch state: GET /api/v1/dashboard/summary and GET /api/v1/plans")
+    print("[NEXT] Unit policy note: backend/document/proposal_unit_alignment.md")
 
 
 if __name__ == "__main__":

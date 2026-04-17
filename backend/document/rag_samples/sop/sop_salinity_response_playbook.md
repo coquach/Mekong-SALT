@@ -19,9 +19,10 @@ Define standardized, auditable response steps for salinity events in irrigation 
 - Operating mode: simulation-first with human approval controls
 
 ## 4. Definitions
-- Warning threshold: salinity >= 2.5 dS/m
-- Critical threshold: salinity >= 4.0 dS/m
-- Fast-rise condition: salinity delta >= 0.3 dS/m over assessment window
+- Canonical rule unit: dS/m; communication equivalent: g/L (`1 dS/m ~= 0.64 g/L`)
+- Warning threshold: salinity >= 2.5 dS/m (~1.60 g/L)
+- Critical threshold: salinity >= 4.0 dS/m (~2.56 g/L)
+- Fast-rise condition: salinity delta >= 0.3 dS/m (~0.19 g/L) over assessment window
 - Safe recovery: salinity remains below warning threshold for at least 3 consecutive checks
 
 ## 5. Responsibilities

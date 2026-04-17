@@ -164,5 +164,8 @@ def _validate_threshold_order(warning_threshold, critical_threshold) -> None:
         raise AppException(
             status_code=HTTPStatus.BAD_REQUEST,
             code="invalid_goal_thresholds",
-            message="critical_threshold_dsm must be greater than warning_threshold_dsm.",
+            message=(
+                "critical threshold must be greater than warning threshold "
+                "(in either dS/m or g/L representation)."
+            ),
         )

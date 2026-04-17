@@ -3,11 +3,14 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+from app.core.salinity_units import (
+    SALINITY_DANGER_THRESHOLD_DSM,
+    SALINITY_SAFE_THRESHOLD_DSM,
+    SALINITY_WARNING_THRESHOLD_DSM,
+    dsm_to_gl,
+)
 from app.models.enums import RiskLevel, TrendDirection
 
-SALINITY_SAFE_THRESHOLD = Decimal("1.00")
-SALINITY_WARNING_THRESHOLD = Decimal("2.50")
-SALINITY_DANGER_THRESHOLD = Decimal("4.00")
 TREND_ESCALATION_THRESHOLD = Decimal("0.50")
 TREND_DEESCALATION_THRESHOLD = Decimal("-0.50")
 TREND_RISING_THRESHOLD = Decimal("0.30")
@@ -98,21 +101,30 @@ def evaluate_risk(inputs: RiskEvaluationInput) -> RiskEvaluationOutput:
 
     bounded_score = min(max(score, 0), max(SCORE_TO_RISK))
     final_level = SCORE_TO_RISK[bounded_score]
+    salinity_gl = dsm_to_gl(inputs.salinity_dsm)
+    previous_salinity_gl = dsm_to_gl(inputs.previous_salinity_dsm)
+    trend_delta_gl = dsm_to_gl(trend_delta) if trend_delta is not None else None
 
     summary = (
         f"Risk assessed as {final_level.value} from salinity {inputs.salinity_dsm} dS/m"
+        f" (~{salinity_gl} g/L)"
         f" with trend {trend_direction.value}."
     )
     rationale = {
         "base_level": base_level.value,
         "salinity_dsm": str(inputs.salinity_dsm),
+        "salinity_gl": str(salinity_gl) if salinity_gl is not None else None,
         "previous_salinity_dsm": (
             str(inputs.previous_salinity_dsm)
             if inputs.previous_salinity_dsm is not None
             else None
         ),
+        "previous_salinity_gl": (
+            str(previous_salinity_gl) if previous_salinity_gl is not None else None
+        ),
         "trend_direction": trend_direction.value,
         "trend_delta_dsm": str(trend_delta) if trend_delta is not None else None,
+        "trend_delta_gl": str(trend_delta_gl) if trend_delta_gl is not None else None,
         "wind_speed_mps": (
             str(inputs.wind_speed_mps) if inputs.wind_speed_mps is not None else None
         ),
@@ -122,6 +134,14 @@ def evaluate_risk(inputs: RiskEvaluationInput) -> RiskEvaluationOutput:
             "external_context_is_modifier_only": True,
             "max_external_score_delta": MAX_EXTERNAL_SCORE_DELTA,
             "external_modifier_applied": external_modifier_applied,
+            "thresholds": {
+                "safe_threshold_dsm": str(SALINITY_SAFE_THRESHOLD_DSM),
+                "safe_threshold_gl": str(dsm_to_gl(SALINITY_SAFE_THRESHOLD_DSM)),
+                "warning_threshold_dsm": str(SALINITY_WARNING_THRESHOLD_DSM),
+                "warning_threshold_gl": str(dsm_to_gl(SALINITY_WARNING_THRESHOLD_DSM)),
+                "danger_threshold_dsm": str(SALINITY_DANGER_THRESHOLD_DSM),
+                "danger_threshold_gl": str(dsm_to_gl(SALINITY_DANGER_THRESHOLD_DSM)),
+            },
         },
         "adjustments": adjustments,
     }
@@ -141,11 +161,11 @@ def should_create_alert(risk_level: RiskLevel) -> bool:
 
 
 def _base_level_from_salinity(salinity_dsm: Decimal) -> RiskLevel:
-    if salinity_dsm < SALINITY_SAFE_THRESHOLD:
+    if salinity_dsm < SALINITY_SAFE_THRESHOLD_DSM:
         return RiskLevel.SAFE
-    if salinity_dsm < SALINITY_WARNING_THRESHOLD:
+    if salinity_dsm < SALINITY_WARNING_THRESHOLD_DSM:
         return RiskLevel.WARNING
-    if salinity_dsm < SALINITY_DANGER_THRESHOLD:
+    if salinity_dsm < SALINITY_DANGER_THRESHOLD_DSM:
         return RiskLevel.DANGER
     return RiskLevel.CRITICAL
 

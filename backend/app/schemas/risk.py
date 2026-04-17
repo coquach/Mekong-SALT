@@ -5,8 +5,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from app.core.salinity_units import dsm_to_gl
 from app.models.enums import AlertStatus, RiskLevel, TrendDirection
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
 from app.schemas.sensor import SensorReadingRead
@@ -23,11 +24,21 @@ class RiskAssessmentBase(ORMBaseSchema):
     assessed_at: datetime
     risk_level: RiskLevel
     salinity_dsm: Decimal | None = None
+    salinity_gl: Decimal | None = None
     trend_direction: TrendDirection = TrendDirection.UNKNOWN
     trend_delta_dsm: Decimal | None = None
+    trend_delta_gl: Decimal | None = None
     rule_version: str = Field(default="v1", max_length=50)
     summary: str
     rationale: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_salinity_units(self) -> "RiskAssessmentBase":
+        if self.salinity_gl is None and self.salinity_dsm is not None:
+            self.salinity_gl = dsm_to_gl(self.salinity_dsm)
+        if self.trend_delta_gl is None and self.trend_delta_dsm is not None:
+            self.trend_delta_gl = dsm_to_gl(self.trend_delta_dsm)
+        return self
 
 
 class RiskAssessmentCreate(RiskAssessmentBase):

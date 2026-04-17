@@ -41,6 +41,12 @@ async def ingest_sensor_reading(
             code="sensor_station_inactive",
             message=f"Sensor station '{payload.station_code}' is not active.",
         )
+    if payload.salinity_dsm is None:
+        raise AppException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="invalid_sensor_salinity",
+            message="salinity_dsm could not be resolved from input payload.",
+        )
 
     reading = SensorReading(
         station_id=station.id,

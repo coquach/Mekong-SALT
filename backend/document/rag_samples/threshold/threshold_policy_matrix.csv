@@ -1,5 +1,5 @@
-policy_id,policy_version,effective_date,region_code,crop_group,warning_threshold_dsm,critical_threshold_dsm,unit,max_safe_window_minutes,review_required,severity_escalation_rule,notes
-POL-TG-RICE-001,2026.1,2026-04-17,TIEN_GIANG,rice,2.5,4.0,dS/m,120,true,"escalate_to_critical_if_warning_persists_3_cycles","Apply conservative intake pause during high tide"
-POL-BT-SHRIMP-001,2026.1,2026-04-17,BEN_TRE,shrimp,3.0,5.0,dS/m,90,true,"escalate_on_fast_rise_or_weather_pressure","Aeration plan may continue under monitored salinity"
-POL-LA-MIXED-001,2026.1,2026-04-17,LONG_AN,mixed,2.3,3.8,dS/m,100,true,"prefer_advisory_first_then_mitigate","Favor advisory-first strategy for mixed crop zones"
-POL-VL-RICE-001,2026.1,2026-04-17,VINH_LONG,rice,2.4,3.9,dS/m,110,true,"mandatory_hitl_for_repeated_warning_patterns","Escalate to approval workflow for repeated warnings"
+policy_id,policy_version,effective_date,region_code,crop_group,warning_threshold_dsm,critical_threshold_dsm,warning_threshold_gl,critical_threshold_gl,unit,max_safe_window_minutes,review_required,severity_escalation_rule,notes
+POL-TG-RICE-001,2026.1,2026-04-17,TIEN_GIANG,rice,2.5,4.0,1.60,2.56,dS/m,120,true,"escalate_to_critical_if_warning_persists_3_cycles","Apply conservative intake pause during high tide"
+POL-BT-SHRIMP-001,2026.1,2026-04-17,BEN_TRE,shrimp,3.0,5.0,1.92,3.20,dS/m,90,true,"escalate_on_fast_rise_or_weather_pressure","Aeration plan may continue under monitored salinity"
+POL-LA-MIXED-001,2026.1,2026-04-17,LONG_AN,mixed,2.3,3.8,1.47,2.43,dS/m,100,true,"prefer_advisory_first_then_mitigate","Favor advisory-first strategy for mixed crop zones"
+POL-VL-RICE-001,2026.1,2026-04-17,VINH_LONG,rice,2.4,3.9,1.54,2.50,dS/m,110,true,"mandatory_hitl_for_repeated_warning_patterns","Escalate to approval workflow for repeated warnings"

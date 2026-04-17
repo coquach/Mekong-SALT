@@ -185,7 +185,8 @@ def _build_live_monitor(
         f"- Refreshed at: {_fmt_dt(now_utc)}\n"
         f"- Window: last {window_minutes} minute(s)\n"
         f"- Open incidents: {summary.get('open_incidents', 0)} | Pending approvals: {summary.get('pending_approvals', 0)}\n"
-        f"- Latest risk: {summary.get('latest_risk_level') or '-'} | Station: {summary.get('latest_station_code') or '-'} | Salinity: {summary.get('latest_salinity_dsm') or '-'}\n"
+        f"- Latest risk: {summary.get('latest_risk_level') or '-'} | Station: {summary.get('latest_station_code') or '-'} | "
+        f"Salinity: {summary.get('latest_salinity_dsm') or '-'} dS/m (~{summary.get('latest_salinity_gl') or '-'} g/L)\n"
         f"- Active goals: {active_goals} | Dedup skips (`skipped_no_new_reading`): {dedup_skips}\n"
         f"- Agent runs (recent 120): {run_count} | success={run_success}, failed={run_failed}, success_rate={run_success_rate:.1f}% | avg_duration={_format_seconds(run_avg_duration)}\n"
         f"- Throughput in window: readings={readings_in_window}, risk_assessments={risks_in_window}, new_plans={plans_in_window}, execution_batches={batches_in_window}\n"
@@ -200,7 +201,8 @@ def _build_live_monitor(
             continue
         station = str(((reading.get("station") or {}).get("code")) or "-")
         detail = (
-            f"station={station}, salinity={reading.get('salinity_dsm')}, "
+            f"station={station}, salinity={reading.get('salinity_dsm')} dS/m"
+            f"/~{reading.get('salinity_gl')} g/L, "
             f"water={reading.get('water_level_m')}, source={reading.get('source') or '-'}"
         )
         events.append(
@@ -222,7 +224,8 @@ def _build_live_monitor(
             continue
         detail = (
             f"station={risk.get('station_code') or '-'}, "
-            f"risk={risk.get('risk_level') or '-'}, salinity={risk.get('salinity_dsm') or '-'}"
+            f"risk={risk.get('risk_level') or '-'}, "
+            f"salinity={risk.get('salinity_dsm') or '-'} dS/m/~{risk.get('salinity_gl') or '-'} g/L"
         )
         events.append(
             (

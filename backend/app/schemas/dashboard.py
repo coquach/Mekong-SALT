@@ -13,6 +13,7 @@ class DashboardSummary(ORMBaseSchema):
     active_notifications: int
     latest_risk_level: str | None = None
     latest_salinity_dsm: str | None = None
+    latest_salinity_gl: str | None = None
     latest_station_code: str | None = None
     simulated_executions_today: int
 
@@ -24,6 +25,7 @@ class DashboardTimelineItem(ORMBaseSchema):
     station_code: str | None = None
     risk_level: str
     salinity_dsm: str | None = None
+    salinity_gl: str | None = None
 
 
 class DashboardTimeline(ORMBaseSchema):

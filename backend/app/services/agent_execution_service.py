@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.execution_policy import validate_execution_plan
+from app.core.salinity_units import dsm_to_gl
 from app.core.exceptions import AppException
 from app.models.action import ActionExecution, ActionPlan, ExecutionBatch
 from app.models.audit import ActionOutcome
@@ -228,12 +229,27 @@ async def execute_simulated_plan(
                 "baseline_salinity_dsm": str(feedback.baseline_salinity_dsm)
                 if feedback.baseline_salinity_dsm is not None
                 else None,
+                "baseline_salinity_gl": (
+                    str(dsm_to_gl(feedback.baseline_salinity_dsm))
+                    if feedback.baseline_salinity_dsm is not None
+                    else None
+                ),
             },
             post_metrics={
                 "latest_salinity_dsm": str(feedback.latest_salinity_dsm)
                 if feedback.latest_salinity_dsm is not None
                 else None,
+                "latest_salinity_gl": (
+                    str(dsm_to_gl(feedback.latest_salinity_dsm))
+                    if feedback.latest_salinity_dsm is not None
+                    else None
+                ),
                 "delta_dsm": str(feedback.delta_dsm) if feedback.delta_dsm is not None else None,
+                "delta_gl": (
+                    str(dsm_to_gl(feedback.delta_dsm))
+                    if feedback.delta_dsm is not None
+                    else None
+                ),
                 "legacy_status": feedback.status,
             },
             status=feedback.outcome_class,
