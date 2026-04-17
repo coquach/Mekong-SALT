@@ -70,6 +70,25 @@ class MqttIngestWorker:
         client.on_message = self._on_message
         return client
 
+    @staticmethod
+    def _reason_code_to_int(reason_code: Any) -> int:
+        """Normalize paho reason codes across callback API variants."""
+        if isinstance(reason_code, int):
+            return reason_code
+
+        value = getattr(reason_code, "value", None)
+        if isinstance(value, int):
+            return value
+
+        try:
+            return int(str(reason_code))
+        except (TypeError, ValueError):
+            logger.debug(
+                "Falling back to success reason code parsing",
+                extra={"reason_code": str(reason_code)},
+            )
+            return 0
+
     async def run(self) -> None:
         """Connect, subscribe, and keep handling messages until disconnected."""
         logger.info(
@@ -117,7 +136,7 @@ class MqttIngestWorker:
         reason_code: mqtt.ReasonCode,
         _properties: mqtt.Properties | None,
     ) -> None:
-        rc = int(reason_code)
+        rc = self._reason_code_to_int(reason_code)
         if rc != 0:
             logger.error("MQTT connect failed", extra={"reason_code": rc})
             self._disconnect_reason_code = rc
@@ -149,7 +168,7 @@ class MqttIngestWorker:
         reason_code: mqtt.ReasonCode,
         _properties: mqtt.Properties | None,
     ) -> None:
-        self._disconnect_reason_code = int(reason_code)
+        self._disconnect_reason_code = self._reason_code_to_int(reason_code)
         if not self._stopping and self._disconnect_reason_code != 0:
             logger.warning(
                 "MQTT broker disconnected",

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Droplets, TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';

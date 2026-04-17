@@ -15,7 +15,7 @@ Backend MVP scope includes:
 - dashboard summary + SSE stream
 - shared logging, middleware, exceptions, and response envelope
 - Alembic migrations for PostgreSQL + pgvector
-- Docker Compose local infrastructure for PostgreSQL and Redis
+- Docker Compose runtime topology for PostgreSQL, Redis, MQTT, backend API, and frontend
 - seed script with demo data
 
 ## Local setup
@@ -32,8 +32,18 @@ Python 3.11+ is required. On this machine, `py -3.13` is the correct interpreter
 ## Start local infrastructure
 
 ```bash
-docker compose up -d postgres redis
+docker compose up -d
 ```
+
+The compose topology already includes `postgres`, `redis`, `mqtt`, `backend`,
+and `frontend`. For the hackathon demo, keep these defaults in place:
+
+- `IOT_INGEST_MODE=mqtt`
+- `MQTT_ENABLED=true`
+- `PUBSUB_ENABLED=false`
+- `EARTH_ENGINE_ENABLED=false`
+- `ACTIVE_MONITORING_ENABLED=true`
+- `ACTIVE_MONITORING_MODE=active`
 
 ## Run locally
 
@@ -53,10 +63,9 @@ Standalone worker:
 ./.venv/Scripts/python.exe -m app.workers.active_monitoring_worker
 ```
 
-MQTT edge ingest mode (subscriber runs inside API process):
+Device-first MQTT demo mode (subscriber runs inside API process):
 
 ```bash
-# backend/.env
 IOT_INGEST_MODE=mqtt
 MQTT_ENABLED=true
 MQTT_BROKER_URL=localhost
@@ -67,15 +76,13 @@ MQTT_TOPIC_DEAD_LETTER=mekong/sensors/readings/dlq
 IOT_DLQ_ARCHIVE_ENABLED=true
 IOT_DLQ_ARCHIVE_PATH=artifacts/ingest_dlq_archive.jsonl
 
-PUBSUB_ENABLED=true
-PUBSUB_PROJECT_ID=your-gcp-project
-PUBSUB_SUBSCRIPTION_SENSOR_READINGS=mekong-sensors-readings-sub
-PUBSUB_DEAD_LETTER_TOPIC=mekong-sensors-readings-dlq
-PUBSUB_MAX_DELIVERY_ATTEMPTS=5
-PUBSUB_FLOW_MAX_MESSAGES=100
+PUBSUB_ENABLED=false
+EARTH_ENGINE_ENABLED=false
+ACTIVE_MONITORING_ENABLED=true
+ACTIVE_MONITORING_MODE=active
 ```
 
-Run MQTT scenario stream:
+Run device-first MQTT scenario stream:
 
 ```bash
 ./.venv/Scripts/python.exe scripts/run_demo_simulation.py \
@@ -85,6 +92,16 @@ Run MQTT scenario stream:
   --mqtt-broker-port 1883
 ```
 
+For hackathon demo, prefer MQTT as the primary device path and keep HTTP only as a fallback for local debugging:
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute
+```
+
+The demo story should be presented as:
+
+device/gateway -> MQTT broker -> backend worker -> shared ingest service -> risk/plan/approval/execution -> dashboard
+
 Demo UI (Gradio control center):
 
 ```bash
@@ -93,10 +110,10 @@ Demo UI (Gradio control center):
 
 Open `http://127.0.0.1:7860` to run scenarios and monitor plans/runs in one screen.
 
-## Optional: run backend in Docker too
+## Run full stack in Docker Compose
 
 ```bash
-docker compose --profile app up --build
+docker compose up -d
 ```
 
 ## Apply migrations
@@ -133,6 +150,7 @@ curl http://localhost:8000/api/v1/health
 Integration rollout plan:
 
 - `document/phase-rollout-pubsub-mqtt-gee-frontend.md`
+- `document/demo-runbook-5-phut.md`
 
 Watch state:
 
@@ -151,8 +169,8 @@ Approval and feedback boundaries:
 
 - `POST /api/v1/approvals/plans/{plan_id}/decision` is active (records approval/rejection).
 - `GET /api/v1/approvals/plans/{plan_id}/history` is active.
-- `POST /api/v1/feedback/execution-batches/{batch_id}/evaluate` remains a contract placeholder (501).
-- `GET /api/v1/feedback/execution-batches/{batch_id}/latest` remains a contract placeholder (501).
+- `POST /api/v1/feedback/execution-batches/{batch_id}/evaluate` is active (persists lifecycle evaluation).
+- `GET /api/v1/feedback/execution-batches/{batch_id}/latest` is active.
 
 ## Operational API Boundaries
 
@@ -168,7 +186,7 @@ Approval and feedback boundaries:
 | `/agent/*`, `/audit/*` | `app.services.agent_trace_service`, `app.services.audit_service` | traceability and auditability | stable |
 | `/dashboard/*` | `app.services.dashboard_service` | operational summary and timeline stream | stable |
 | `/approvals/*` | `app.services.approval_service` | HITL approval workflow and decision history | active |
-| `/feedback/*` | `app.services.feedback` (planned) | post-execution evaluation contracts | placeholder |
+| `/feedback/*` | `app.services.feedback` | post-execution lifecycle evaluation | active |
 
 ## Canonical API Boundaries
 

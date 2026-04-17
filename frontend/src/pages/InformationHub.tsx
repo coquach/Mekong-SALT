@@ -1,20 +1,12 @@
-import React from "react";
 import {
   ArrowRight,
   Calendar,
   MapPin,
   Bookmark,
   Microscope,
-  Mail,
-  ShieldCheck,
-  Search,
   Sparkles,
-  ChevronRight,
-  TrendingUp,
   Clock,
-  Monitor,
   AlertTriangle,
-  Users,
   ArrowUpRight,
   BrainCircuit,
   Zap,
@@ -24,9 +16,6 @@ import {
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
 } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";

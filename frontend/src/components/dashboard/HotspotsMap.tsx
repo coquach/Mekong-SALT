@@ -1,5 +1,4 @@
-import React from "react";
-import { Maximize2, MapPin, MousePointer2 } from "lucide-react";
+import { Maximize2, MousePointer2 } from "lucide-react";
 import { Card } from "../ui/Card";
 
 // Thành phần con cho các điểm Hotspot nhấp nháy trên bản đồ

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BrainCircuit, CheckCircle2, Circle, Zap, Loader2 } from "lucide-react";
 
 // Thành phần con cho mỗi dòng suy luận của AI

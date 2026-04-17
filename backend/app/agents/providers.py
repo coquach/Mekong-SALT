@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import logging
 from typing import Any
 
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.schemas.agent import GeneratedActionPlan
 from app.services.llm import PlannerInterface
+
+
+logger = logging.getLogger(__name__)
 
 
 class PlanProvider(ABC):
@@ -97,6 +101,7 @@ class GeminiProvider(PlanProvider):
 
     def __init__(self, *, planner: PlannerInterface) -> None:
         self._planner = planner
+        self._fallback = MockProvider()
 
     async def generate_plan(
         self,
@@ -105,7 +110,22 @@ class GeminiProvider(PlanProvider):
         context: dict[str, Any],
     ) -> GeneratedActionPlan:
         """Generate a plan via centralized LLM adapter boundary."""
-        return await self._planner.generate_plan(objective=objective, context=context)
+        try:
+            return await self._planner.generate_plan(objective=objective, context=context)
+        except AppException as exc:
+            if exc.code not in {
+                "gemini_generation_failed",
+                "gemini_empty_response",
+                "gemini_invalid_plan_payload",
+                "vertex_client_init_failed",
+                "vertex_project_missing",
+            }:
+                raise
+            logger.warning(
+                "Gemini planning unavailable; using deterministic fallback",
+                extra={"error_code": exc.code, "error_message": exc.message},
+            )
+            return await self._fallback.generate_plan(objective=objective, context=context)
 
 
 def get_plan_provider(

@@ -8,4 +8,4 @@ Canonical API boundaries are documented in [backend/README.md](backend/README.md
 - `/api/v1/plans/*` is the canonical plan read surface
 - `/api/v1/agent/runs*` is observability-only
 
-`frontend/` contains the Next.js client scaffold for the next UI phase.
+`frontend/` contains the Vite + React client for the UI integration phase.

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Search,
   Bell,
@@ -6,7 +6,6 @@ import {
   Sparkles,
   MapPin,
   Check,
-  Crosshair,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 

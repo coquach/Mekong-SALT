@@ -26,12 +26,17 @@ SCENARIOS = {
         ],
         "steps": [
             {
-                "step": "Emit scenario sensor stream (danger -> critical).",
+                "step": "Emit scenario sensor stream via MQTT device path (danger -> critical).",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan",
-                "expect": "Worker creates pending_approval plan from scenario-triggered readings.",
+                "expect": "Backend ingests device frames and creates pending_approval plan from scenario-triggered readings.",
             },
             {
-                "step": "Optional: emit same stream through MQTT edge transport.",
+                "step": "Optional fallback: emit same stream through HTTP for local debug.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport http",
+                "expect": "HTTP path should produce the same downstream lifecycle if broker is unavailable.",
+            },
+            {
+                "step": "Optional: re-run the same stream through MQTT edge transport.",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
                 "expect": "MQTT consumer ingests the same frames and lifecycle proceeds identically.",
             },
@@ -43,6 +48,7 @@ SCENARIOS = {
         ],
         "highlights": [
             "Sensor scenario is the trigger point (not manual plan API).",
+            "MQTT is the primary device path; HTTP is a fallback for demo/debug only.",
             "Approval-timeout policy recovers automatically.",
             "Same scenario can run with HTTP or MQTT transport for parity checks.",
         ],

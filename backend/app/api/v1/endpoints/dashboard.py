@@ -160,54 +160,59 @@ async def dashboard_stream(
         signal_channel = get_settings().domain_event_signal_channel
 
         yield "retry: 2000\n\n"
-        while not await request.is_disconnected():
-            emitted = False
-            async with AsyncSessionFactory() as session:
-                events = await list_domain_events_after_cursor(
-                    session,
-                    cursor=current_cursor,
-                    limit=100,
-                )
-
-                for event in events:
-                    current_cursor = event.sequence
-                    emitted = True
-                    yield _format_sse(
-                        event_name="domain_event",
-                        data=to_stream_event_payload(event),
+        try:
+            while not await request.is_disconnected():
+                emitted = False
+                async with AsyncSessionFactory() as session:
+                    events = await list_domain_events_after_cursor(
+                        session,
                         cursor=current_cursor,
+                        limit=100,
                     )
 
-                now = time.monotonic()
-                should_emit_summary = (
-                    not emitted
-                    and (now - last_summary_at) >= summary_interval_seconds
-                )
-                if should_emit_summary:
-                    summary = await get_dashboard_summary(session)
-                    emitted = True
-                    last_summary_at = now
-                    yield _format_sse(
-                        event_name="summary",
-                        data={
-                            "cursor": current_cursor,
-                            "fallback": True,
-                            "summary": summary.model_dump(mode="json"),
-                        },
-                        cursor=current_cursor,
-                    )
+                    for event in events:
+                        current_cursor = event.sequence
+                        emitted = True
+                        yield _format_sse(
+                            event_name="domain_event",
+                            data=to_stream_event_payload(event),
+                            cursor=current_cursor,
+                        )
 
-            if not emitted:
-                yield ": keepalive\n\n"
-                if redis_manager is not None:
-                    await redis_manager.wait_for_signal(
-                        signal_channel,
-                        timeout_seconds=poll_interval_seconds,
+                    now = time.monotonic()
+                    should_emit_summary = (
+                        not emitted
+                        and (now - last_summary_at) >= summary_interval_seconds
                     )
+                    if should_emit_summary:
+                        summary = await get_dashboard_summary(session)
+                        emitted = True
+                        last_summary_at = now
+                        yield _format_sse(
+                            event_name="summary",
+                            data={
+                                "cursor": current_cursor,
+                                "fallback": True,
+                                "summary": summary.model_dump(mode="json"),
+                            },
+                            cursor=current_cursor,
+                        )
+
+                if not emitted:
+                    yield ": keepalive\n\n"
+                    if redis_manager is not None:
+                        await redis_manager.wait_for_signal(
+                            signal_channel,
+                            timeout_seconds=poll_interval_seconds,
+                        )
+                    else:
+                        await asyncio.sleep(poll_interval_seconds)
                 else:
-                    await asyncio.sleep(poll_interval_seconds)
-            else:
-                await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            # Client disconnect/transport cancellation should stop the stream
+            # quietly without noisy teardown traces.
+            return
 
     return StreamingResponse(_events(), media_type="text/event-stream")
 

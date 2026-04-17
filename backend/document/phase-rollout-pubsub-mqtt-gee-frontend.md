@@ -31,7 +31,7 @@ Done criteria:
 ## Phase 1: MQTT Edge Ingest (2 weeks)
 
 Scope:
-- Add MQTT subscriber worker for edge gateways/devices.
+- Add MQTT subscriber worker for edge gateways/devices and make it the primary demo transport.
 - Map incoming MQTT payloads to existing sensor ingestion schema.
 - Add dead-letter strategy for malformed payloads.
 
@@ -45,6 +45,7 @@ Deliverables:
 Done criteria:
 - MQTT messages produce persisted readings and appear in `/readings/latest`.
 - Duplicate messages do not create duplicate readings.
+- The demo story can be explained end-to-end as device -> MQTT broker -> backend worker -> shared ingest service -> dashboard.
 
 ## Phase 2: Pub/Sub Stream Ingest (2 weeks)
 
@@ -111,7 +112,7 @@ Done criteria:
 ## Recommended Sequence
 
 1. Phase 0 immediately (safe, no behavior change).
-2. Phase 1 (MQTT) first for edge parity.
+2. Phase 1 (MQTT) first for device-first demo parity.
 3. Phase 2 (Pub/Sub) for cloud-scale stream reliability.
 4. Phase 3 (Earth Engine) for spatial enrichment.
 5. Phase 4 (Frontend) parallel from late Phase 2 onward.

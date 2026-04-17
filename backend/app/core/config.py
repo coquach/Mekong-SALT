@@ -1,11 +1,12 @@
 """Application settings management."""
 
 from functools import lru_cache
+import json
 from pathlib import Path
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
     ]
 
     database_url: str = (
@@ -118,6 +121,63 @@ class Settings(BaseSettings):
     active_monitoring_approval_timeout_action: Literal["none", "auto_reject"] = "auto_reject"
     active_monitoring_feedback_replan_max_attempts: int = 1
     reactive_auto_execute_enabled: bool = True
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def normalize_cors_allowed_origins(cls, value: object) -> list[str]:
+        """Accept JSON/comma-separated input and normalize origin formatting."""
+        parsed_values: list[str]
+        if value is None:
+            parsed_values = []
+        elif isinstance(value, str):
+            raw_value = value.strip()
+            if not raw_value:
+                parsed_values = []
+            elif raw_value.startswith("["):
+                loaded = json.loads(raw_value)
+                if not isinstance(loaded, list):
+                    raise ValueError("CORS_ALLOWED_ORIGINS JSON must be a list.")
+                parsed_values = [str(item) for item in loaded]
+            else:
+                parsed_values = [item.strip() for item in raw_value.split(",")]
+        elif isinstance(value, (list, tuple, set)):
+            parsed_values = [str(item) for item in value]
+        else:
+            raise ValueError("CORS_ALLOWED_ORIGINS must be a list or string.")
+
+        normalized: list[str] = []
+        for origin in parsed_values:
+            item = origin.strip()
+            if not item:
+                continue
+            item = item.rstrip("/")
+            if item not in normalized:
+                normalized.append(item)
+        return normalized
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def ensure_dev_origins(
+        cls,
+        value: list[str],
+        info: ValidationInfo,
+    ) -> list[str]:
+        """Ensure common local FE origins are available in development."""
+        app_env = str(info.data.get("app_env", "development")).lower()
+        if app_env != "development":
+            return value
+
+        local_origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+        merged = list(value)
+        for origin in local_origins:
+            if origin not in merged:
+                merged.append(origin)
+        return merged
 
     @field_validator("database_url", mode="before")
     @classmethod

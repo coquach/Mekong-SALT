@@ -1,5 +1,7 @@
 """Async SQLAlchemy engine and session management."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -30,8 +32,26 @@ AsyncSessionFactory = async_sessionmaker(
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session for request-scoped usage."""
-    async with AsyncSessionFactory() as session:
+    session = AsyncSessionFactory()
+    try:
         yield session
+    except asyncio.CancelledError:
+        # Client disconnect/cancel can interrupt request handling while session
+        # is still in-flight. Roll back transaction state before propagating.
+        if session.in_transaction():
+            with contextlib.suppress(Exception):
+                await asyncio.shield(session.rollback())
+        raise
+    except Exception:
+        if session.in_transaction():
+            with contextlib.suppress(Exception):
+                await session.rollback()
+        raise
+    finally:
+        # Shield close to reduce cancelled cleanup paths that can surface as
+        # noisy pool termination errors.
+        with contextlib.suppress(Exception):
+            await asyncio.shield(session.close())
 
 
 async def close_database_engine() -> None:
