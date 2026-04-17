@@ -324,6 +324,53 @@ async def test_retrieve_context_node_includes_ranked_rag_evidence(db_session, se
 
 
 @pytest.mark.asyncio
+async def test_retrieve_context_node_includes_earth_engine_context_when_available(
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
+):
+    assessment = SimpleNamespace(
+        region_id=seeded_sensor_data["region"].id,
+        risk_level=RiskLevel.WARNING,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.20"),
+        summary="Warning level reached",
+        rationale={"reason": "salinity increased"},
+    )
+    risk_bundle = SimpleNamespace(
+        assessment=assessment,
+        reading=seeded_sensor_data["reading_a_latest"],
+        weather_snapshot=None,
+    )
+
+    async def fake_earth_engine_context(**kwargs):
+        return {
+            "source": "earth-engine-fallback",
+            "fallback_used": True,
+            "dataset": "COPERNICUS/S2_SR_HARMONIZED",
+            "summary": "Fallback hydro-context used.",
+        }
+
+    monkeypatch.setattr(
+        "app.orchestration.planning_nodes.get_or_fetch_earth_engine_context",
+        fake_earth_engine_context,
+    )
+
+    services = PlanningNodeServices(
+        session=db_session,
+        redis_manager=None,
+        provider=SimpleNamespace(),
+    )
+
+    result = await retrieve_context_node({"risk_bundle": risk_bundle}, services=services)
+
+    context = result["retrieved_context"]
+    assert context["earth_engine_context"] is not None
+    assert context["earth_engine_context"]["source"] == "earth-engine-fallback"
+    assert context["retrieval_trace"]["earth_engine"]["fallback_used"] is True
+
+
+@pytest.mark.asyncio
 async def test_draft_and_validate_nodes_work_with_rule_policy():
     draft_plan = GeneratedActionPlan(
         objective="Protect irrigation water quality",

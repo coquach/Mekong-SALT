@@ -334,6 +334,7 @@ def _plan_observation_payload(
             if weather is not None
             else None
         ),
+        "earth_engine_context": retrieved_context.get("earth_engine_context"),
         "retrieval_trace": retrieved_context.get("retrieval_trace") or {},
         "planning_transition_log": transition_log,
         "knowledge_context_preview": [

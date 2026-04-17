@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.db.session import AsyncSessionFactory, close_database_engine
+from app.schemas.pubsub import PubSubSensorReadingEvent
 from app.schemas.sensor import SensorReadingIngestRequest
 from app.services.iot_ingest_observability import (
     archive_dead_letter,
@@ -144,8 +145,8 @@ class PubSubIngestWorker:
             payload = json.loads(payload_raw)
             if not isinstance(payload, dict):
                 raise ValueError("Pub/Sub sensor payload must be a JSON object.")
-            mapped_payload = self._map_reading_payload(
-                payload=payload,
+            event = PubSubSensorReadingEvent.model_validate(payload)
+            mapped_payload = event.to_ingest_payload(
                 pubsub_meta={
                     "message_id": message.message_id,
                     "publish_time": message.publish_time.isoformat() if message.publish_time else None,
@@ -194,50 +195,6 @@ class PubSubIngestWorker:
         self._metrics.ingested_success += 1
         self._sync_metrics()
         message.ack()
-
-    def _map_reading_payload(
-        self,
-        *,
-        payload: dict[str, Any],
-        pubsub_meta: dict[str, Any],
-    ) -> dict[str, Any]:
-        station_code = payload.get("station_code") or payload.get("stationCode")
-        recorded_at = (
-            payload.get("recorded_at")
-            or payload.get("recordedAt")
-            or datetime.now(UTC).replace(microsecond=0).isoformat()
-        )
-        source_event_id = (
-            payload.get("source_event_id")
-            or payload.get("sourceEventId")
-            or payload.get("event_id")
-            or payload.get("eventId")
-            or pubsub_meta.get("message_id")
-        )
-
-        context_payload = payload.get("context_payload") or payload.get("contextPayload")
-        if context_payload is None:
-            context_payload = {}
-        if not isinstance(context_payload, dict):
-            context_payload = {"raw_context": context_payload}
-        context_payload["pubsub"] = pubsub_meta
-        if source_event_id is not None:
-            context_payload["source_event_id"] = str(source_event_id)
-
-        return {
-            "station_code": station_code,
-            "recorded_at": recorded_at,
-            "salinity_dsm": payload.get("salinity_dsm") or payload.get("salinityDsM") or payload.get("salinity"),
-            "salinity_gl": payload.get("salinity_gl") or payload.get("salinityGL"),
-            "water_level_m": payload.get("water_level_m") or payload.get("waterLevelM") or payload.get("water_level"),
-            "wind_speed_mps": payload.get("wind_speed_mps") or payload.get("windSpeedMps"),
-            "wind_direction_deg": payload.get("wind_direction_deg") or payload.get("windDirectionDeg"),
-            "flow_rate_m3s": payload.get("flow_rate_m3s") or payload.get("flowRateM3s"),
-            "temperature_c": payload.get("temperature_c") or payload.get("temperatureC"),
-            "battery_level_pct": payload.get("battery_level_pct") or payload.get("batteryLevelPct"),
-            "source": payload.get("source") or "pubsub-edge",
-            "context_payload": context_payload,
-        }
 
     async def _send_to_dead_letter(
         self,

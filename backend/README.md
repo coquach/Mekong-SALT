@@ -138,6 +138,7 @@ Watch state:
 
 - `GET /api/v1/dashboard/summary`
 - `GET /api/v1/dashboard/stream`
+- `GET /api/v1/dashboard/earth-engine/latest`
 - `GET /api/v1/risk/latest`
 - `GET /api/v1/plans`
 - `GET /api/v1/actions/logs`

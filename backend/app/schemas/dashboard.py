@@ -1,6 +1,8 @@
 """Schemas for dashboard APIs."""
 
 from datetime import datetime
+from typing import Any
+from uuid import UUID
 
 from app.schemas.base import ORMBaseSchema
 
@@ -33,3 +35,16 @@ class DashboardTimeline(ORMBaseSchema):
 
     items: list[DashboardTimelineItem]
     count: int
+
+
+class DashboardEarthEngineLatest(ORMBaseSchema):
+    """Latest persisted Earth Engine context captured during planning."""
+
+    run_id: UUID | None = None
+    captured_at: datetime | None = None
+    region_id: UUID | None = None
+    region_code: str | None = None
+    station_id: UUID | None = None
+    station_code: str | None = None
+    source: str | None = None
+    earth_engine_context: dict[str, Any] | None = None

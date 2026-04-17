@@ -5,22 +5,35 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from http import HTTPStatus
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.exceptions import AppException
 from app.core.responses import success_response
 from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import AsyncSessionFactory, get_db_session
+from app.repositories.region import RegionRepository
+from app.repositories.sensor import SensorStationRepository
 from app.schemas.common import SuccessResponse
-from app.schemas.dashboard import DashboardSummary, DashboardTimeline
+from app.schemas.dashboard import (
+    DashboardEarthEngineLatest,
+    DashboardSummary,
+    DashboardTimeline,
+)
 from app.services.db import (
     list_domain_events_after_cursor,
     to_stream_event_payload,
 )
-from app.services.dashboard_service import get_dashboard_summary, get_dashboard_timeline
+from app.services.dashboard_service import (
+    get_dashboard_summary,
+    get_dashboard_timeline,
+    get_latest_earth_engine_context,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -49,6 +62,81 @@ async def dashboard_timeline(
     return success_response(
         request=request,
         message="Dashboard timeline retrieved successfully.",
+        data=payload,
+    )
+
+
+@router.get(
+    "/earth-engine/latest",
+    response_model=SuccessResponse[DashboardEarthEngineLatest],
+)
+async def dashboard_earth_engine_latest(
+    request: Request,
+    station_id: UUID | None = Query(default=None),
+    station_code: str | None = Query(default=None),
+    region_id: UUID | None = Query(default=None),
+    region_code: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Return latest persisted Earth Engine context captured in planning runs."""
+    station_repo = SensorStationRepository(session)
+    region_repo = RegionRepository(session)
+    resolved_station_id = station_id
+    resolved_region_id = region_id
+
+    station = None
+    region = None
+    if station_code is not None:
+        station = await station_repo.get_by_code(station_code)
+        if station is None:
+            raise AppException(
+                status_code=HTTPStatus.NOT_FOUND,
+                code="sensor_station_not_found",
+                message=f"Sensor station '{station_code}' was not found.",
+            )
+        resolved_station_id = station.id
+    elif station_id is not None:
+        station = await station_repo.get(station_id)
+        if station is None:
+            raise AppException(
+                status_code=HTTPStatus.NOT_FOUND,
+                code="sensor_station_not_found",
+                message=f"Sensor station '{station_id}' was not found.",
+            )
+
+    if region_code is not None:
+        region = await region_repo.get_by_code(region_code)
+        if region is None:
+            raise AppException(
+                status_code=HTTPStatus.NOT_FOUND,
+                code="region_not_found",
+                message=f"Region '{region_code}' was not found.",
+            )
+        resolved_region_id = region.id
+    elif region_id is not None:
+        region = await region_repo.get(region_id)
+        if region is None:
+            raise AppException(
+                status_code=HTTPStatus.NOT_FOUND,
+                code="region_not_found",
+                message=f"Region '{region_id}' was not found.",
+            )
+
+    if station is not None and region is not None and station.region_id != region.id:
+        raise AppException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="station_region_mismatch",
+            message="station and region filters do not refer to the same region.",
+        )
+
+    payload = await get_latest_earth_engine_context(
+        session,
+        station_id=resolved_station_id,
+        region_id=resolved_region_id,
+    )
+    return success_response(
+        request=request,
+        message="Latest Earth Engine context retrieved successfully.",
         data=payload,
     )
 

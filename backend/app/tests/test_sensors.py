@@ -112,6 +112,46 @@ async def test_history_rejects_invalid_time_range(client, seeded_sensor_data):
 
 
 @pytest.mark.asyncio
+async def test_ingest_sensor_reading_is_idempotent_for_duplicate_event(
+    client, seeded_sensor_data
+):
+    station = seeded_sensor_data["station_a"]
+    recorded_at = datetime.now(UTC).replace(microsecond=0)
+    payload = {
+        "station_code": station.code,
+        "recorded_at": recorded_at.isoformat().replace("+00:00", "Z"),
+        "salinity_dsm": "3.75",
+        "water_level_m": "1.30",
+        "temperature_c": "29.00",
+        "battery_level_pct": "81.00",
+        "source": "api-idempotency-test",
+    }
+
+    first_response = await client.post("/api/v1/sensors/ingest", json=payload)
+    second_response = await client.post("/api/v1/sensors/ingest", json=payload)
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    first_id = first_response.json()["data"]["id"]
+    second_id = second_response.json()["data"]["id"]
+    assert first_id == second_id
+
+    history_response = await client.get(
+        "/api/v1/readings/history",
+        params={
+            "station_code": station.code,
+            "start_at": recorded_at.isoformat().replace("+00:00", "Z"),
+            "end_at": recorded_at.isoformat().replace("+00:00", "Z"),
+            "limit": 10,
+        },
+    )
+    assert history_response.status_code == 200
+    history_body = history_response.json()["data"]
+    assert history_body["count"] == 1
+    assert history_body["items"][0]["id"] == first_id
+
+
+@pytest.mark.asyncio
 async def test_legacy_sensor_read_routes_are_removed(client):
     latest = await client.get("/api/v1/sensors/latest")
     history = await client.get("/api/v1/sensors/history")

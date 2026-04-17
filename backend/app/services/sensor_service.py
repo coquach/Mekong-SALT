@@ -4,6 +4,7 @@ from http import HTTPStatus
 import logging
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
@@ -75,8 +76,27 @@ async def ingest_sensor_reading(
         source=payload.source,
         context_payload=payload.context_payload,
     )
-    await reading_repo.add(reading)
-    await session.commit()
+    try:
+        await reading_repo.add(reading)
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if _is_duplicate_ingest_conflict(exc):
+            duplicate = await reading_repo.get_by_station_recorded_source(
+                station_id=station.id,
+                recorded_at=payload.recorded_at,
+                source=payload.source,
+            )
+            if duplicate is not None:
+                logger.info(
+                    "Resolved duplicate sensor reading via unique constraint for station %s "
+                    "(recorded_at=%s source=%s)",
+                    payload.station_code,
+                    payload.recorded_at.isoformat(),
+                    payload.source,
+                )
+                return duplicate
+        raise
 
     created = await reading_repo.get_with_station(reading.id)
     logger.info("Persisted sensor reading for station %s", payload.station_code)
@@ -254,4 +274,14 @@ async def _resolve_filter_ids(
     return (
         station.id if station is not None else filters.station_id,
         region.id if region is not None else filters.region_id,
+    )
+
+
+def _is_duplicate_ingest_conflict(exc: IntegrityError) -> bool:
+    """Detect sensor ingest uniqueness conflicts across DB drivers."""
+    detail = f"{exc.orig!s} {exc!s}".lower()
+    return (
+        "uq_sensor_readings_station_recorded_source" in detail
+        or "sensor_readings_station_id_recorded_at_source" in detail
+        or "unique constraint" in detail
     )
