@@ -31,6 +31,11 @@ SCENARIOS = {
                 "expect": "Worker creates pending_approval plan from scenario-triggered readings.",
             },
             {
+                "step": "Optional: emit same stream through MQTT edge transport.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
+                "expect": "MQTT consumer ingests the same frames and lifecycle proceeds identically.",
+            },
+            {
                 "step": "Inspect plan lifecycle after timeout.",
                 "command": "curl http://localhost:8000/api/v1/plans?limit=10",
                 "expect": "Old plan is rejected and a fresh pending_approval plan appears.",
@@ -39,6 +44,7 @@ SCENARIOS = {
         "highlights": [
             "Sensor scenario is the trigger point (not manual plan API).",
             "Approval-timeout policy recovers automatically.",
+            "Same scenario can run with HTTP or MQTT transport for parity checks.",
         ],
     },
     "fast-approve-execute": {

@@ -86,6 +86,27 @@ class SensorReadingRepository(AsyncRepository[SensorReading]):
         )
         return result.first()
 
+    async def get_by_station_recorded_source(
+        self,
+        *,
+        station_id: UUID,
+        recorded_at: datetime,
+        source: str,
+    ) -> SensorReading | None:
+        """Return an existing reading used for idempotent ingest checks."""
+        result = await self.session.scalars(
+            select(SensorReading)
+            .where(
+                SensorReading.station_id == station_id,
+                SensorReading.recorded_at == recorded_at,
+                SensorReading.source == source,
+            )
+            .order_by(desc(SensorReading.created_at))
+            .options(selectinload(SensorReading.station))
+            .limit(1)
+        )
+        return result.first()
+
     async def get_previous_for_station(
         self,
         station_id: UUID,

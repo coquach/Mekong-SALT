@@ -134,6 +134,7 @@ def main() -> None:
     print("[NEXT] Print scenarios: ./.venv/Scripts/python.exe scripts/run_demo_scenarios.py --scenario all")
     print("[NEXT] Run real simulation: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario all")
     print("[NEXT] Target one station: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --station-code GOCONG-01")
+    print("[NEXT] MQTT simulation: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883")
     print("[NEXT] Launch Gradio demo: ./.venv/Scripts/python.exe gradio_app/demo_app.py")
     print("[NEXT] Watch state: GET /api/v1/dashboard/summary and GET /api/v1/plans")
     print("[NEXT] Unit policy note: backend/document/proposal_unit_alignment.md")

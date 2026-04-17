@@ -47,6 +47,20 @@ class SensorScenarioProfile:
     frames: tuple[SensorFrame, ...]
 
 
+@dataclass(slots=True)
+class SimulationRuntimeConfig:
+    """Transport configuration for scenario sensor emission."""
+
+    transport: str = "http"
+    mqtt_broker_url: str = "localhost"
+    mqtt_broker_port: int = 1883
+    mqtt_topic_sensor_readings: str = "mekong/sensors/readings"
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_client_id: str = "mekong-salt-demo-simulation"
+    mqtt_qos: int = 1
+
+
 SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
     "critical-timeout-replan": SensorScenarioProfile(
         key="critical-timeout-replan",
@@ -85,6 +99,8 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
         ),
     ),
 }
+
+RUNTIME_CONFIG = SimulationRuntimeConfig()
 
 def _to_query(params: dict[str, Any]) -> str:
     encoded = parse.urlencode(
@@ -330,6 +346,91 @@ def _close_open_incidents(base_url: str, *, region_id: str) -> list[str]:
     return closed_ids
 
 
+def _build_sensor_frame_payload(
+    *,
+    profile: SensorScenarioProfile,
+    frame: SensorFrame,
+    frame_index: int,
+    station_code: str,
+    recorded_at: datetime,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "station_code": station_code,
+        "recorded_at": recorded_at.replace(microsecond=0).isoformat(),
+        "salinity_dsm": frame.salinity_dsm,
+        "water_level_m": frame.water_level_m,
+        "temperature_c": frame.temperature_c,
+        "battery_level_pct": frame.battery_level_pct,
+        "source": "demo-simulation",
+        "context_payload": {
+            "scenario": profile.key,
+            "frame_index": frame_index,
+            "frame_note": frame.note,
+            "description": profile.description,
+        },
+    }
+    if frame.wind_speed_mps is not None:
+        payload["wind_speed_mps"] = frame.wind_speed_mps
+    if frame.wind_direction_deg is not None:
+        payload["wind_direction_deg"] = frame.wind_direction_deg
+    if frame.flow_rate_m3s is not None:
+        payload["flow_rate_m3s"] = frame.flow_rate_m3s
+    return payload
+
+
+def _open_mqtt_client() -> tuple[Any, Any]:
+    try:
+        import paho.mqtt.client as mqtt
+    except ImportError as exc:  # pragma: no cover - environment dependency
+        raise SimulationError(
+            "Missing dependency 'paho-mqtt'. Install backend dependencies first."
+        ) from exc
+
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=RUNTIME_CONFIG.mqtt_client_id,
+        protocol=mqtt.MQTTv311,
+    )
+    if RUNTIME_CONFIG.mqtt_username:
+        client.username_pw_set(
+            RUNTIME_CONFIG.mqtt_username,
+            RUNTIME_CONFIG.mqtt_password,
+        )
+
+    try:
+        client.connect(
+            host=RUNTIME_CONFIG.mqtt_broker_url,
+            port=RUNTIME_CONFIG.mqtt_broker_port,
+            keepalive=30,
+        )
+    except OSError as exc:
+        raise SimulationError(
+            f"Cannot connect MQTT broker {RUNTIME_CONFIG.mqtt_broker_url}:{RUNTIME_CONFIG.mqtt_broker_port}: {exc}"
+        ) from exc
+
+    client.loop_start()
+    return client, mqtt
+
+
+def _publish_sensor_reading_via_mqtt(
+    *,
+    mqtt_client: Any,
+    mqtt_lib: Any,
+    payload: dict[str, Any],
+) -> None:
+    publish_info = mqtt_client.publish(
+        topic=RUNTIME_CONFIG.mqtt_topic_sensor_readings,
+        payload=json.dumps(payload, ensure_ascii=True),
+        qos=RUNTIME_CONFIG.mqtt_qos,
+        retain=False,
+    )
+    publish_info.wait_for_publish()
+    if publish_info.rc != mqtt_lib.MQTT_ERR_SUCCESS:
+        raise SimulationError(
+            f"MQTT publish failed rc={publish_info.rc} topic={RUNTIME_CONFIG.mqtt_topic_sensor_readings}"
+        )
+
+
 def _ingest_sensor_profile(
     base_url: str,
     *,
@@ -339,40 +440,50 @@ def _ingest_sensor_profile(
 ) -> list[dict[str, Any]]:
     base_time = datetime.now(UTC)
     emitted: list[dict[str, Any]] = []
-    for index, frame in enumerate(profile.frames, start=1):
-        recorded_at = base_time + timedelta(seconds=index)
-        payload: dict[str, Any] = {
-            "station_code": station_code,
-            "recorded_at": recorded_at.replace(microsecond=0).isoformat(),
-            "salinity_dsm": frame.salinity_dsm,
-            "water_level_m": frame.water_level_m,
-            "temperature_c": frame.temperature_c,
-            "battery_level_pct": frame.battery_level_pct,
-            "source": "demo-simulation",
-            "context_payload": {
-                "scenario": profile.key,
-                "frame_index": index,
-                "frame_note": frame.note,
-                "description": profile.description,
-            },
-        }
-        if frame.wind_speed_mps is not None:
-            payload["wind_speed_mps"] = frame.wind_speed_mps
-        if frame.wind_direction_deg is not None:
-            payload["wind_direction_deg"] = frame.wind_direction_deg
-        if frame.flow_rate_m3s is not None:
-            payload["flow_rate_m3s"] = frame.flow_rate_m3s
+    mqtt_client: Any | None = None
+    mqtt_lib: Any | None = None
+    if RUNTIME_CONFIG.transport == "mqtt":
+        mqtt_client, mqtt_lib = _open_mqtt_client()
 
-        _http_json(base_url=base_url, method="POST", path="/api/v1/sensors/ingest", payload=payload)
-        emitted.append(payload)
-        print(
-            f"[OK] Emitted frame {index}/{len(profile.frames)} "
-            f"salinity={_format_salinity_dual(frame.salinity_dsm)} note={frame.note or '-'}"
-        )
+    try:
+        for index, frame in enumerate(profile.frames, start=1):
+            recorded_at = base_time + timedelta(seconds=index)
+            payload = _build_sensor_frame_payload(
+                profile=profile,
+                frame=frame,
+                frame_index=index,
+                station_code=station_code,
+                recorded_at=recorded_at,
+            )
 
-        pause = max(frame_pause_seconds, frame.pause_seconds)
-        if index < len(profile.frames) and pause > 0:
-            time.sleep(pause)
+            if RUNTIME_CONFIG.transport == "mqtt":
+                if mqtt_client is None or mqtt_lib is None:
+                    raise SimulationError("MQTT transport is enabled but publisher is not ready.")
+                _publish_sensor_reading_via_mqtt(
+                    mqtt_client=mqtt_client,
+                    mqtt_lib=mqtt_lib,
+                    payload=payload,
+                )
+            else:
+                _http_json(
+                    base_url=base_url,
+                    method="POST",
+                    path="/api/v1/sensors/ingest",
+                    payload=payload,
+                )
+            emitted.append(payload)
+            print(
+                f"[OK] Emitted frame {index}/{len(profile.frames)} via {RUNTIME_CONFIG.transport.upper()} "
+                f"salinity={_format_salinity_dual(frame.salinity_dsm)} note={frame.note or '-'}"
+            )
+
+            pause = max(frame_pause_seconds, frame.pause_seconds)
+            if index < len(profile.frames) and pause > 0:
+                time.sleep(pause)
+    finally:
+        if mqtt_client is not None:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
 
     return emitted
 
@@ -972,6 +1083,50 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Default pause between sensor frames in one scenario.",
     )
     parser.add_argument(
+        "--transport",
+        default="http",
+        choices=["http", "mqtt"],
+        help="Transport for scenario sensor stream emission.",
+    )
+    parser.add_argument(
+        "--mqtt-broker-url",
+        default="localhost",
+        help="MQTT broker host for --transport mqtt.",
+    )
+    parser.add_argument(
+        "--mqtt-broker-port",
+        type=int,
+        default=1883,
+        help="MQTT broker port for --transport mqtt.",
+    )
+    parser.add_argument(
+        "--mqtt-topic-readings",
+        default="mekong/sensors/readings",
+        help="MQTT topic to publish sensor readings.",
+    )
+    parser.add_argument(
+        "--mqtt-username",
+        default=None,
+        help="Optional MQTT username.",
+    )
+    parser.add_argument(
+        "--mqtt-password",
+        default=None,
+        help="Optional MQTT password.",
+    )
+    parser.add_argument(
+        "--mqtt-client-id",
+        default="mekong-salt-demo-simulation",
+        help="MQTT client id for the publisher.",
+    )
+    parser.add_argument(
+        "--mqtt-qos",
+        type=int,
+        default=1,
+        choices=[0, 1, 2],
+        help="MQTT publish QoS for scenario frames.",
+    )
+    parser.add_argument(
         "--keep-open-incidents",
         action="store_true",
         help="Do not auto-close open incidents before sending scenario frames.",
@@ -1002,8 +1157,25 @@ def main() -> None:
     if args.scenario != "all" and args.scenario not in SCENARIO_EXECUTORS:
         raise SystemExit(f"Unknown scenario '{args.scenario}'. Use --list.")
 
+    RUNTIME_CONFIG.transport = str(args.transport)
+    RUNTIME_CONFIG.mqtt_broker_url = str(args.mqtt_broker_url)
+    RUNTIME_CONFIG.mqtt_broker_port = int(args.mqtt_broker_port)
+    RUNTIME_CONFIG.mqtt_topic_sensor_readings = str(args.mqtt_topic_readings)
+    RUNTIME_CONFIG.mqtt_username = args.mqtt_username
+    RUNTIME_CONFIG.mqtt_password = args.mqtt_password
+    RUNTIME_CONFIG.mqtt_client_id = str(args.mqtt_client_id)
+    RUNTIME_CONFIG.mqtt_qos = int(args.mqtt_qos)
+
     _ensure_server_ready(args.base_url)
     print(f"[OK] Backend API reachable at {args.base_url}")
+    if RUNTIME_CONFIG.transport == "mqtt":
+        print(
+            "[OK] Sensor stream transport MQTT "
+            f"{RUNTIME_CONFIG.mqtt_broker_url}:{RUNTIME_CONFIG.mqtt_broker_port} "
+            f"topic={RUNTIME_CONFIG.mqtt_topic_sensor_readings} qos={RUNTIME_CONFIG.mqtt_qos}"
+        )
+    else:
+        print("[OK] Sensor stream transport HTTP /api/v1/sensors/ingest")
 
     selected_keys = (
         [args.scenario]

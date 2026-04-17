@@ -21,6 +21,7 @@ async def lifespan(application: FastAPI):
     settings = get_settings()
     application.state.redis = RedisManager(settings.redis_url)
     application.state.active_monitoring_task = None
+    application.state.mqtt_ingest_task = None
 
     logger.info(
         "Starting Mekong-SALT backend",
@@ -32,10 +33,19 @@ async def lifespan(application: FastAPI):
             redis_manager=application.state.redis,
             settings=settings,
         )
+    if settings.mqtt_enabled and settings.iot_ingest_mode in {"mqtt", "hybrid"}:
+        from app.workers.mqtt_ingest_worker import start_mqtt_ingest_worker
+
+        application.state.mqtt_ingest_task = start_mqtt_ingest_worker(settings=settings)
 
     try:
         yield
     finally:
+        mqtt_task = application.state.mqtt_ingest_task
+        if mqtt_task is not None:
+            mqtt_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await mqtt_task
         task = application.state.active_monitoring_task
         if task is not None:
             task.cancel()

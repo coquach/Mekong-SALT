@@ -61,6 +61,8 @@ class LifecycleState(TypedDict, total=False):
     execution_status: str
     feedback_status: str
     feedback_summary: str
+    feedback_replan_recommended: bool
+    feedback_replan_reason: str | None
     memory_log: DecisionLog | None
     memory_write_status: str
     reason: str

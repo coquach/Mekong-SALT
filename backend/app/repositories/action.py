@@ -53,7 +53,6 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
             ActionPlanStatus.VALIDATED,
             ActionPlanStatus.PENDING_APPROVAL,
             ActionPlanStatus.APPROVED,
-            ActionPlanStatus.SIMULATED,
         }
         result = await self.session.scalars(
             select(ActionPlan)

@@ -53,6 +53,29 @@ Standalone worker:
 ./.venv/Scripts/python.exe -m app.workers.active_monitoring_worker
 ```
 
+MQTT edge ingest mode (subscriber runs inside API process):
+
+```bash
+# backend/.env
+IOT_INGEST_MODE=mqtt
+MQTT_ENABLED=true
+MQTT_BROKER_URL=localhost
+MQTT_BROKER_PORT=1883
+MQTT_TOPIC_SENSOR_READINGS=mekong/sensors/readings
+MQTT_TOPIC_DEVICE_STATUS=mekong/sensors/status
+MQTT_TOPIC_DEAD_LETTER=mekong/sensors/readings/dlq
+```
+
+Run MQTT scenario stream:
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py \
+  --scenario fast-approve-execute \
+  --transport mqtt \
+  --mqtt-broker-url localhost \
+  --mqtt-broker-port 1883
+```
+
 Demo UI (Gradio control center):
 
 ```bash
@@ -97,6 +120,10 @@ curl http://localhost:8000/api/v1/health
 6. Execute simulated actions and emit milestone notifications.
 7. Evaluate outcome from post-action observations and persist memory case evidence for re-planning.
 8. Stream operational updates via dashboard SSE + durable domain event cursor.
+
+Integration rollout plan:
+
+- `document/phase-rollout-pubsub-mqtt-gee-frontend.md`
 
 Watch state:
 
@@ -191,14 +218,21 @@ Worker loop:
 3. Acquire `mekong-salt:monitoring-goal:{goal_id}:lock` in Redis.
 4. Run `observe -> risk -> incident`.
 5. In `dry_run`, stop before plan creation.
-6. In `active`, create a plan only when `auto_plan_enabled=true` and no active/simulated plan exists for the incident.
+6. In `active`, create a plan only when `auto_plan_enabled=true` and no active plan exists for the incident.
 7. If enabled, auto-approve and execute the plan using the simulated action engine.
+8. If feedback outcome is failed/partial, optionally auto-replan for limited attempts.
 
 Approval timeout controls:
 
 - `ACTIVE_MONITORING_APPROVAL_TIMEOUT_MINUTES`: pending approvals older than this window are considered stale.
 - `ACTIVE_MONITORING_APPROVAL_TIMEOUT_ACTION=auto_reject|none`: `auto_reject` rejects stale pending plans so the next cycle can generate a fresh plan.
 - For demos, set timeout to `1` minute to observe the recovery path quickly.
+
+Feedback replan controls:
+
+- `ACTIVE_MONITORING_FEEDBACK_REPLAN_MAX_ATTEMPTS`: maximum follow-up replans in the same goal cycle after failed feedback outcomes.
+- Failed outcomes eligible for auto-replan: `failed_execution`, `failed_plan`, `partial_success`.
+- `inconclusive` feedback does not auto-replan to avoid loops when no new reading is available.
 
 Useful commands:
 

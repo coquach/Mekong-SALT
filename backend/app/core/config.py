@@ -49,6 +49,32 @@ class Settings(BaseSettings):
     risk_rule_version: str = "v1"
     open_meteo_weather_base_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_marine_base_url: str = "https://marine-api.open-meteo.com/v1/marine"
+    iot_ingest_mode: Literal["http", "mqtt", "pubsub", "hybrid"] = "http"
+
+    mqtt_enabled: bool = False
+    mqtt_broker_url: str = "localhost"
+    mqtt_broker_port: int = 1883
+    mqtt_username: str | None = None
+    mqtt_password: SecretStr | None = None
+    mqtt_client_id: str = "mekong-salt-backend"
+    mqtt_topic_sensor_readings: str = "mekong/sensors/readings"
+    mqtt_topic_device_status: str = "mekong/sensors/status"
+    mqtt_topic_dead_letter: str = "mekong/sensors/readings/dlq"
+    mqtt_qos: int = 1
+
+    pubsub_enabled: bool = False
+    pubsub_project_id: str | None = None
+    pubsub_subscription_sensor_readings: str | None = None
+    pubsub_topic_sensor_events: str | None = None
+    pubsub_dead_letter_topic: str | None = None
+    pubsub_emulator_host: str | None = None
+
+    earth_engine_enabled: bool = False
+    earth_engine_project_id: str | None = None
+    earth_engine_service_account_email: str | None = None
+    earth_engine_service_account_key_path: str | None = None
+    earth_engine_default_dataset: str = "COPERNICUS/S2_SR_HARMONIZED"
+    earth_engine_region_buffer_m: int = 3000
 
     llm_provider: Literal["gemini"] = "gemini"
     llm_use_vertex: bool = True
@@ -85,6 +111,7 @@ class Settings(BaseSettings):
     active_monitoring_batch_size: int = 50
     active_monitoring_approval_timeout_minutes: int = 60
     active_monitoring_approval_timeout_action: Literal["none", "auto_reject"] = "auto_reject"
+    active_monitoring_feedback_replan_max_attempts: int = 1
     reactive_auto_execute_enabled: bool = True
 
     @field_validator("database_url", mode="before")

@@ -48,6 +48,20 @@ async def ingest_sensor_reading(
             message="salinity_dsm could not be resolved from input payload.",
         )
 
+    existing = await reading_repo.get_by_station_recorded_source(
+        station_id=station.id,
+        recorded_at=payload.recorded_at,
+        source=payload.source,
+    )
+    if existing is not None:
+        logger.info(
+            "Skipped duplicate sensor reading for station %s (recorded_at=%s source=%s)",
+            payload.station_code,
+            payload.recorded_at.isoformat(),
+            payload.source,
+        )
+        return existing
+
     reading = SensorReading(
         station_id=station.id,
         recorded_at=payload.recorded_at,

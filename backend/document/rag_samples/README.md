@@ -8,12 +8,23 @@ This folder contains normalized source documents for RAG ingestion and retrieval
 - casebook: historical incident/case records
 - guideline: operational interpretation notes
 
+## Current Bundle Coverage
+- `sop/sop_salinity_response_playbook.md`: end-to-end response SOP for intake salinity incidents.
+- `threshold/threshold_policy_matrix.csv`: structured threshold and response policy matrix.
+- `casebook/casebook_salinity_incidents.csv`: scenario-based incident/outcome cases for retrieval benchmarking.
+- `guideline/weather_tide_operational_notes.md`: hydro-meteorological interpretation guidance.
+
 ## Conventions
 - Language: English (international-readable baseline)
 - Date format: ISO 8601 (`YYYY-MM-DD`)
 - Units: explicit SI-compatible notation where applicable (`dS/m`, `g/L`, `minutes`)
 - IDs: stable and version-aware (`DOC-ID`, `POL-*`, `CASE-*`)
 - Metadata keys: consistent snake_case labels
+
+## Data Authenticity Policy
+- This pack is designed for RAG benchmarking and operator training support.
+- Casebook rows are normalized reference scenarios unless explicitly marked as validated field incidents.
+- Avoid claiming synthetic/reference cases as official government observations.
 
 ## File-Level Expectations
 - Markdown docs: include document control section (ID, version, status, effective date).

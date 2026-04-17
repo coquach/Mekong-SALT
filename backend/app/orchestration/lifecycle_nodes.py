@@ -239,11 +239,17 @@ async def feedback_node(state: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "feedback_status": feedback.outcome_class,
         "feedback_summary": feedback.summary,
+        "feedback_replan_recommended": feedback.replan_recommended,
+        "feedback_replan_reason": feedback.replan_reason,
         "transition_log": _append_transition(
             state,
             node="feedback",
             status=feedback.outcome_class,
-            details={"summary": feedback.summary},
+            details={
+                "summary": feedback.summary,
+                "replan_recommended": feedback.replan_recommended,
+                "replan_reason": feedback.replan_reason,
+            },
         ),
     }
 
@@ -279,6 +285,8 @@ async def memory_write_node(
             "execution_status": state.get("execution_status"),
             "feedback_status": feedback_status,
             "feedback_summary": state.get("feedback_summary"),
+            "feedback_replan_recommended": state.get("feedback_replan_recommended"),
+            "feedback_replan_reason": state.get("feedback_replan_reason"),
             "transition_log": transitions,
         },
         store_as_memory=feedback_status == "success",

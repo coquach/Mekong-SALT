@@ -1,5 +1,0 @@
-case_id,incident_date,region_code,severity,trigger_pattern,response_actions,outcome_class,recovery_time_cycles,impact_summary,lessons_learned
-CASE-2025-001,2025-02-11,TIEN_GIANG,warning,"rising_salinity_and_high_tide","notify_farmers;wait_safe_window",success,2,"No crop damage reported","Early advisory reduced risky intake"
-CASE-2025-014,2025-05-08,BEN_TRE,critical,"critical_threshold_breach_at_intake","send_alert;close_gate_simulated",partial_success,2,"Exposure reduced but risk remained elevated short-term","Gate-first mitigation worked for rapid spikes"
-CASE-2025-022,2025-07-19,LONG_AN,warning,"sustained_warning_three_consecutive_checks","send_alert;stop_pump",success,3,"Conditions stabilized after tide shift","Pump pause prevented further saline ingress"
-CASE-2025-031,2025-11-03,VINH_LONG,critical,"fast_rise_with_strong_onshore_wind","notify_farmers;close_gate_simulated;wait_safe_window",success,4,"Recovered after operator-approved mitigation","Combining communication and hydraulic controls improved response"
