@@ -6,6 +6,7 @@ from typing import Any, Callable
 from uuid import UUID
 
 from app.repositories.knowledge import KnowledgeDocumentRepository
+from app.services.rag.retrieval_policy import RetrievalLanePolicy
 from app.services.rag.retrieval_builders import (
     build_document_evidence,
     infer_doc_source,
@@ -17,12 +18,11 @@ from app.services.rag.static_corpus_provider import get_static_corpus_provider
 async def retrieve_static_document_lane(
     session,
     *,
-    settings,
+    policy: RetrievalLanePolicy,
     objective: str,
     assessment,
     query_terms: list[str],
     max_evidence: int,
-    top_k: int,
     vector_service_factory: Callable[[], Any],
 ) -> tuple[list[dict[str, Any]], bool, bool]:
     """Retrieve static institutional knowledge through provider then local fallback."""
@@ -33,7 +33,7 @@ async def retrieve_static_document_lane(
     vector_used = False
     fallback_used = False
 
-    if settings.rag_use_vertex_vector_search:
+    if policy.use_vector_search:
         try:
             evidence.extend(
                 await _retrieve_document_evidence_from_vector(
@@ -42,26 +42,28 @@ async def retrieve_static_document_lane(
                     assessment=assessment,
                     query_terms=query_terms,
                     max_evidence=max_evidence,
-                    top_k=top_k,
+                    top_k=policy.top_k,
+                    neighbor_multiplier=policy.vector_neighbor_multiplier,
+                    neighbor_floor=policy.vector_neighbor_floor,
                     vector_service_factory=vector_service_factory,
                 )
             )
             vector_used = bool(evidence)
         except Exception:
-            if not settings.rag_enable_local_fallback:
+            if not policy.enable_local_fallback:
                 raise
 
-    if not evidence and settings.rag_enable_local_fallback:
+    if not evidence and policy.enable_local_fallback:
         fallback_used = True
         sop_rows = await document_repo.list_ranked_chunk_candidates(
             category="sop",
             query_terms=query_terms,
-            limit=4,
+            limit=policy.static_local_limit,
         )
         threshold_rows = await document_repo.list_ranked_chunk_candidates(
             category="threshold",
             query_terms=query_terms,
-            limit=4,
+            limit=policy.static_local_limit,
         )
 
         for chunk, document in sop_rows:
@@ -98,6 +100,8 @@ async def _retrieve_document_evidence_from_vector(
     query_terms: list[str],
     max_evidence: int,
     top_k: int,
+    neighbor_multiplier: int,
+    neighbor_floor: int,
     vector_service_factory: Callable[[], Any],
 ) -> list[dict[str, Any]]:
     """Retrieve document chunks via vector search and map them to evidence rows."""
@@ -124,7 +128,7 @@ async def _retrieve_document_evidence_from_vector(
 
     neighbors = await static_provider.find_neighbors(
         query_embedding=vectors[0],
-        neighbor_count=max(max(top_k, max_evidence) * 2, 12),
+        neighbor_count=max(max(top_k, max_evidence) * max(1, neighbor_multiplier), max(1, neighbor_floor)),
     )
     if not neighbors:
         return []

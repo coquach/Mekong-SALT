@@ -14,6 +14,7 @@ from app.schemas.retrieval import (
     RetrievalRankingMetadata,
 )
 from app.services.rag.retrieval_broker import collect_ranked_evidence
+from app.services.rag.retrieval_policy import build_retrieval_lane_policy
 from app.services.rag.memory_case_lane import retrieve_memory_case_lane
 from app.services.rag.similar_case_lane import retrieve_similar_case_lane
 from app.services.rag.static_document_lane import retrieve_static_document_lane
@@ -48,7 +49,7 @@ async def retrieve_ranked_knowledge_context(
 ) -> RetrievalContext:
     """Build ranked RAG evidence from SOP docs, threshold docs, and similar cases."""
     settings = get_settings()
-    rag_top_k = int(getattr(settings, "rag_retrieval_top_k", 8))
+    policy = build_retrieval_lane_policy(settings)
     assessment = risk_bundle.assessment
     risk_level = assessment.risk_level.value
     query_terms = _extract_query_terms(
@@ -69,12 +70,11 @@ async def retrieve_ranked_knowledge_context(
         max_evidence=max_evidence,
         static_lane_loader=lambda: retrieve_static_document_lane(
             session,
-            settings=settings,
+            policy=policy,
             objective=objective,
             assessment=assessment,
             query_terms=query_terms,
             max_evidence=max_evidence,
-            top_k=rag_top_k,
             vector_service_factory=VertexVectorSearchService,
         ),
         similar_case_lane_loader=lambda: retrieve_similar_case_lane(
@@ -85,12 +85,11 @@ async def retrieve_ranked_knowledge_context(
         ),
         memory_case_lane_loader=lambda: retrieve_memory_case_lane(
             session,
-            settings=settings,
+            policy=policy,
             objective=objective,
             assessment=assessment,
             query_terms=query_terms,
             risk_level=risk_level,
-            top_k=rag_top_k,
             vector_service_factory=VertexVectorSearchService,
         ),
     )
@@ -98,15 +97,15 @@ async def retrieve_ranked_knowledge_context(
     source_counts = _build_source_counts(broker_result.evidence)
     ranking_metadata = RetrievalRankingMetadata(
         max_evidence=max(max_evidence, 1),
-        top_k=max(rag_top_k, 1),
+        top_k=max(policy.top_k, 1),
         query_terms=query_terms,
         top_citations=_build_top_citations(broker_result.evidence),
     )
     provenance = RetrievalProvenance(
         generated_at=datetime.now(UTC),
-        vector_search_enabled=bool(settings.rag_use_vertex_vector_search),
+        vector_search_enabled=policy.use_vector_search,
         vector_search_used=broker_result.vector_search_used,
-        local_fallback_enabled=bool(settings.rag_enable_local_fallback),
+        local_fallback_enabled=policy.enable_local_fallback,
         local_fallback_used=broker_result.local_fallback_used,
         source_counts=source_counts,
         total_candidates=broker_result.total_candidates,

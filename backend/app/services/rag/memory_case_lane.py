@@ -8,17 +8,17 @@ from uuid import UUID
 
 from app.repositories.memory_case import MemoryCaseRepository
 from app.services.rag.retrieval_builders import build_memory_case_evidence, score_bias_from_distance
+from app.services.rag.retrieval_policy import RetrievalLanePolicy
 
 
 async def retrieve_memory_case_lane(
     session,
     *,
-    settings,
+    policy: RetrievalLanePolicy,
     objective: str,
     assessment,
     query_terms: list[str],
     risk_level: str,
-    top_k: int,
     vector_service_factory: Callable[[], Any],
 ) -> tuple[list[dict[str, Any]], bool, bool]:
     """Retrieve episodic memory evidence (vector first, DB fallback)."""
@@ -29,7 +29,7 @@ async def retrieve_memory_case_lane(
     vector_used = False
     fallback_used = False
     memory_case_evidence: list[dict[str, Any]] = []
-    if settings.rag_use_vertex_vector_search:
+    if policy.use_vector_search:
         try:
             memory_case_evidence = await asyncio.wait_for(
                 _retrieve_memory_case_evidence_from_vector(
@@ -37,11 +37,13 @@ async def retrieve_memory_case_lane(
                     objective=objective,
                     assessment=assessment,
                     query_terms=query_terms,
-                    max_evidence=4,
-                    top_k=top_k,
+                    max_evidence=policy.memory_vector_max_evidence,
+                    top_k=policy.top_k,
+                    neighbor_multiplier=policy.vector_neighbor_multiplier,
+                    neighbor_floor=policy.vector_neighbor_floor,
                     vector_service_factory=vector_service_factory,
                 ),
-                timeout=2.5,
+                timeout=policy.memory_vector_timeout_seconds,
             )
             vector_used = bool(memory_case_evidence)
         except Exception:
@@ -52,7 +54,7 @@ async def retrieve_memory_case_lane(
             region_id=assessment.region_id,
             severity=risk_level,
             query_terms=query_terms,
-            limit=4,
+            limit=policy.memory_local_limit,
         )
         fallback_used = bool(memory_cases)
         for case in memory_cases:
@@ -75,6 +77,8 @@ async def _retrieve_memory_case_evidence_from_vector(
     query_terms: list[str],
     max_evidence: int,
     top_k: int,
+    neighbor_multiplier: int,
+    neighbor_floor: int,
     vector_service_factory: Callable[[], Any],
 ) -> list[dict[str, Any]]:
     """Retrieve memory-case evidence via vector search and hydrate from DB rows."""
@@ -100,7 +104,7 @@ async def _retrieve_memory_case_evidence_from_vector(
 
     neighbors = await vector_service.find_neighbors(
         query_embedding=vectors[0],
-        neighbor_count=max(max(top_k, max_evidence) * 2, 12),
+        neighbor_count=max(max(top_k, max_evidence) * max(1, neighbor_multiplier), max(1, neighbor_floor)),
         restricts={
             "entity_type": ["memory_case"],
             "region_scope": [str(getattr(assessment, "region_id"))],

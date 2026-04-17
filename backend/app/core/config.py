@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     rag_enable_local_fallback: bool = True
     rag_embedding_model: str = "text-embedding-005"
     rag_retrieval_top_k: int = 8
+    rag_static_local_limit: int = 4
+    rag_memory_local_limit: int = 4
+    rag_memory_vector_max_evidence: int = 4
+    rag_memory_vector_timeout_seconds: float = 2.5
+    rag_vector_neighbor_multiplier: int = 2
+    rag_vector_neighbor_floor: int = 12
     rag_csv_reindex_ttl_days: int = 7
     vertex_vector_search_index: str | None = None
     vertex_vector_search_index_endpoint: str | None = None
