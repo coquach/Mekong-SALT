@@ -1,10 +1,11 @@
 """Knowledge base persistence models."""
 
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +33,21 @@ class KnowledgeDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     content_text: Mapped[str] = mapped_column(Text(), nullable=False)
     tags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     metadata_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    source_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    effective_date: Mapped[date | None] = mapped_column(Date(), nullable=True, index=True)
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    document_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    index_provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_document_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_sync_status: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        default="pending",
+        index=True,
+    )
+    provider_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     chunks = relationship(
         "EmbeddedChunk",

@@ -22,6 +22,7 @@ from app.schemas.retrieval import (
     RetrievalProvenance,
     RetrievalRankingMetadata,
 )
+from app.services.rag.static_corpus_provider import get_static_corpus_provider
 from app.services.rag.vertex_vector_search_service import VertexVectorSearchService
 
 _DEFAULT_MAX_EVIDENCE = 8
@@ -70,123 +71,38 @@ async def retrieve_ranked_knowledge_context(
         )
     )
 
-    document_repo = KnowledgeDocumentRepository(session)
-    case_repo = SimilarCaseRepository(session)
-    memory_case_repo = MemoryCaseRepository(session)
-    action_repo = ActionPlanRepository(session)
-
     evidence: list[dict[str, Any]] = []
-    vector_search_used = False
-    local_fallback_used = False
-    if settings.rag_use_vertex_vector_search:
-        try:
-            evidence.extend(
-                await _retrieve_document_evidence_from_vertex(
-                    session,
-                    objective=objective,
-                    assessment=assessment,
-                    query_terms=query_terms,
-                    max_evidence=max_evidence,
-                    top_k=rag_top_k,
-                )
-            )
-            vector_search_used = bool(evidence)
-        except Exception:
-            if not settings.rag_enable_local_fallback:
-                raise
-
-    if not evidence and settings.rag_enable_local_fallback:
-        local_fallback_used = True
-        sop_rows = await document_repo.list_ranked_chunk_candidates(
-            category="sop",
-            query_terms=query_terms,
-            limit=4,
-        )
-        threshold_rows = await document_repo.list_ranked_chunk_candidates(
-            category="threshold",
-            query_terms=query_terms,
-            limit=4,
-        )
-
-        for chunk, document in sop_rows:
-            evidence.append(
-                _build_document_evidence(
-                    document=document,
-                    chunk=chunk,
-                    source="sop_doc",
-                    risk_level=risk_level,
-                    query_terms=query_terms,
-                    score_bias=2.2,
-                )
-            )
-        for chunk, document in threshold_rows:
-            evidence.append(
-                _build_document_evidence(
-                    document=document,
-                    chunk=chunk,
-                    source="threshold_doc",
-                    risk_level=risk_level,
-                    query_terms=query_terms,
-                    score_bias=2.0,
-                )
-            )
-
-    similar_incidents = await case_repo.list_similar_incidents(
-        region_id=assessment.region_id,
-        severity=assessment.risk_level,
-        exclude_assessment_id=getattr(assessment, "id", None),
-        limit=4,
+    static_evidence, vector_search_used, local_fallback_used = await _retrieve_static_document_lane(
+        session,
+        objective=objective,
+        assessment=assessment,
+        query_terms=query_terms,
+        max_evidence=max_evidence,
+        top_k=rag_top_k,
     )
-    for incident in similar_incidents:
-        latest_plan = await action_repo.get_latest_for_incident(incident.id)
-        evidence.append(
-            _build_case_evidence(
-                incident=incident,
-                latest_plan=latest_plan,
-                query_terms=query_terms,
-                risk_level=risk_level,
-            )
+    evidence.extend(static_evidence)
+
+    evidence.extend(
+        await _retrieve_similar_case_lane(
+            session,
+            assessment=assessment,
+            query_terms=query_terms,
+            risk_level=risk_level,
         )
+    )
 
     try:
-        if await memory_case_repo.is_table_ready():
-            memory_case_evidence: list[dict[str, Any]] = []
-            if settings.rag_use_vertex_vector_search:
-                try:
-                    memory_case_evidence = await asyncio.wait_for(
-                        _retrieve_memory_case_evidence_from_vertex(
-                            session,
-                            objective=objective,
-                            assessment=assessment,
-                            query_terms=query_terms,
-                            max_evidence=4,
-                            top_k=rag_top_k,
-                        ),
-                        timeout=2.5,
-                    )
-                    vector_search_used = vector_search_used or bool(memory_case_evidence)
-                except Exception:
-                    # Memory-case semantic lookup is best-effort and should not block planning.
-                    memory_case_evidence = []
-
-            if not memory_case_evidence:
-                memory_cases = await memory_case_repo.list_similar_cases(
-                    region_id=assessment.region_id,
-                    severity=risk_level,
-                    query_terms=query_terms,
-                    limit=4,
-                )
-                local_fallback_used = local_fallback_used or bool(memory_cases)
-                for case in memory_cases:
-                    memory_case_evidence.append(
-                        _build_memory_case_evidence(
-                            memory_case=case,
-                            query_terms=query_terms,
-                            risk_level=risk_level,
-                        )
-                    )
-
-            evidence.extend(memory_case_evidence)
+        memory_case_evidence, memory_vector_used, memory_fallback_used = await _retrieve_memory_case_lane(
+            session,
+            objective=objective,
+            assessment=assessment,
+            query_terms=query_terms,
+            risk_level=risk_level,
+            top_k=rag_top_k,
+        )
+        evidence.extend(memory_case_evidence)
+        vector_search_used = vector_search_used or memory_vector_used
+        local_fallback_used = local_fallback_used or memory_fallback_used
     except SQLAlchemyError:
         # Support environments where memory_cases migration has not been applied yet.
         pass
@@ -241,7 +157,8 @@ async def _retrieve_document_evidence_from_vertex(
 ) -> list[dict[str, Any]]:
     """Retrieve document chunks via Vertex Vector Search and map them to evidence rows."""
     vector_service = VertexVectorSearchService()
-    if not vector_service.is_configured():
+    static_provider = get_static_corpus_provider(vector_service=vector_service)
+    if not static_provider.is_configured():
         return []
 
     query_text = " ".join(
@@ -256,11 +173,11 @@ async def _retrieve_document_evidence_from_vertex(
         )
     )
 
-    vectors = await vector_service.embed_texts([query_text])
+    vectors = await static_provider.embed_texts([query_text])
     if not vectors:
         return []
 
-    neighbors = await vector_service.find_neighbors(
+    neighbors = await static_provider.find_neighbors(
         query_embedding=vectors[0],
         neighbor_count=max(max(top_k, max_evidence) * 2, 12),
     )
@@ -310,6 +227,167 @@ async def _retrieve_document_evidence_from_vertex(
         )
     )
     return evidence[:max(max_evidence, 1)]
+
+
+async def _retrieve_static_document_lane(
+    session,
+    *,
+    objective: str,
+    assessment,
+    query_terms: list[str],
+    max_evidence: int,
+    top_k: int,
+) -> tuple[list[dict[str, Any]], bool, bool]:
+    """Retrieve static institutional knowledge through provider then local fallback."""
+    settings = get_settings()
+    risk_level = getattr(getattr(assessment, "risk_level", None), "value", "")
+    document_repo = KnowledgeDocumentRepository(session)
+
+    evidence: list[dict[str, Any]] = []
+    vector_used = False
+    fallback_used = False
+
+    if settings.rag_use_vertex_vector_search:
+        try:
+            evidence.extend(
+                await _retrieve_document_evidence_from_vertex(
+                    session,
+                    objective=objective,
+                    assessment=assessment,
+                    query_terms=query_terms,
+                    max_evidence=max_evidence,
+                    top_k=top_k,
+                )
+            )
+            vector_used = bool(evidence)
+        except Exception:
+            if not settings.rag_enable_local_fallback:
+                raise
+
+    if not evidence and settings.rag_enable_local_fallback:
+        fallback_used = True
+        sop_rows = await document_repo.list_ranked_chunk_candidates(
+            category="sop",
+            query_terms=query_terms,
+            limit=4,
+        )
+        threshold_rows = await document_repo.list_ranked_chunk_candidates(
+            category="threshold",
+            query_terms=query_terms,
+            limit=4,
+        )
+
+        for chunk, document in sop_rows:
+            evidence.append(
+                _build_document_evidence(
+                    document=document,
+                    chunk=chunk,
+                    source="sop_doc",
+                    risk_level=risk_level,
+                    query_terms=query_terms,
+                    score_bias=2.2,
+                )
+            )
+        for chunk, document in threshold_rows:
+            evidence.append(
+                _build_document_evidence(
+                    document=document,
+                    chunk=chunk,
+                    source="threshold_doc",
+                    risk_level=risk_level,
+                    query_terms=query_terms,
+                    score_bias=2.0,
+                )
+            )
+
+    return evidence, vector_used, fallback_used
+
+
+async def _retrieve_similar_case_lane(
+    session,
+    *,
+    assessment,
+    query_terms: list[str],
+    risk_level: str,
+) -> list[dict[str, Any]]:
+    """Retrieve dynamic similar-incident evidence from operational DB records."""
+    case_repo = SimilarCaseRepository(session)
+    action_repo = ActionPlanRepository(session)
+    similar_incidents = await case_repo.list_similar_incidents(
+        region_id=assessment.region_id,
+        severity=assessment.risk_level,
+        exclude_assessment_id=getattr(assessment, "id", None),
+        limit=4,
+    )
+
+    evidence: list[dict[str, Any]] = []
+    for incident in similar_incidents:
+        latest_plan = await action_repo.get_latest_for_incident(incident.id)
+        evidence.append(
+            _build_case_evidence(
+                incident=incident,
+                latest_plan=latest_plan,
+                query_terms=query_terms,
+                risk_level=risk_level,
+            )
+        )
+    return evidence
+
+
+async def _retrieve_memory_case_lane(
+    session,
+    *,
+    objective: str,
+    assessment,
+    query_terms: list[str],
+    risk_level: str,
+    top_k: int,
+) -> tuple[list[dict[str, Any]], bool, bool]:
+    """Retrieve episodic memory evidence (vector first, DB fallback)."""
+    settings = get_settings()
+    memory_case_repo = MemoryCaseRepository(session)
+    if not await memory_case_repo.is_table_ready():
+        return [], False, False
+
+    vector_used = False
+    fallback_used = False
+    memory_case_evidence: list[dict[str, Any]] = []
+    if settings.rag_use_vertex_vector_search:
+        try:
+            memory_case_evidence = await asyncio.wait_for(
+                _retrieve_memory_case_evidence_from_vertex(
+                    session,
+                    objective=objective,
+                    assessment=assessment,
+                    query_terms=query_terms,
+                    max_evidence=4,
+                    top_k=top_k,
+                ),
+                timeout=2.5,
+            )
+            vector_used = bool(memory_case_evidence)
+        except Exception:
+            # Memory-case semantic lookup is best-effort and should not block planning.
+            memory_case_evidence = []
+
+    if not memory_case_evidence:
+        memory_cases = await memory_case_repo.list_similar_cases(
+            region_id=assessment.region_id,
+            severity=risk_level,
+            query_terms=query_terms,
+            limit=4,
+        )
+        fallback_used = bool(memory_cases)
+        for case in memory_cases:
+            memory_case_evidence.append(
+                _build_memory_case_evidence(
+                    memory_case=case,
+                    query_terms=query_terms,
+                    risk_level=risk_level,
+                )
+            )
+
+    return memory_case_evidence, vector_used, fallback_used
 
 
 async def _retrieve_memory_case_evidence_from_vertex(

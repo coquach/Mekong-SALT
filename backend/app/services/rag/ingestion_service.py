@@ -6,7 +6,7 @@ import csv
 import hashlib
 import importlib
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
 from app.repositories.knowledge import KnowledgeDocumentRepository
+from app.services.rag.static_corpus_provider import get_static_corpus_provider
 from app.services.rag.vertex_vector_search_service import VertexVectorSearchService
 
 
@@ -83,6 +84,19 @@ async def ingest_knowledge_file_to_vertex(
         else {}
     )
 
+    if existing_document is not None:
+        # Backfill legacy metadata contract from explicit registry columns when available.
+        if existing_document.content_sha256:
+            existing_metadata.setdefault("content_sha256", existing_document.content_sha256)
+        if existing_document.last_indexed_at is not None:
+            existing_metadata.setdefault("last_indexed_at", existing_document.last_indexed_at.isoformat())
+        if existing_document.document_version is not None:
+            existing_metadata.setdefault("document_version", existing_document.document_version)
+        if existing_document.source_key:
+            existing_metadata.setdefault("source_key", existing_document.source_key)
+        if existing_document.effective_date is not None:
+            existing_metadata.setdefault("effective_date", existing_document.effective_date.isoformat())
+
     resolved_source_key = source_key or str(
         (metadata_payload or {}).get("source_key")
         or existing_metadata.get("source_key")
@@ -147,10 +161,11 @@ async def ingest_knowledge_file_to_vertex(
     }
 
     vector_service = VertexVectorSearchService()
+    static_provider = get_static_corpus_provider(vector_service=vector_service)
     if existing_document is not None:
         old_chunk_ids = await repository.list_chunk_ids_for_document(existing_document.id)
         if old_chunk_ids:
-            await vector_service.remove_datapoints([str(item) for item in old_chunk_ids])
+            await static_provider.remove_datapoints([str(item) for item in old_chunk_ids])
         await repository.delete_chunks_for_document(existing_document.id)
 
         existing_document.title = title or path.stem
@@ -159,6 +174,14 @@ async def ingest_knowledge_file_to_vertex(
         existing_document.content_text = content
         existing_document.tags = base_tags or None
         existing_document.metadata_payload = merged_metadata
+        existing_document.source_key = resolved_source_key
+        existing_document.effective_date = _parse_effective_date_or_raise(resolved_effective_date)
+        existing_document.content_sha256 = content_hash
+        existing_document.document_version = document_version
+        existing_document.index_provider = "vertex_vector_search"
+        existing_document.provider_sync_status = "syncing"
+        existing_document.provider_error = None
+        existing_document.last_indexed_at = now
         document = existing_document
     else:
         document = KnowledgeDocument(
@@ -169,6 +192,14 @@ async def ingest_knowledge_file_to_vertex(
             content_text=content,
             tags=base_tags or None,
             metadata_payload=merged_metadata,
+            source_key=resolved_source_key,
+            effective_date=_parse_effective_date_or_raise(resolved_effective_date),
+            content_sha256=content_hash,
+            document_version=document_version,
+            index_provider="vertex_vector_search",
+            provider_sync_status="syncing",
+            provider_error=None,
+            last_indexed_at=now,
         )
         session.add(document)
 
@@ -178,7 +209,7 @@ async def ingest_knowledge_file_to_vertex(
     if not chunks:
         chunks = [content.strip()]
 
-    vectors = await vector_service.embed_texts(chunks)
+    vectors = await static_provider.embed_texts(chunks)
 
     db_chunks: list[EmbeddedChunk] = []
     datapoints: list[dict[str, Any]] = []
@@ -211,7 +242,12 @@ async def ingest_knowledge_file_to_vertex(
             }
         )
 
-    await vector_service.upsert_datapoints(datapoints)
+    await static_provider.upsert_datapoints(datapoints)
+
+    document.provider_document_id = str(document.id)
+    document.provider_sync_status = "synced"
+    document.provider_synced_at = datetime.now(UTC)
+    document.provider_error = None
     await session.commit()
 
     return IngestionResult(
@@ -236,6 +272,17 @@ def _resolve_effective_date(
         return str(existing_metadata["effective_date"])
     modified = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).date()
     return modified.isoformat()
+
+
+def _parse_effective_date_or_raise(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise AppException(
+            status_code=400,
+            code="rag_ingest_invalid_effective_date",
+            message="effective_date must be in ISO format (YYYY-MM-DD).",
+        ) from exc
 
 
 def _should_reindex_existing(

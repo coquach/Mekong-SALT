@@ -108,20 +108,21 @@ async def test_retrieve_ranked_knowledge_context_uses_vertex_neighbors(
         weather_snapshot=None,
     )
 
-    evidence = await retrieve_ranked_knowledge_context(
+    context = await retrieve_ranked_knowledge_context(
         db_session,
         objective="Use SOP and threshold evidence",
         risk_bundle=risk_bundle,
         max_evidence=6,
     )
 
+    evidence = context.evidence
     assert evidence
-    assert any(item["evidence_source"] == "sop_doc" for item in evidence)
-    assert any(item["evidence_source"] == "threshold_doc" for item in evidence)
-    assert all("snippet" in item for item in evidence)
-    assert all("citation" in item for item in evidence)
-    assert all("metadata_filters" in item for item in evidence)
-    assert evidence[0]["score"] >= evidence[-1]["score"]
+    assert any(item.evidence_source == "sop_doc" for item in evidence)
+    assert any(item.evidence_source == "threshold_doc" for item in evidence)
+    assert all(item.snippet for item in evidence)
+    assert all(item.citation for item in evidence)
+    assert all(item.metadata_filters for item in evidence)
+    assert evidence[0].score >= evidence[-1].score
 
 
 @pytest.mark.asyncio
@@ -195,11 +196,12 @@ async def test_retrieve_ranked_knowledge_context_includes_memory_case_evidence(
         weather_snapshot=None,
     )
 
-    evidence = await retrieve_ranked_knowledge_context(
+    context = await retrieve_ranked_knowledge_context(
         db_session,
         objective="Reuse successful warning-case actions",
         risk_bundle=risk_bundle,
         max_evidence=6,
     )
 
-    assert any(item["evidence_source"] == "memory_case" for item in evidence)
+    evidence = context.evidence
+    assert any(item.evidence_source == "memory_case" for item in evidence)
