@@ -15,6 +15,7 @@ from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.goal import MonitoringGoal
 from app.models.incident import Incident
+from app.models.enums import ActionPlanStatus, ApprovalDecision
 from app.orchestration.lifecycle_graph import (
     LifecycleAdvanceResult,
     advance_plan_with_lifecycle_graph,
@@ -22,7 +23,9 @@ from app.orchestration.lifecycle_graph import (
 from app.repositories.action import ActionPlanRepository
 from app.repositories.goal import MonitoringGoalRepository
 from app.schemas.agent import AgentPlanRequest
+from app.schemas.approval import ApprovalRequest
 from app.schemas.risk import RiskEvaluationFilters
+from app.services.approval_service import decide_plan
 from app.services.agent_planning_service import AgentPlanBundle, generate_agent_plan
 from app.services.incident_service import ensure_incident_for_assessment
 from app.services.risk_service import RiskEvaluationBundle, evaluate_current_risk
@@ -144,6 +147,14 @@ async def run_monitoring_goal_cycle(
         )
 
     existing_plan = await ActionPlanRepository(session).get_open_for_incident(incident.id)
+    if existing_plan is not None:
+        timed_out = await _maybe_auto_reject_stale_pending_plan(
+            session,
+            plan=existing_plan,
+            settings=resolved_settings,
+        )
+        if timed_out:
+            existing_plan = await ActionPlanRepository(session).get_open_for_incident(incident.id)
     if existing_plan is not None:
         await _mark_goal_cycle(
             session,
@@ -346,3 +357,50 @@ async def _mark_goal_cycle(
     goal.last_run_status = status
     goal.last_run_plan_id = plan_id
     await session.commit()
+
+
+async def _maybe_auto_reject_stale_pending_plan(
+    session: AsyncSession,
+    *,
+    plan: ActionPlan,
+    settings: Settings,
+) -> bool:
+    """Auto-reject stale pending approvals so monitoring can continue in demo runs."""
+    if plan.status is not ActionPlanStatus.PENDING_APPROVAL:
+        return False
+
+    timeout_minutes = max(0, int(getattr(settings, "active_monitoring_approval_timeout_minutes", 0)))
+    timeout_action = str(
+        getattr(settings, "active_monitoring_approval_timeout_action", "auto_reject")
+    ).strip().lower()
+
+    if timeout_minutes == 0 or timeout_action != "auto_reject":
+        return False
+
+    pending_since = plan.updated_at or plan.created_at
+    if pending_since.tzinfo is None:
+        pending_since = pending_since.replace(tzinfo=UTC)
+
+    if datetime.now(UTC) < pending_since + timedelta(minutes=timeout_minutes):
+        return False
+
+    await decide_plan(
+        session,
+        plan_id=plan.id,
+        payload=ApprovalRequest(
+            decision=ApprovalDecision.REJECTED,
+            comment=(
+                "Automatically rejected by approval-timeout policy to unblock "
+                "demo monitoring flow."
+            ),
+        ),
+        actor_name="approval-timeout-guard",
+    )
+    logger.warning(
+        "Auto-rejected stale pending approval plan",
+        extra={
+            "plan_id": str(plan.id),
+            "timeout_minutes": timeout_minutes,
+        },
+    )
+    return True

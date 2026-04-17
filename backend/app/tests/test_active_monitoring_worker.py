@@ -1,6 +1,6 @@
 """Tests for Phase 4 active monitoring worker behavior."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -99,7 +99,7 @@ async def test_active_monitoring_skips_duplicate_open_plan(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: StubProvider(),
+        lambda provider_name=None, planner=None: StubProvider(),
     )
 
     first = await run_monitoring_goal_cycle(
@@ -240,7 +240,7 @@ async def test_active_monitoring_uses_lifecycle_graph(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: StubProvider(),
+        lambda provider_name=None, planner=None: StubProvider(),
     )
 
     result = await run_monitoring_goal_cycle(
@@ -267,3 +267,103 @@ async def test_active_monitoring_uses_lifecycle_graph(
         "feedback",
         "memory_write",
     ]
+
+
+@pytest.mark.asyncio
+async def test_active_monitoring_auto_rejects_stale_pending_approval_for_demo(
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
+):
+    goal = MonitoringGoal(
+        name="Phase4-ApprovalTimeout-Demo",
+        region_id=seeded_sensor_data["region"].id,
+        station_id=seeded_sensor_data["station_a"].id,
+        objective="Keep worker progressing during demo timeout",
+        provider="mock",
+        warning_threshold_dsm=Decimal("2.50"),
+        critical_threshold_dsm=Decimal("4.00"),
+        evaluation_interval_minutes=1,
+        auto_plan_enabled=True,
+        is_active=True,
+    )
+    db_session.add(goal)
+    await db_session.commit()
+    await db_session.refresh(goal)
+
+    class StubProvider:
+        name = "phase4-timeout-provider"
+
+        async def generate_plan(self, *, objective, context):
+            return GeneratedActionPlan(
+                objective=objective,
+                summary="Plan for approval timeout demonstration.",
+                assumptions=["Human reviewer might not respond during demo."],
+                steps=[
+                    PlanStep(
+                        step_index=1,
+                        action_type=ActionType.SEND_ALERT,
+                        title="Notify operators",
+                        instructions="Send warning to control room.",
+                        rationale="Immediate visibility is required.",
+                        simulated=True,
+                    ),
+                ],
+            )
+
+    async def fake_weather_snapshot(session, *, region, station, redis_manager):
+        return await _persist_stub_weather_snapshot(session, region_id=region.id)
+
+    monkeypatch.setattr(
+        "app.services.risk_service.get_or_fetch_weather_snapshot",
+        fake_weather_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.services.agent_planning_service.get_plan_provider",
+        lambda provider_name=None, planner=None: StubProvider(),
+    )
+
+    first = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
+        settings=Settings(
+            reactive_auto_execute_enabled=True,
+            active_monitoring_approval_timeout_minutes=1,
+            active_monitoring_approval_timeout_action="auto_reject",
+        ),
+    )
+    assert first.status == "succeeded_pending_human"
+    assert first.plan_bundle is not None
+
+    stale_plan = first.plan_bundle.plan
+    stale_plan.created_at = datetime.now(UTC) - timedelta(minutes=5)
+    stale_plan.updated_at = datetime.now(UTC) - timedelta(minutes=5)
+    await db_session.commit()
+
+    second = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
+        settings=Settings(
+            reactive_auto_execute_enabled=True,
+            active_monitoring_approval_timeout_minutes=1,
+            active_monitoring_approval_timeout_action="auto_reject",
+        ),
+    )
+
+    assert second.status == "succeeded_pending_human"
+    assert second.plan_bundle is not None
+    assert second.plan_bundle.plan.id != stale_plan.id
+
+    refreshed_stale = await db_session.get(ActionPlan, stale_plan.id)
+    assert refreshed_stale is not None
+    assert refreshed_stale.status == ActionPlanStatus.REJECTED
+
+    approvals = (await db_session.scalars(select(Approval))).all()
+    timeout_approvals = [
+        item for item in approvals if item.decided_by_name == "approval-timeout-guard"
+    ]
+    assert timeout_approvals

@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     active_monitoring_poll_seconds: int = 30
     active_monitoring_lock_ttl_seconds: int = 300
     active_monitoring_batch_size: int = 50
+    active_monitoring_approval_timeout_minutes: int = 60
+    active_monitoring_approval_timeout_action: Literal["none", "auto_reject"] = "auto_reject"
     reactive_auto_execute_enabled: bool = True
 
     @field_validator("database_url", mode="before")

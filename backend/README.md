@@ -169,6 +169,12 @@ Worker loop:
 6. In `active`, create a plan only when `auto_plan_enabled=true` and no active/simulated plan exists for the incident.
 7. If enabled, auto-approve and execute the plan using the simulated action engine.
 
+Approval timeout controls:
+
+- `ACTIVE_MONITORING_APPROVAL_TIMEOUT_MINUTES`: pending approvals older than this window are considered stale.
+- `ACTIVE_MONITORING_APPROVAL_TIMEOUT_ACTION=auto_reject|none`: `auto_reject` rejects stale pending plans so the next cycle can generate a fresh plan.
+- For demos, set timeout to `1` minute to observe the recovery path quickly.
+
 Useful commands:
 
 ```bash
