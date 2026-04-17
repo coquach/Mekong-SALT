@@ -80,14 +80,15 @@ export const InformationHub = () => {
                 <span className="text-mekong-cyan">Sông Tiền - Ngày 09/05</span>
               </h1>
               <p className="text-lg lg:text-xl text-slate-200 max-w-2xl leading-relaxed font-medium opacity-90">
-                Dựa trên mô hình thủy văn{" "}
+                Dựa trên mô hình dự đoán{" "}
                 <span className="text-white font-bold underline decoration-mekong-cyan">
                   SALT-Agent
                 </span>
-                , chúng tôi dự báo mặn sẽ lấn sâu{" "}
-                <span className="text-white font-bold">55km</span> vào đất liền.
-                <br></br>
-                Hệ thống đã tự động lập kế hoạch đóng cống ngăn mặn.
+                , đỉnh mặn có thể đạt đến{" "}
+                <span className="text-white font-bold">2 g/L</span> và mặn sẽ
+                lấn sâu đến 35km vào đất liền. Hệ thống ở các khu vực chịu ảnh
+                hưởng đã tự động lập kế hoạch đóng cống ngăn mặn và bơm nước
+                ngọt vào ruộng để phòng tránh thiên tai.
               </p>
             </div>
 
@@ -103,7 +104,7 @@ export const InformationHub = () => {
                 variant="outline"
                 className="px-10 h-14 text-[12px] font-black border-white/20 text-white hover:bg-white/5 backdrop-blur-sm"
               >
-                TẢI BÁO CÁO KHOA HỌC
+                TẢI BÁO CÁO DỰ BÁO
               </Button>
             </div>
           </div>
@@ -119,17 +120,17 @@ export const InformationHub = () => {
                   </p>
                 </div>
                 <Badge className="bg-mekong-mint/20 text-mekong-mint border-none text-[10px] font-black">
-                  ĐANG DUY TRÌ
+                  NGĂN XÂM NHẬP
                 </Badge>
               </div>
 
               <div className="flex flex-col mb-10">
-                <span className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">
-                  Độ mặn an toàn
+                <span className="text-sm text-mekong-mint font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  Độ mặn hiện tại
                 </span>
                 <div className="flex items-baseline gap-3">
                   <span className="text-8xl font-black tracking-tighter leading-none text-white drop-shadow-2xl">
-                    &lt;0.5
+                    1
                   </span>
                   <span className="text-2xl font-black text-slate-500 uppercase">
                     g/L
@@ -138,8 +139,8 @@ export const InformationHub = () => {
               </div>
 
               <div className="space-y-4 pt-6 border-t border-white/10">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] mb-4">
-                  LOGIC ĐANG THỰC THI (PROACTIVE)
+                <p className="text-[13px] font-black text-slate-500 uppercase tracking-[0.25em] mb-4">
+                  LOGIC ĐANG THỰC THI
                 </p>
                 {[
                   {
@@ -166,15 +167,15 @@ export const InformationHub = () => {
                     className="flex justify-between items-center py-1"
                   >
                     <div className="flex flex-col">
-                      <span className="text-[14px] font-bold text-slate-200">
+                      <span className="text-[13px] font-bold text-slate-200">
                         {item.step}
                       </span>
-                      <span className="text-[11px] text-slate-500 font-medium">
+                      <span className="text-[13px] text-slate-500 font-medium">
                         {item.desc}
                       </span>
                     </div>
                     <span
-                      className={`text-[10px] font-black uppercase tracking-widest ${item.color}`}
+                      className={`text-[13px] font-black uppercase tracking-widest ${item.color}`}
                     >
                       {item.status}
                     </span>

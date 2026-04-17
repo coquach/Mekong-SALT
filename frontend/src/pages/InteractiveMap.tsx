@@ -247,7 +247,7 @@ export const InteractiveMap = () => {
               {[
                 {
                   label: "Chỉ số hiện tại",
-                  val: "1.50",
+                  val: "1",
                   unit: "g/L",
                   color: "text-mekong-critical",
                 },
@@ -265,7 +265,7 @@ export const InteractiveMap = () => {
                 },
                 {
                   label: "Dự báo đỉnh (45p)",
-                  val: "2.10",
+                  val: "1.4",
                   unit: "g/L",
                   color: "text-mekong-critical",
                   bg: "bg-red-50/50",
@@ -305,7 +305,7 @@ export const InteractiveMap = () => {
               </div>
               <div className="space-y-4">
                 <p className="text-[13px] text-blue-100/80 leading-relaxed italic">
-                  "Dựa trên nồng độ 1.5g/L và gió cấp 6, tôi sẽ kích hoạt đóng
+                  "Dựa trên nồng độ 1 g/L và gió cấp 6, tôi sẽ kích hoạt đóng
                   cống Hai Tân sau 20 phút nữa để chủ tàu thuyền kịp di chuyển
                   ra khỏi vị trí nguy hiểm."
                 </p>

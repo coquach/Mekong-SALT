@@ -179,7 +179,7 @@ export const StrategyOrchestration = () => {
                   <p className="text-[15px] text-slate-600 leading-relaxed font-semibold">
                     "Phát hiện triều cường đạt đỉnh 1.2m lúc 16:00. Tôi đề xuất
                     kích hoạt đóng cống Hòa Định lúc 15:40. Điều này giúp ngăn
-                    mặn 1.5g/L nhưng vẫn đảm bảo 20 phút cho tàu bè di chuyển."
+                    mặn 1g/L nhưng vẫn đảm bảo 20 phút cho tàu bè di chuyển."
                   </p>
                 </div>
               </div>
@@ -304,7 +304,7 @@ export const StrategyOrchestration = () => {
               {[
                 {
                   time: "14:22:10",
-                  msg: "Đang phân tích dữ liệu cảm biến vùng S-04... độ mặn tăng 0.15g/L mỗi giờ.",
+                  msg: "Đang phân tích dữ liệu cảm biến vùng S-04... độ mặn tăng 0.5g/L mỗi giờ.",
                   cat: "DỮ LIỆU",
                 },
                 {

@@ -142,7 +142,7 @@ export const Dashboard = () => {
           </div>
           <div className="relative z-10 flex items-baseline gap-3">
             <span className="text-7xl font-black text-mekong-navy tracking-tighter leading-none">
-              0.45
+              1
             </span>
             <span className="text-xl font-black text-slate-400 uppercase tracking-widest">
               g/L
@@ -152,7 +152,7 @@ export const Dashboard = () => {
             <div className="flex items-center gap-2">
               <Activity size={14} className="text-mekong-teal" />
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Ổn định trong 4h
+                Có xu hướng tăng nhanh chóng
               </span>
             </div>
             <div className="text-[9px] font-black text-mekong-teal bg-mekong-teal/5 px-2 py-1 rounded border border-mekong-teal/10 uppercase italic">
