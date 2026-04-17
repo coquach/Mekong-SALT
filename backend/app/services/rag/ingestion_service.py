@@ -17,6 +17,7 @@ from app.core.exceptions import AppException
 from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
 from app.repositories.knowledge import KnowledgeDocumentRepository
 from app.services.rag.static_corpus_provider import get_static_corpus_provider
+from app.services.rag.source_registry_service import SourceRegistryService
 from app.services.rag.vertex_vector_search_service import VertexVectorSearchService
 
 
@@ -73,6 +74,7 @@ async def ingest_knowledge_file_to_vertex(
         base_tags.append("csv")
 
     repository = KnowledgeDocumentRepository(session)
+    registry_service = SourceRegistryService()
     existing_document = (
         await repository.get_by_source_uri(source_uri)
         if source_uri
@@ -179,9 +181,8 @@ async def ingest_knowledge_file_to_vertex(
         existing_document.content_sha256 = content_hash
         existing_document.document_version = document_version
         existing_document.index_provider = "vertex_vector_search"
-        existing_document.provider_sync_status = "syncing"
-        existing_document.provider_error = None
         existing_document.last_indexed_at = now
+        existing_document.provider_retry_count = int(existing_document.provider_retry_count or 0)
         document = existing_document
     else:
         document = KnowledgeDocument(
@@ -197,57 +198,68 @@ async def ingest_knowledge_file_to_vertex(
             content_sha256=content_hash,
             document_version=document_version,
             index_provider="vertex_vector_search",
-            provider_sync_status="syncing",
+            provider_sync_status="pending",
+            provider_retry_count=0,
             provider_error=None,
             last_indexed_at=now,
         )
         session.add(document)
 
+    registry_service.mark_syncing(document, at=now)
     await session.flush()
 
     chunks = _chunk_text(content, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if not chunks:
         chunks = [content.strip()]
 
-    vectors = await static_provider.embed_texts(chunks)
+    try:
+        vectors = await static_provider.embed_texts(chunks)
 
-    db_chunks: list[EmbeddedChunk] = []
-    datapoints: list[dict[str, Any]] = []
-    for index, (chunk_text, vector) in enumerate(zip(chunks, vectors, strict=True)):
-        chunk = EmbeddedChunk(
-            document_id=document.id,
-            chunk_index=index,
-            content_text=chunk_text,
-            token_count=_estimate_token_count(chunk_text),
-            embedding=vector,
-            metadata_payload={
-                "source": "rag_ingestion",
-                "document_type": document_type,
-                "file_name": path.name,
-            },
-        )
-        session.add(chunk)
-        await session.flush()
-        db_chunks.append(chunk)
-
-        datapoints.append(
-            {
-                "datapoint_id": str(chunk.id),
-                "feature_vector": vector,
-                "restricts": {
-                    "document_type": [document_type],
-                    "region_scope": [str((metadata_payload or {}).get("region_code") or "global")],
-                    "source_key": [resolved_source_key],
+        db_chunks: list[EmbeddedChunk] = []
+        datapoints: list[dict[str, Any]] = []
+        for index, (chunk_text, vector) in enumerate(zip(chunks, vectors, strict=True)):
+            chunk = EmbeddedChunk(
+                document_id=document.id,
+                chunk_index=index,
+                content_text=chunk_text,
+                token_count=_estimate_token_count(chunk_text),
+                embedding=vector,
+                metadata_payload={
+                    "source": "rag_ingestion",
+                    "document_type": document_type,
+                    "file_name": path.name,
                 },
-            }
+            )
+            session.add(chunk)
+            await session.flush()
+            db_chunks.append(chunk)
+
+            datapoints.append(
+                {
+                    "datapoint_id": str(chunk.id),
+                    "feature_vector": vector,
+                    "restricts": {
+                        "document_type": [document_type],
+                        "region_scope": [str((metadata_payload or {}).get("region_code") or "global")],
+                        "source_key": [resolved_source_key],
+                    },
+                }
+            )
+
+        await static_provider.upsert_datapoints(datapoints)
+    except Exception as exc:
+        registry_service.mark_failed(
+            document,
+            error_message=f"static_corpus_sync_failed: {exc}",
+            at=datetime.now(UTC),
         )
-
-    await static_provider.upsert_datapoints(datapoints)
-
-    document.provider_document_id = str(document.id)
-    document.provider_sync_status = "synced"
-    document.provider_synced_at = datetime.now(UTC)
-    document.provider_error = None
+        await session.commit()
+        raise
+    registry_service.mark_synced(
+        document,
+        provider_document_id=str(document.id),
+        at=datetime.now(UTC),
+    )
     await session.commit()
 
     return IngestionResult(

@@ -98,3 +98,58 @@ async def test_csv_ingestion_reindexes_by_ttl_and_tracks_versioning(
     assert refreshed_metadata.get("effective_date") == "2026-04-01"
     assert refreshed_metadata.get("document_version") == 2
     assert refreshed_metadata.get("version_history")
+
+
+@pytest.mark.asyncio
+async def test_ingestion_marks_registry_failed_and_increments_retry_on_provider_error(
+    db_session,
+    monkeypatch,
+    tmp_path: Path,
+):
+    class BrokenVectorService:
+        async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            return [[0.01] * 768 for _ in texts]
+
+        async def upsert_datapoints(self, datapoints):
+            raise RuntimeError("simulated provider write failure")
+
+        async def remove_datapoints(self, datapoint_ids):
+            return None
+
+    class FakeSettings:
+        rag_csv_reindex_ttl_days = 1
+
+    monkeypatch.setattr(
+        "app.services.rag.ingestion_service.VertexVectorSearchService",
+        lambda: BrokenVectorService(),
+    )
+    monkeypatch.setattr(
+        "app.services.rag.ingestion_service.get_settings",
+        lambda: FakeSettings(),
+    )
+
+    source_file = tmp_path / "broken-sync.csv"
+    source_file.write_text(
+        "policy_id,warning_threshold_dsm,critical_threshold_dsm\n"
+        "POL-ERR,2.6,4.1\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="simulated provider write failure"):
+        await ingest_knowledge_file_to_vertex(
+            db_session,
+            file_path=str(source_file),
+            source_uri="mekong-salt://tests/broken-sync",
+            source_key="broken-sync-tests",
+            effective_date="2026-04-01",
+            document_type="threshold",
+            tags=["threshold", "csv"],
+        )
+
+    repo = KnowledgeDocumentRepository(db_session)
+    document = await repo.get_by_source_uri("mekong-salt://tests/broken-sync")
+    assert document is not None
+    assert document.provider_sync_status == "failed"
+    assert document.provider_retry_count == 1
+    assert document.provider_last_retry_at is not None
+    assert document.provider_error is not None

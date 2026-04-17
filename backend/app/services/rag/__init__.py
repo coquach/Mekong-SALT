@@ -2,6 +2,7 @@
 
 from app.services.rag.ingestion_service import IngestionResult, ingest_knowledge_file_to_vertex
 from app.services.rag.retrieval_service import retrieve_ranked_knowledge_context
+from app.services.rag.source_registry_service import SourceRegistryService, SourceRegistrySyncStatus
 from app.services.rag.static_corpus_provider import (
 	StaticCorpusNeighbor,
 	StaticCorpusProvider,
@@ -12,6 +13,8 @@ from app.services.rag.vertex_vector_search_service import VertexNeighbor, Vertex
 
 __all__ = [
 	"IngestionResult",
+	"SourceRegistryService",
+	"SourceRegistrySyncStatus",
 	"StaticCorpusNeighbor",
 	"StaticCorpusProvider",
 	"VertexNeighbor",

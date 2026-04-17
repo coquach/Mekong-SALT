@@ -45,6 +45,8 @@ class KnowledgeDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default="pending",
         index=True,
     )
+    provider_retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    provider_last_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
     last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
