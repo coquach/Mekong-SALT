@@ -50,7 +50,7 @@ async def test_observe_request_node_builds_filters_and_default_objective():
 
     assert isinstance(result["filters"], RiskEvaluationFilters)
     assert result["filters"].station_code == "ST-01"
-    assert result["objective"] == "Protect irrigation water quality and reduce salinity risk."
+    assert result["objective"] == "Bảo vệ chất lượng nước tưới và giảm rủi ro độ mặn."
 
 
 @pytest.mark.asyncio

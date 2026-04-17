@@ -153,13 +153,13 @@ async def test_active_monitoring_skips_duplicate_open_plan(
 
 
 @pytest.mark.asyncio
-async def test_active_monitoring_dry_run_skips_plan_creation(
+async def test_active_monitoring_creates_plan_when_auto_plan_enabled(
     db_session,
     seeded_sensor_data,
     monkeypatch,
 ):
     goal = MonitoringGoal(
-        name="Phase4-DryRun-Goal",
+        name="Phase4-AutoPlan-Goal",
         region_id=seeded_sensor_data["region"].id,
         station_id=seeded_sensor_data["station_a"].id,
         objective="Observe salinity without auto planning",
@@ -185,14 +185,23 @@ async def test_active_monitoring_dry_run_skips_plan_creation(
     result = await run_monitoring_goal_cycle(
         db_session,
         goal=goal,
-        mode="dry_run",
+        mode="active",
         redis_manager=None,
     )
 
-    assert result.status == "dry_run_observed"
-    assert result.plan_bundle is None
-    plans = (await db_session.scalars(select(ActionPlan))).all()
-    assert plans == []
+    assert result.status in {
+        "succeeded_pending_human",
+        "succeeded_plan_created",
+        "succeeded_plan_executed",
+    }
+    assert result.plan_bundle is not None
+    plans = (
+        await db_session.scalars(
+            select(ActionPlan).where(ActionPlan.incident_id == result.incident.id)
+        )
+    ).all()
+    assert len(plans) == 1
+    assert plans[0].id == result.plan_bundle.plan.id
 
 
 @pytest.mark.asyncio
@@ -228,10 +237,14 @@ async def test_active_monitoring_skips_cycle_when_latest_reading_already_process
     first = await run_monitoring_goal_cycle(
         db_session,
         goal=goal,
-        mode="dry_run",
+        mode="active",
         redis_manager=None,
     )
-    assert first.status == "dry_run_observed"
+    assert first.status in {
+        "succeeded_pending_human",
+        "succeeded_plan_created",
+        "succeeded_plan_executed",
+    }
 
     assessments_after_first = (
         await db_session.scalars(
@@ -243,7 +256,7 @@ async def test_active_monitoring_skips_cycle_when_latest_reading_already_process
     second = await run_monitoring_goal_cycle(
         db_session,
         goal=goal,
-        mode="dry_run",
+        mode="active",
         redis_manager=None,
     )
     assert second.status == "skipped_no_new_reading"
@@ -270,10 +283,11 @@ async def test_active_monitoring_skips_cycle_when_latest_reading_already_process
     third = await run_monitoring_goal_cycle(
         db_session,
         goal=goal,
-        mode="dry_run",
+        mode="active",
         redis_manager=None,
     )
-    assert third.status == "dry_run_observed"
+    assert third.status == "skipped_existing_plan"
+    assert third.existing_plan is not None
 
     assessments_after_third = (
         await db_session.scalars(
@@ -411,6 +425,14 @@ async def test_active_monitoring_auto_rejects_stale_pending_approval_for_demo(
                         title="Notify operators",
                         instructions="Send warning to control room.",
                         rationale="Immediate visibility is required.",
+                        simulated=True,
+                    ),
+                    PlanStep(
+                        step_index=2,
+                        action_type=ActionType.CLOSE_GATE,
+                        title="Simulate gate closure",
+                        instructions="Run simulated closure after approval.",
+                        rationale="Provide a mitigation step for higher-risk conditions.",
                         simulated=True,
                     ),
                 ],

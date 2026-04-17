@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     llm_request_timeout_seconds: int = 30
 
     active_monitoring_enabled: bool = True
-    active_monitoring_mode: Literal["dry_run", "active"] = "active"
+    active_monitoring_mode: Literal["active"] = "active"
     active_monitoring_poll_seconds: int = 30
     active_monitoring_lock_ttl_seconds: int = 300
     active_monitoring_batch_size: int = 50

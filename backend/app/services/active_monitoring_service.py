@@ -34,7 +34,7 @@ from app.services.risk_service import (
     resolve_target_reading,
 )
 
-MonitoringMode = Literal["dry_run", "active"]
+MonitoringMode = Literal["active"]
 logger = logging.getLogger(__name__)
 AUTO_REPLAN_FEEDBACK_OUTCOMES = {
     "failed_execution",
@@ -93,12 +93,12 @@ async def run_monitoring_goal_cycle(
 ) -> MonitoringCycleResult:
     """Run observe -> risk -> incident -> lifecycle graph advancement for one goal.
 
-    Dry-run still records deterministic risk and incident evidence so operators can
-    inspect stability over time, but it deliberately skips autonomous plan creation.
-    Active mode creates one plan when auto-plan is enabled and no active plan
-    already exists for the same incident, then advances it through the lifecycle
-    approval/execution/feedback/memory graph. If feedback indicates failed
-    outcomes, an optional capped auto-replan loop can generate follow-up plans.
+    The monitoring cycle always performs autonomous planning when the goal is
+    eligible: it records deterministic risk evidence, resolves or creates an
+    incident, generates a plan when auto-plan is enabled, and advances that plan
+    through approval, execution, feedback, and memory persistence. If feedback
+    indicates failed outcomes, an optional capped auto-replan loop can generate
+    follow-up plans.
     """
     resolved_settings = settings or get_settings()
     filters = RiskEvaluationFilters(
@@ -139,23 +139,6 @@ async def run_monitoring_goal_cycle(
         actor_name="active-monitoring-worker",
     )
     incident = incident_result.incident
-
-    if mode == "dry_run":
-        await _mark_goal_cycle(
-            session,
-            goal,
-            status="dry_run_observed",
-            plan_id=None,
-            processed_reading_id=risk_bundle.reading.id,
-        )
-        return MonitoringCycleResult(
-            goal_id=goal.id,
-            mode=mode,
-            status="dry_run_observed",
-            risk_bundle=risk_bundle,
-            incident=incident,
-            reason="Dry-run mode skips auto-plan creation.",
-        )
 
     if incident is None:
         await _mark_goal_cycle(
@@ -334,7 +317,7 @@ async def run_due_monitoring_goals(
                 await run_monitoring_goal_cycle(
                     session,
                     goal=goal,
-                    mode=resolved_settings.active_monitoring_mode,
+                        mode=resolved_settings.active_monitoring_mode,
                     redis_manager=redis_manager,
                     settings=resolved_settings,
                 )

@@ -36,6 +36,8 @@ class VertexPlanPromptBuilder:
             "- All actions are simulated in MVP and require human approval before execution.\n"
             "- Keep the plan practical for an MVP decision-support system.\n"
             "- Return 2 to 5 ordered steps.\n"
+            "- Return all human-readable fields in Vietnamese, including objective, summary, context_summary, risk_summary, assumptions, reasoning_summary, title, instructions, and rationale.\n"
+            "- Keep JSON keys and action_type values in English.\n"
             "- Every step must include action_type, title, instructions, rationale, and simulated=true.\n"
             f"Objective: {objective}\n"
             f"Context:\n{serialized_context}\n"

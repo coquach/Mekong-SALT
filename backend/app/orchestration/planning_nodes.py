@@ -43,7 +43,7 @@ async def observe_request_node(state: Mapping[str, Any]) -> dict[str, Any]:
             region_code=request.region_code,
         ),
         "objective": request.objective
-        or "Protect irrigation water quality and reduce salinity risk.",
+        or "Bảo vệ chất lượng nước tưới và giảm rủi ro độ mặn.",
     }
 
 
@@ -75,7 +75,7 @@ async def retrieve_context_node(
     risk_bundle: RiskEvaluationBundle = state["risk_bundle"]
     region_repo = RegionRepository(services.session)
     region = await region_repo.get(risk_bundle.assessment.region_id)
-    objective = state.get("objective") or "Protect irrigation water quality and reduce salinity risk."
+    objective = state.get("objective") or "Bảo vệ chất lượng nước tưới và giảm rủi ro độ mặn."
     retrieval_context = _validate_retrieval_context_contract(
         await retrieve_ranked_knowledge_context(
             services.session,
