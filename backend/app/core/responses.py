@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -45,9 +46,15 @@ def error_response(
     details: Any | None = None,
 ) -> JSONResponse:
     """Build a failed API response envelope."""
+    # RequestValidationError may include raw Exception objects in context.
+    safe_details = jsonable_encoder(
+        details,
+        custom_encoder={Exception: lambda exc: str(exc)},
+    )
+
     payload = ErrorResponse(
         message=message,
-        error=ErrorDetail(code=code, details=details),
+        error=ErrorDetail(code=code, details=safe_details),
         meta=_build_meta(request),
     )
     return JSONResponse(status_code=status_code, content=payload.model_dump(mode="json"))

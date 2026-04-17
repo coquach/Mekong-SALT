@@ -1,0 +1,327 @@
+@startuml
+title Mekong SALT Backend Database ERD
+
+left to right direction
+hide methods
+hide stereotypes
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+entity "regions" as regions {
+  * id : uuid <<PK>>
+  --
+  code : varchar(50) <<UNIQUE>>
+  name : varchar(255)
+  province : varchar(255)
+  country : varchar(100)
+  is_active : boolean
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "sensor_stations" as sensor_stations {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  code : varchar(50) <<UNIQUE>>
+  name : varchar(255)
+  station_type : varchar(100)
+  status : station_status
+  latitude : numeric(9,6)
+  longitude : numeric(9,6)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "sensor_readings" as sensor_readings {
+  * id : uuid <<PK>>
+  --
+  station_id : uuid <<FK>>
+  recorded_at : timestamptz
+  salinity_dsm : numeric(6,2)
+  water_level_m : numeric(6,2)
+  source : varchar(100)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "weather_snapshots" as weather_snapshots {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  observed_at : timestamptz
+  wind_speed_mps : numeric(6,2)
+  tide_level_m : numeric(6,2)
+  rainfall_mm : numeric(6,2)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "risk_assessments" as risk_assessments {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  station_id : uuid <<FK, NULLABLE>>
+  based_on_reading_id : uuid <<FK, NULLABLE>>
+  based_on_weather_id : uuid <<FK, NULLABLE>>
+  assessed_at : timestamptz
+  risk_level : risk_level
+  trend_direction : trend_direction
+  rule_version : varchar(50)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "alert_events" as alert_events {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  risk_assessment_id : uuid <<FK>>
+  triggered_at : timestamptz
+  severity : alert_severity
+  status : alert_status
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "incidents" as incidents {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  station_id : uuid <<FK, NULLABLE>>
+  risk_assessment_id : uuid <<FK, NULLABLE>>
+  title : varchar(255)
+  severity : incident_severity
+  status : incident_status
+  opened_at : timestamptz
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "action_plans" as action_plans {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK>>
+  risk_assessment_id : uuid <<FK>>
+  incident_id : uuid <<FK, NULLABLE>>
+  status : action_plan_status
+  objective : varchar(255)
+  generated_by : varchar(100)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "approvals" as approvals {
+  * id : uuid <<PK>>
+  --
+  plan_id : uuid <<FK>>
+  decided_by_name : varchar(255)
+  decision : approval_decision
+  decided_at : timestamptz
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "action_executions" as action_executions {
+  * id : uuid <<PK>>
+  --
+  plan_id : uuid <<FK>>
+  region_id : uuid <<FK>>
+  action_type : action_type
+  status : execution_status
+  simulated : boolean
+  idempotency_key : varchar(120) <<UNIQUE>>
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "action_outcomes" as action_outcomes {
+  * id : uuid <<PK>>
+  --
+  execution_id : uuid <<FK>>
+  recorded_at : timestamptz
+  status : varchar(100)
+  summary : text
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "notifications" as notifications {
+  * id : uuid <<PK>>
+  --
+  incident_id : uuid <<FK, NULLABLE>>
+  execution_id : uuid <<FK, NULLABLE>>
+  channel : notification_channel
+  status : notification_status
+  recipient : varchar(255)
+  sent_at : timestamptz
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "decision_logs" as decision_logs {
+  * id : uuid <<PK>>
+  --
+  region_id : uuid <<FK, NULLABLE>>
+  risk_assessment_id : uuid <<FK, NULLABLE>>
+  action_plan_id : uuid <<FK, NULLABLE>>
+  action_execution_id : uuid <<FK, NULLABLE>>
+  logged_at : timestamptz
+  actor_type : decision_actor_type
+  outcome : varchar(100)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "audit_logs" as audit_logs {
+  * id : uuid <<PK>>
+  --
+  event_type : audit_event_type
+  region_id : uuid <<FK, NULLABLE>>
+  incident_id : uuid <<FK, NULLABLE>>
+  action_plan_id : uuid <<FK, NULLABLE>>
+  action_execution_id : uuid <<FK, NULLABLE>>
+  occurred_at : timestamptz
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "monitoring_goals" as monitoring_goals {
+  * id : uuid <<PK>>
+  --
+  name : varchar(150) <<UNIQUE>>
+  region_id : uuid <<FK>>
+  station_id : uuid <<FK, NULLABLE>>
+  last_run_plan_id : uuid <<FK, NULLABLE>>
+  warning_threshold_dsm : numeric(6,2)
+  critical_threshold_dsm : numeric(6,2)
+  evaluation_interval_minutes : integer
+  is_active : boolean
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "agent_runs" as agent_runs {
+  * id : uuid <<PK>>
+  --
+  run_type : varchar(50)
+  trigger_source : varchar(80)
+  status : varchar(30)
+  region_id : uuid <<FK, NULLABLE>>
+  station_id : uuid <<FK, NULLABLE>>
+  risk_assessment_id : uuid <<FK, NULLABLE>>
+  incident_id : uuid <<FK, NULLABLE>>
+  action_plan_id : uuid <<FK, NULLABLE>>
+  started_at : timestamptz
+  finished_at : timestamptz
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "observation_snapshots" as observation_snapshots {
+  * id : uuid <<PK>>
+  --
+  agent_run_id : uuid <<FK, UNIQUE>>
+  captured_at : timestamptz
+  source : varchar(80)
+  region_id : uuid <<FK, NULLABLE>>
+  station_id : uuid <<FK, NULLABLE>>
+  reading_id : uuid <<FK, NULLABLE>>
+  weather_snapshot_id : uuid <<FK, NULLABLE>>
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "knowledge_documents" as knowledge_documents {
+  * id : uuid <<PK>>
+  --
+  title : varchar(255)
+  source_uri : varchar(500) <<UNIQUE>>
+  document_type : varchar(100)
+  status : document_status
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "embedded_chunks" as embedded_chunks {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  chunk_index : integer
+  embedding : vector(768)
+  token_count : integer
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+regions ||--o{ sensor_stations
+regions ||--o{ weather_snapshots
+regions ||--o{ risk_assessments
+regions ||--o{ alert_events
+regions ||--o{ incidents
+regions ||--o{ action_plans
+regions ||--o{ action_executions
+regions ||--o{ decision_logs
+regions ||--o{ audit_logs
+regions ||--o{ monitoring_goals
+regions ||--o{ agent_runs
+regions ||--o{ observation_snapshots
+
+sensor_stations ||--o{ sensor_readings
+sensor_stations ||--o{ risk_assessments
+sensor_stations ||--o{ incidents
+sensor_stations ||--o{ monitoring_goals
+sensor_stations ||--o{ agent_runs
+sensor_stations ||--o{ observation_snapshots
+
+sensor_readings ||--o{ risk_assessments
+sensor_readings ||--o{ observation_snapshots
+
+weather_snapshots ||--o{ risk_assessments
+weather_snapshots ||--o{ observation_snapshots
+
+risk_assessments ||--o{ alert_events
+risk_assessments ||--o{ incidents
+risk_assessments ||--o{ action_plans
+risk_assessments ||--o{ decision_logs
+risk_assessments ||--o{ agent_runs
+
+incidents ||--o{ action_plans
+incidents ||--o{ notifications
+incidents ||--o{ audit_logs
+incidents ||--o{ agent_runs
+
+action_plans ||--o{ approvals
+action_plans ||--o{ action_executions
+action_plans ||--o{ decision_logs
+action_plans ||--o{ audit_logs
+action_plans ||--o{ agent_runs
+action_plans ||--o{ monitoring_goals
+
+action_executions ||--o{ action_outcomes
+action_executions ||--o{ notifications
+action_executions ||--o{ decision_logs
+action_executions ||--o{ audit_logs
+
+agent_runs ||--o| observation_snapshots
+
+knowledge_documents ||--o{ embedded_chunks
+
+note bottom of monitoring_goals
+  Check constraints:
+  - warning_threshold_dsm > 0
+  - critical_threshold_dsm > warning_threshold_dsm
+  - evaluation_interval_minutes >= 1
+end note
+
+note bottom of agent_runs
+  Check constraint:
+  status in ('started','succeeded','failed','skipped')
+end note
+
+note bottom of embedded_chunks
+  Unique constraint:
+  (document_id, chunk_index)
+end note
+
+@enduml

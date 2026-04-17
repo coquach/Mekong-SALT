@@ -1,0 +1,107 @@
+"""Monitoring goal configuration endpoints."""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.v1.presenters.goals import goal_to_read
+from app.core.responses import success_response
+from app.db.session import get_db_session
+from app.schemas.common import SuccessResponse
+from app.schemas.goal import (
+    MonitoringGoalCollection,
+    MonitoringGoalCreate,
+    MonitoringGoalRead,
+    MonitoringGoalUpdate,
+)
+from app.services.goals_service import (
+    create_monitoring_goal,
+    delete_monitoring_goal,
+    get_monitoring_goal,
+    list_monitoring_goals,
+    update_monitoring_goal,
+)
+
+router = APIRouter(prefix="/goals", tags=["goals"])
+
+
+@router.post("", response_model=SuccessResponse[MonitoringGoalRead], status_code=201)
+async def create_goal(
+    payload: MonitoringGoalCreate,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Create a monitoring goal."""
+    goal = await create_monitoring_goal(session, payload)
+    return success_response(
+        request=request,
+        message="Monitoring goal created successfully.",
+        data=goal_to_read(goal),
+        status_code=201,
+    )
+
+
+@router.get("", response_model=SuccessResponse[MonitoringGoalCollection])
+async def list_goals(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+    is_active: bool | None = Query(default=None),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List monitoring goals."""
+    goals = await list_monitoring_goals(session, limit=limit, is_active=is_active)
+    return success_response(
+        request=request,
+        message="Monitoring goals retrieved successfully.",
+        data=MonitoringGoalCollection(
+            items=[goal_to_read(goal) for goal in goals],
+            count=len(goals),
+        ),
+    )
+
+
+@router.get("/{goal_id}", response_model=SuccessResponse[MonitoringGoalRead])
+async def get_goal(
+    goal_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get one monitoring goal."""
+    goal = await get_monitoring_goal(session, goal_id)
+    return success_response(
+        request=request,
+        message="Monitoring goal retrieved successfully.",
+        data=goal_to_read(goal),
+    )
+
+
+@router.patch("/{goal_id}", response_model=SuccessResponse[MonitoringGoalRead])
+async def update_goal(
+    goal_id: UUID,
+    payload: MonitoringGoalUpdate,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Update a monitoring goal."""
+    goal = await update_monitoring_goal(session, goal_id, payload)
+    return success_response(
+        request=request,
+        message="Monitoring goal updated successfully.",
+        data=goal_to_read(goal),
+    )
+
+
+@router.delete("/{goal_id}", response_model=SuccessResponse[dict[str, str]])
+async def delete_goal(
+    goal_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Delete a monitoring goal."""
+    await delete_monitoring_goal(session, goal_id)
+    return success_response(
+        request=request,
+        message="Monitoring goal deleted successfully.",
+        data={"goal_id": str(goal_id)},
+    )
