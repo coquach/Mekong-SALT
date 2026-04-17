@@ -26,7 +26,12 @@ from app.schemas.agent import (
 )
 from app.schemas.approval import ApprovalDecisionResponse, ApprovalRead, ApprovalRequest
 from app.schemas.audit import ActionOutcomeRead, AuditLogCollection, AuditLogRead
-from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
+from app.schemas.dashboard import (
+    DashboardEarthEngineLatest,
+    DashboardSummary,
+    DashboardTimeline,
+    DashboardTimelineItem,
+)
 from app.schemas.decision import DecisionLogCreate, DecisionLogRead
 from app.schemas.feedback import FeedbackLifecycleRead, FeedbackSnapshotRead, OutcomeEvaluationRead
 from app.schemas.goal import (
@@ -98,6 +103,7 @@ __all__ = [
     "DashboardSummary",
     "DashboardTimeline",
     "DashboardTimelineItem",
+    "DashboardEarthEngineLatest",
     "ExecutionSimulateRequest",
     "AlertEvaluationResponse",
     "AlertEventCreate",

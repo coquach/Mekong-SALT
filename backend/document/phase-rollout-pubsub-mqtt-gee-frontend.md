@@ -139,6 +139,7 @@ Frontend:
 
 Started:
 - MQTT worker bootstrap in API lifespan (`mqtt_enabled` + `iot_ingest_mode in {mqtt, hybrid}`).
+- Pub/Sub worker bootstrap in API lifespan (`pubsub_enabled` + `iot_ingest_mode in {pubsub, hybrid}`).
 - New worker `app/workers/mqtt_ingest_worker.py`:
   - subscribes `mekong/sensors/readings` + `mekong/sensors/status`
   - validates and ingests readings into existing `/sensors/ingest` domain service
@@ -149,7 +150,9 @@ Started:
 - Shared ingest observability registry + endpoint:
   - `GET /api/v1/sensors/ingest/metrics`
   - counters for MQTT/PubSub success/fail/retry/DLQ and Pub/Sub queue-lag aggregates
+- Pub/Sub payload contract normalized via typed schema (`app/schemas/pubsub.py`) and applied in worker parsing.
 - DLQ archive sink (file-based JSONL) for malformed/persist-failed messages.
+- DB-level hard idempotency guard added for ingest (`sensor_readings(station_id, recorded_at, source)` unique constraint).
 - Demo simulator upgrade:
   - `scripts/run_demo_simulation.py` now supports `--transport http|mqtt`
   - MQTT publisher CLI flags (`--mqtt-broker-url`, `--mqtt-broker-port`, `--mqtt-topic-readings`, `--mqtt-qos`, auth options)
@@ -158,4 +161,22 @@ Started:
 Next:
 - Add dashboard cards for ingest metrics endpoint values.
 - Add DB/object-storage archival backend option for DLQ sink (currently file-based JSONL).
-- Add DB-level unique constraint for hard idempotency under concurrent writes.
+- Add focused Pub/Sub worker integration tests (retry/DLQ paths) with emulator fixtures.
+
+## Phase 3 Status (April 17, 2026)
+
+Started:
+- Added Earth Engine adapter boundary in `app/services/earth_engine_service.py` with:
+  - feature-flag guard (`earth_engine_enabled`)
+  - Redis-backed TTL caching aligned to external context cache policy
+  - Earth Engine query path for NDWI/NDMI proxy summaries
+  - deterministic fallback context when Earth Engine auth/query is unavailable
+- Injected `earth_engine_context` into planning retrieval payload in `app/orchestration/planning_nodes.py`.
+- Added retrieval trace metadata for Earth Engine source/dataset/fallback status.
+- Added focused adapter tests for cache-hit and fallback-reason semantics.
+- Exposed direct read surface for operators/FE:
+  - `GET /api/v1/dashboard/earth-engine/latest` (latest persisted Earth Engine context from planning snapshots).
+- Persisted `earth_engine_context` explicitly into planning observation snapshot payload for direct API retrieval.
+
+Next:
+- Expose Earth Engine context on dashboard timeline/detail panels in frontend Phase 4.

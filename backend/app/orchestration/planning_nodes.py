@@ -18,6 +18,7 @@ from app.db.redis import RedisManager
 from app.repositories.region import RegionRepository
 from app.schemas.retrieval import RetrievalContext
 from app.schemas.risk import RiskEvaluationFilters
+from app.services.earth_engine_service import get_or_fetch_earth_engine_context
 from app.services.rag import retrieve_ranked_knowledge_context
 from app.services.risk_service import RiskEvaluationBundle, evaluate_current_risk
 
@@ -90,6 +91,19 @@ async def retrieve_context_node(
         "top_citations": retrieval_context_payload["ranking_metadata"]["top_citations"],
     }
 
+    earth_engine_context = await get_or_fetch_earth_engine_context(
+        region=region,
+        station=risk_bundle.reading.station,
+        weather_snapshot=risk_bundle.weather_snapshot,
+        redis_manager=services.redis_manager,
+    )
+    if earth_engine_context is not None:
+        retrieval_trace["earth_engine"] = {
+            "source": earth_engine_context.get("source"),
+            "fallback_used": earth_engine_context.get("fallback_used", False),
+            "dataset": earth_engine_context.get("dataset"),
+        }
+
     retrieved_context = {
         "region": {
             "id": str(risk_bundle.assessment.region_id),
@@ -139,6 +153,7 @@ async def retrieve_context_node(
             if risk_bundle.weather_snapshot is not None
             else None
         ),
+        "earth_engine_context": earth_engine_context,
         "retrieval_context": retrieval_context_payload,
         "knowledge_context": knowledge_context,
         "retrieval_trace": retrieval_trace,

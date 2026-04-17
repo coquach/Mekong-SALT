@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,6 +57,14 @@ class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Time-series sensor measurement."""
 
     __tablename__ = "sensor_readings"
+    __table_args__ = (
+        UniqueConstraint(
+            "station_id",
+            "recorded_at",
+            "source",
+            name="uq_sensor_readings_station_recorded_source",
+        ),
+    )
 
     station_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),

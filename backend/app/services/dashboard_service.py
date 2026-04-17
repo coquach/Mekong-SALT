@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time
+from uuid import UUID
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.salinity_units import dsm_to_gl
+from app.models.agent_run import AgentRun
 from app.models.action import ActionExecution, ActionPlan
 from app.models.enums import ActionPlanStatus, IncidentStatus, NotificationStatus
 from app.models.incident import Incident
 from app.models.notification import Notification
 from app.models.risk import RiskAssessment
 from app.models.sensor import SensorReading
-from app.schemas.dashboard import DashboardSummary, DashboardTimeline, DashboardTimelineItem
+from app.schemas.dashboard import (
+    DashboardEarthEngineLatest,
+    DashboardSummary,
+    DashboardTimeline,
+    DashboardTimelineItem,
+)
 
 
 async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
@@ -104,3 +111,55 @@ async def get_dashboard_timeline(session: AsyncSession, *, limit: int = 72) -> D
         for assessment in assessments
     ]
     return DashboardTimeline(items=items, count=len(items))
+
+
+async def get_latest_earth_engine_context(
+    session: AsyncSession,
+    *,
+    station_id: UUID | None = None,
+    region_id: UUID | None = None,
+    limit: int = 200,
+) -> DashboardEarthEngineLatest:
+    """Return latest captured Earth Engine context from planning snapshots."""
+    statement = (
+        select(AgentRun)
+        .options(
+            selectinload(AgentRun.observation_snapshot),
+            selectinload(AgentRun.station),
+            selectinload(AgentRun.region),
+        )
+        .where(AgentRun.run_type == "plan_generation")
+        .order_by(desc(AgentRun.started_at), desc(AgentRun.created_at))
+        .limit(limit)
+    )
+    if station_id is not None:
+        statement = statement.where(AgentRun.station_id == station_id)
+    if region_id is not None:
+        statement = statement.where(AgentRun.region_id == region_id)
+
+    runs = list((await session.scalars(statement)).all())
+    for run in runs:
+        snapshot = run.observation_snapshot
+        if snapshot is None:
+            continue
+        payload = snapshot.payload if isinstance(snapshot.payload, dict) else {}
+        context = payload.get("earth_engine_context")
+        if not isinstance(context, dict):
+            continue
+
+        return DashboardEarthEngineLatest(
+            run_id=run.id,
+            captured_at=snapshot.captured_at,
+            region_id=run.region_id,
+            region_code=(run.region.code if run.region is not None else None),
+            station_id=run.station_id,
+            station_code=(run.station.code if run.station is not None else None),
+            source=(
+                str(context["source"])
+                if context.get("source") is not None
+                else None
+            ),
+            earth_engine_context=context,
+        )
+
+    return DashboardEarthEngineLatest()
