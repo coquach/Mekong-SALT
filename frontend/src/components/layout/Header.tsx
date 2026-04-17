@@ -1,97 +1,156 @@
-import React from "react";
-import { Search, Bell, Globe, ChevronDown, Sparkles } from "lucide-react";
+import React, { useState } from "react";
+import {
+  Search,
+  Bell,
+  ChevronDown,
+  Sparkles,
+  MapPin,
+  Check,
+  Crosshair,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-/**
- * THÀNH PHẦN THANH ĐẦU TRANG (HEADER)
- * ----------------
- * - Hiệu ứng Glassmorphism (làm mờ hậu cảnh).
- * - Thanh tìm kiếm tích hợp gợi ý lối tắt thông minh.
- * - Khu vực Hồ sơ người dùng với phân cấp kiểu chữ chuyên nghiệp.
- */
 export const Header = () => {
+  const navigate = useNavigate();
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState("Tiền Giang");
+
+  const regions = [
+    "Tiền Giang",
+    "Bến Tre",
+    "Sóc Trăng",
+    "Long An",
+    "Trà Vinh",
+    "Tất cả khu vực",
+  ];
+
+  const handleRegionSelect = (region: string) => {
+    setSelectedRegion(region);
+    setIsOpen(false);
+    navigate("/map");
+  };
+
   return (
-    <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-10 transition-all duration-300">
-      {/* 1. THANH TÌM KIẾM (SEARCH BAR) */}
-      <div className="relative w-[420px] group">
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-mekong-teal transition-colors duration-200">
-          <Search size={18} strokeWidth={2.5} />
+    <header className="h-24 bg-white/90 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-10 transition-all">
+      {/* 1. THANH TÌM KIẾM DÀI (MAX-W-[600PX]) */}
+      <div className="relative flex-1 max-w-[600px] group mr-8">
+        <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-mekong-teal transition-colors">
+          <Search size={20} strokeWidth={2.5} />
         </div>
         <input
           type="text"
-          placeholder="Tìm kiếm dữ liệu, báo cáo hoặc khu vực..."
-          className="w-full bg-slate-50 border-none rounded-full py-2.5 pl-12 pr-12 text-sm font-medium focus:ring-2 ring-mekong-teal/20 transition-all placeholder:text-slate-400"
+          placeholder="Tìm kiếm dữ liệu trạm, báo cáo đỉnh mặn, kịch bản AI..."
+          className="w-full bg-slate-100 border-2 border-transparent rounded-2xl py-3.5 pl-14 pr-12 text-sm font-bold focus:bg-white focus:border-mekong-teal/30 focus:ring-4 ring-mekong-teal/10 transition-all outline-none placeholder:text-slate-400 shadow-inner"
         />
-        {/* Nút tìm kiếm nhanh - Điểm nhấn UX chuyên nghiệp */}
-        <button className="absolute right-2 top-1/2 -translate-y-1/2 bg-mekong-navy text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-mekong-teal transition-all shadow-md flex items-center gap-2 group">
-          <Sparkles
-            size={12}
-            className="group-hover:animate-pulse text-mekong-cyan"
-          />
+        <button className="absolute right-2 top-1/2 -translate-y-1/2 bg-mekong-navy text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-mekong-teal transition-all flex items-center gap-2 shadow-md">
+          <Sparkles size={12} className="text-mekong-cyan" />
           <span>Tìm kiếm</span>
         </button>
       </div>
 
-      {/* 2. KHU VỰC ĐIỀU KHIỂN & NGƯỜI DÙNG (RIGHT ACTIONS) */}
+      {/* 2. KHU VỰC ĐIỀU KHIỂN & NÚT KHU VỰC NỔI BẬT */}
       <div className="flex items-center gap-6">
-        {/* Bộ chọn Vùng (Region Selector) */}
-        <button className="flex items-center gap-3 px-4 py-2.5 rounded-full border border-slate-200 bg-white text-[11px] font-black text-mekong-navy hover:bg-slate-50 hover:border-slate-300 transition-all uppercase tracking-widest shadow-sm group">
-          <Globe
-            size={14}
-            className="text-mekong-teal group-hover:rotate-12 transition-transform duration-300"
-          />
-          <span>Tất cả khu vực</span>
-          <ChevronDown
-            size={14}
-            className="text-slate-400 group-hover:translate-y-0.5 transition-transform"
-          />
-        </button>
+        {/* NÚT CHỌN KHU VỰC - THIẾT KẾ NỔI BẬT (PRIMARY STYLE) */}
+        <div className="relative">
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className={`
+              flex items-center gap-4 px-6 py-3 rounded-2xl transition-all uppercase tracking-[0.1em] group
+              ${
+                isOpen
+                  ? "bg-mekong-navy text-white shadow-2xl scale-105"
+                  : "bg-mekong-teal text-white shadow-lg shadow-mekong-teal/30 hover:bg-mekong-teal/90 hover:-translate-y-0.5 active:scale-95"
+              }
+            `}
+          >
+            <div className="bg-white/20 p-1.5 rounded-lg">
+              <MapPin size={18} className="text-white animate-pulse" />
+            </div>
+            <div className="flex flex-col items-start leading-none">
+              <span
+                className={`text-[9px] font-black mb-1 ${isOpen ? "text-mekong-cyan" : "text-cyan-100"}`}
+              >
+                TRẠM ĐANG ĐO
+              </span>
+              <span className="text-[13px] font-black">{selectedRegion}</span>
+            </div>
+            <ChevronDown
+              size={16}
+              className={`transition-transform duration-500 ${isOpen ? "rotate-180 text-mekong-cyan" : "text-white/70"}`}
+            />
+          </button>
 
-        {/* Thông báo (Notifications) */}
-        <button className="relative p-2.5 text-slate-500 hover:bg-slate-100 hover:text-mekong-navy rounded-full transition-all group">
-          <Bell
-            size={20}
-            strokeWidth={2}
-            className="group-hover:rotate-12 transition-transform"
-          />
-          {/* Badge thông báo khẩn cấp màu đỏ (Critical) */}
-          <span className="absolute top-2 right-2.5 w-2 h-2 bg-mekong-critical rounded-full border-2 border-white shadow-sm ring-1 ring-mekong-critical/30 animate-pulse" />
-        </button>
+          {/* DROPDOWN MENU - THIẾT KẾ CAO CẤP */}
+          {isOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setIsOpen(false)}
+              ></div>
+              <div className="absolute top-[120%] right-0 w-64 bg-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-2.5 z-20 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="px-4 py-3 mb-2 bg-slate-50 rounded-xl">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Phạm vi giám sát
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  {regions.map((region) => (
+                    <button
+                      key={region}
+                      onClick={() => handleRegionSelect(region)}
+                      className={`
+                        w-full flex items-center justify-between px-4 py-3 rounded-xl text-[13px] font-black transition-all
+                        ${
+                          selectedRegion === region
+                            ? "bg-mekong-navy text-white shadow-lg"
+                            : "text-mekong-navy hover:bg-cyan-50 hover:text-mekong-teal"
+                        }
+                      `}
+                    >
+                      {region}
+                      {selectedRegion === region && (
+                        <Check
+                          size={16}
+                          className="text-mekong-cyan"
+                          strokeWidth={3}
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
-        {/* Khu vực Hồ sơ người dùng (User Profile Section) */}
-        <div className="flex items-center gap-4 pl-6 border-l border-slate-200 ml-2">
-          {/* Thông tin văn bản - Căn lề phải chuẩn xác */}
-          <div className="text-right flex flex-col justify-center">
-            <p className="text-[12px] font-black text-mekong-navy uppercase tracking-tighter leading-none mb-1">
-              Trần Gia Hiển
-            </p>
-            <p className="text-[10px] text-mekong-slate font-bold uppercase tracking-[0.15em] opacity-70">
-              Chuyên gia Thủy văn Trưởng
-            </p>
-          </div>
+        {/* THÔNG BÁO & USER */}
+        <div className="flex items-center gap-4 pl-6 border-l-2 border-slate-100">
+          <button className="relative p-3 bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-mekong-critical rounded-2xl transition-all group shadow-sm">
+            <Bell
+              size={22}
+              className="group-hover:rotate-12 transition-transform"
+            />
+            <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-mekong-critical rounded-full border-2 border-white animate-pulse" />
+          </button>
 
-          {/* Ảnh đại diện (Avatar) cao cấp */}
-          <div className="relative group cursor-pointer">
-            <div className="w-11 h-11 rounded-full p-[2px] bg-gradient-to-tr from-slate-200 to-white shadow-md ring-1 ring-slate-200 group-hover:ring-mekong-cyan/50 transition-all duration-300">
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-white bg-slate-100">
+          <div className="flex items-center gap-3 ml-2 group cursor-pointer">
+            <div className="text-right hidden xl:block">
+              <p className="text-[12px] font-black text-mekong-navy uppercase tracking-tighter leading-none mb-1">
+                Trần Gia Hiển
+              </p>
+              <p className="text-[10px] text-mekong-teal font-black uppercase opacity-80">
+                Chief Admin
+              </p>
+            </div>
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl border-2 border-white shadow-md overflow-hidden ring-2 ring-slate-100 group-hover:ring-mekong-teal transition-all">
                 <img
-                  src="/src/assets/hien.jpg"
-                  alt="Avatar Trần Gia Hiển"
-                  className="w-full h-full object-cover"
+                  src="../src/assets/hien.jpg"
+                  alt="Avatar"
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
               </div>
-            </div>
-
-            {/* Chấm trạng thái Trực tuyến (Online) màu Mint đặc trưng */}
-            <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-mekong-mint border-[3px] border-white rounded-full shadow-sm ring-1 ring-mekong-mint/20" />
-
-            {/* Menu thả xuống khi di chuột (Dropdown Menu) */}
-            <div className="absolute top-[120%] right-0 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 opacity-0 scale-95 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:translate-y-0 transition-all duration-300 z-50">
-              <button className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-mekong-navy hover:bg-slate-50 rounded-xl transition-colors">
-                Cài đặt tài khoản
-              </button>
-              <button className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-mekong-critical hover:bg-red-50 rounded-xl transition-colors">
-                Đăng xuất hệ thống
-              </button>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mekong-mint border-2 border-white rounded-full"></div>
             </div>
           </div>
         </div>

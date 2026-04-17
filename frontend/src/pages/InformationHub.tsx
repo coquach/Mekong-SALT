@@ -16,9 +16,11 @@ import {
   AlertTriangle,
   Users,
   ArrowUpRight,
+  BrainCircuit,
+  Zap,
+  Target,
 } from "lucide-react";
 
-// Import các UI Components
 import {
   Card,
   CardContent,
@@ -28,132 +30,153 @@ import {
 } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
+import { useNavigate } from "react-router-dom";
 
 /**
- * TRUNG TÂM THÔNG TIN MEKONG-SALT
- * --------------------------
- * Phần 1: Cảnh báo khẩn cấp (Hero)
- * Phần 2: Tin tức & Nghiên cứu khoa học (8 cột)
- * Phần 3: Sự kiện & Đăng ký bản tin (4 cột)
+ * TRANG 1: TRUNG TÂM THÔNG TIN (INFORMATION HUB) - PHIÊN BẢN AGENTIC AI
+ * -------------------------------------------------------------------
+ * Thay đổi chính:
+ * 1. Hero Alert: Chuyển từ báo cáo tin tức sang "Nhận định của Agent".
+ * 2. News Section -> Intelligence Briefing: Tin tức đi kèm phân tích AI.
+ * 3. Thêm Widget "Mục tiêu cốt lõi" để bám sát Proposal.
  */
 
 export const InformationHub = () => {
+  const navigate = useNavigate(); // Khởi tạo hàm này
+
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* --- PHẦN 1: SECTION CẢNH BÁO ANH HÙNG (HERO) --- */}
-      <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] px-8 lg:px-16 h-[560px] flex items-center text-white shadow-2xl border border-white/5">
-        {/* Lớp hình ảnh nền */}
+      {/* --- PHẦN 1: HERO - DỰ BÁO CHỦ ĐỘNG TỪ AGENT --- */}
+      <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] px-8 lg:px-16 h-[580px] flex items-center text-white shadow-2xl border border-white/5">
+        {/* Hình ảnh nền chuyên nghiệp */}
         <div className="absolute inset-0 z-0 select-none">
           <img
             src="/src/assets/hero-bg.png"
             alt="Mekong Delta"
             className="w-full h-full object-cover opacity-40 mix-blend-luminosity grayscale-[0.3]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-mekong-navy via-mekong-navy/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-mekong-navy via-mekong-navy/80 to-transparent" />
         </div>
 
         <div className="relative z-10 grid grid-cols-12 gap-10 items-center w-full">
-          {/* BÊN TRÁI: NỘI DUNG CHÍNH */}
+          {/* BÊN TRÁI: NHẬN ĐỊNH TỪ BỘ NÃO GEMINI 2.5 PRO */}
           <div className="col-span-12 lg:col-span-8 flex flex-col justify-center space-y-8 min-w-0">
             <div className="flex items-center gap-5">
               <Badge
                 variant="critical"
-                className="bg-mekong-critical text-white border border-white/10 py-2 px-6 text-[12px] font-black uppercase tracking-[0.2em] shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
+                className="bg-mekong-critical text-white border border-white/10 py-2 px-6 text-[12px] font-black uppercase tracking-[0.2em] shadow-lg animate-pulse"
               >
-                CẢNH BÁO KHẨN
+                CẢNH BÁO ĐỈNH MẶN
               </Badge>
               <div className="flex items-center gap-3 text-[14px] font-black text-mekong-cyan uppercase tracking-widest drop-shadow-md">
-                <div className="w-2.5 h-2.5 bg-mekong-mint rounded-full animate-pulse shadow-[0_0_10px_#1BAEA6]" />
-                GIÁM SÁT LƯU VỰC SÔNG TIỀN
+                <BrainCircuit size={18} className="text-mekong-mint" />
+                NHẬN ĐỊNH TỪ AGENTIC AI
               </div>
             </div>
 
             <div className="space-y-4">
-              <h1 className="text-5xl lg:text-[5.2rem] font-black leading-[1] tracking-tighter drop-shadow-2xl">
-                Dự báo Đỉnh mặn: <br />
-                <span className="text-mekong-cyan drop-shadow-[0_0_30px_rgba(117,231,254,0.2)]">
-                  Ngày 09 tháng 05, 2026
-                </span>
+              <h1 className="text-5xl lg:text-[4.8rem] font-black leading-[1.1] tracking-tighter drop-shadow-2xl">
+                Nguy cơ xâm nhập: <br />
+                <span className="text-mekong-cyan">Sông Tiền - Ngày 09/05</span>
               </h1>
-              <p className="text-lg lg:text-xl text-slate-200 max-w-2xl leading-relaxed font-medium opacity-90 drop-shadow-md">
-                Mô hình AI dự báo độ mặn sẽ tăng mạnh lên đến{" "}
-                <span className="text-white font-bold underline decoration-mekong-cyan underline-offset-4">
-                  4.2g/L
-                </span>{" "}
-                tại trạm Mỹ Tho. Khuyến nghị nông dân địa phương đóng các cống
-                ngăn mặn.
+              <p className="text-lg lg:text-xl text-slate-200 max-w-2xl leading-relaxed font-medium opacity-90">
+                Dựa trên mô hình thủy văn{" "}
+                <span className="text-white font-bold underline decoration-mekong-cyan">
+                  SALT-Agent
+                </span>
+                , chúng tôi dự báo mặn sẽ lấn sâu{" "}
+                <span className="text-white font-bold">55km</span> vào đất liền.
+                <br></br>
+                Hệ thống đã tự động lập kế hoạch đóng cống ngăn mặn.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-5 pt-2">
               <Button
                 variant="cyan"
-                className="px-10 h-14 text-[12px] font-black shadow-lg"
+                className="px-10 h-14 text-[12px] font-black shadow-xl"
+                onClick={() => navigate("/strategy")}
               >
-                XEM KẾ HOẠCH HÀNH ĐỘNG
+                XEM CHIẾN LƯỢC CỦA AI
               </Button>
               <Button
                 variant="outline"
                 className="px-10 h-14 text-[12px] font-black border-white/20 text-white hover:bg-white/5 backdrop-blur-sm"
               >
-                TẢI BÁO CÁO CHI TIẾT
+                TẢI BÁO CÁO KHOA HỌC
               </Button>
             </div>
           </div>
 
-          {/* BÊN PHẢI: WIDGET CHỈ SỐ LIVE */}
+          {/* BÊN PHẢI: TRẠNG THÁI MỤC TIÊU CỐT LÕI (GOAL-DRIVEN) */}
           <div className="col-span-12 lg:col-span-4 flex justify-end">
-            <div className="bg-white/[0.05] backdrop-blur-3xl rounded-[32px] p-8 lg:p-10 border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] ring-1 ring-white/10 w-full max-w-[420px] transition-all duration-500 hover:bg-white/[0.08]">
+            <div className="bg-white/[0.05] backdrop-blur-3xl rounded-[32px] p-8 lg:p-10 border border-white/10 shadow-2xl w-full max-w-[420px] transition-all hover:bg-white/[0.08]">
               <div className="flex justify-between items-center mb-10">
-                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
-                  ĐỘ MẶN HIỆN TẠI
-                </p>
-                <div className="bg-mekong-critical/30 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[12px] font-black shadow-lg">
-                  <TrendingUp size={14} strokeWidth={3} /> +12%
+                <div className="flex items-center gap-2">
+                  <Target size={16} className="text-mekong-mint" />
+                  <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-300">
+                    MỤC TIÊU CỦA AGENT
+                  </p>
                 </div>
+                <Badge className="bg-mekong-mint/20 text-mekong-mint border-none text-[10px] font-black">
+                  ĐANG DUY TRÌ
+                </Badge>
               </div>
 
-              <div className="flex items-baseline gap-3 mb-10">
-                <span className="text-8xl lg:text-[8.5rem] font-black tracking-tighter leading-none text-white drop-shadow-2xl">
-                  2.8
+              <div className="flex flex-col mb-10">
+                <span className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  Độ mặn an toàn
                 </span>
-                <span className="text-2xl font-black text-slate-500 uppercase tracking-widest opacity-60">
-                  g/L
-                </span>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-8xl font-black tracking-tighter leading-none text-white drop-shadow-2xl">
+                    &lt;0.5
+                  </span>
+                  <span className="text-2xl font-black text-slate-500 uppercase">
+                    g/L
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-4 pt-6 border-t border-white/10">
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] mb-4">
-                  TRẠNG THÁI CÁC TRẠM QUAN TRẮC
+                  LOGIC ĐANG THỰC THI (PROACTIVE)
                 </p>
                 {[
                   {
-                    name: "Trạm #082 - Tiền Giang",
-                    status: "TỐI ƯU",
+                    step: "Giám sát 24/7",
+                    desc: "Thu thập dữ liệu vệ tinh & IoT",
+                    status: "LIVE",
                     color: "text-mekong-mint",
                   },
                   {
-                    name: "Trạm #045 - Mỹ Tho",
-                    status: "NGUY CẤP",
-                    color: "text-mekong-critical",
-                  },
-                  {
-                    name: "Trạm #109 - Chợ Lách",
-                    status: "THEO DÕI",
+                    step: "Lập kế hoạch",
+                    desc: "Sẵn sàng đóng cống Mỹ Tho",
+                    status: "READY",
                     color: "text-mekong-cyan",
                   },
-                ].map((node, i) => (
+                  {
+                    step: "Phản hồi",
+                    desc: "Tự động học từ sai số mặn",
+                    status: "ACTIVE",
+                    color: "text-mekong-mint",
+                  },
+                ].map((item, i) => (
                   <div
                     key={i}
-                    className="flex justify-between items-center py-1 group/item cursor-pointer"
+                    className="flex justify-between items-center py-1"
                   >
-                    <span className="text-[14px] font-bold text-slate-200 group-hover/item:text-white transition-colors">
-                      {node.name}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-[14px] font-bold text-slate-200">
+                        {item.step}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {item.desc}
+                      </span>
+                    </div>
                     <span
-                      className={`text-[10px] font-black uppercase tracking-widest ${node.color}`}
+                      className={`text-[10px] font-black uppercase tracking-widest ${item.color}`}
                     >
-                      {node.status}
+                      {item.status}
                     </span>
                   </div>
                 ))}
@@ -163,26 +186,26 @@ export const InformationHub = () => {
         </div>
       </section>
 
-      {/* --- BỐ CỤC CHÍNH: TIN TỨC & THANH BÊN --- */}
+      {/* --- PHẦN 2: GRID CHÍNH - TÌNH BÁO & NGHIÊN CỨU --- */}
       <div className="grid grid-cols-12 gap-10">
-        {/* KHU VỰC BÊN TRÁI: CẬP NHẬT MỚI NHẤT & NGHIÊN CỨU (8 Cột) */}
+        {/* KHU VỰC TRÁI: TÌNH BÁO THỦY VĂN & CHỈ THỊ (8 Cột) */}
         <div className="col-span-12 lg:col-span-8 space-y-12">
           <section>
             <div className="flex justify-between items-end mb-10">
               <div className="space-y-3">
-                <h2 className="text-3xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-                  Cập Nhật Mới Nhất
+                <h2 className="text-3xl font-black text-mekong-navy tracking-tighter uppercase leading-none flex items-center gap-3">
+                  Tình báo Thủy văn & Chỉ thị
                 </h2>
                 <div className="w-12 h-1.5 bg-mekong-teal rounded-full shadow-sm" />
               </div>
 
               <button className="flex items-center gap-2 text-[11px] font-black text-mekong-teal uppercase tracking-[0.2em] hover:translate-x-1 transition-all">
-                Xem tất cả tin tức <ArrowRight size={14} />
+                Xem kho dữ liệu DARD <ArrowRight size={14} />
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
-              {/* TIN TỨC 1: CHỈ THỊ */}
+              {/* TIN TỨC 1: CHỈ THỊ TỪ DARD (Giữ lại tính hỗ trợ) */}
               <Card
                 padding="none"
                 className="rounded-[40px] overflow-hidden border-none bg-white shadow-soft group cursor-pointer"
@@ -195,45 +218,41 @@ export const InformationHub = () => {
                   />
                   <div className="absolute top-6 left-6 flex gap-2">
                     <span className="bg-white px-3 py-1 rounded-lg text-[10px] font-black text-mekong-navy uppercase tracking-widest shadow-sm">
-                      Chỉ thị
-                    </span>
-                    <span className="bg-red-500/80 backdrop-blur-sm px-3 py-1 rounded-lg text-[10px] font-black text-white uppercase tracking-widest shadow-sm">
-                      Địa phương
+                      Chỉ thị DARD
                     </span>
                   </div>
                 </div>
 
                 <CardContent className="p-7 lg:p-8 space-y-3">
                   <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.2em]">
-                    CHÍNH QUYỀN • 2 GIỜ TRƯỚC
+                    SỞ NN&PTNT • 2 GIỜ TRƯỚC
                   </p>
                   <h3 className="text-[20px] font-black text-mekong-navy leading-[1.2] tracking-tight group-hover:text-mekong-teal transition-colors uppercase">
-                    Ban hành lịch điều tiết nước mới cho tỉnh Bến Tre
+                    Cập nhật lịch vận hành cống vùng ngọt hóa Gò Công
                   </h3>
                   <p className="text-[14px] text-slate-500 font-medium leading-relaxed line-clamp-2">
-                    Nghị định chính thức từ Bộ Nông nghiệp quy định khung giờ
-                    vận hành cống trong các chu kỳ triều cường cao điểm...
+                    Lịch trình lấy nước ngọt mới dựa trên chu kỳ triều kém đã
+                    được phê duyệt cho các huyện Tiền Giang...
                   </p>
                   <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50">
-                    <div className="w-9 h-9 rounded-full border-2 border-white shadow-md overflow-hidden bg-slate-100">
-                      <img
-                        src="https://i.pravatar.cc/150?u=gov"
-                        alt="Author"
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="flex items-center gap-2">
+                      <Zap size={14} className="text-mekong-teal" />
+                      <span className="text-[10px] font-black text-mekong-navy uppercase tracking-widest">
+                        Hành động khuyên dùng
+                      </span>
                     </div>
                     <button className="p-2 -mr-2 rounded-full hover:bg-slate-50 transition-colors group">
                       <Bookmark
                         size={20}
                         strokeWidth={2.5}
-                        className="text-slate-400 group-hover:text-mekong-navy transition-colors"
+                        className="text-slate-400 group-hover:text-mekong-navy"
                       />
                     </button>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* TIN TỨC 2: CÔNG NGHỆ AI */}
+              {/* TIN TỨC 2: AI AGENT HÀNH ĐỘNG */}
               <Card
                 padding="none"
                 className="rounded-[40px] overflow-hidden border-none bg-white shadow-soft group cursor-pointer"
@@ -246,35 +265,35 @@ export const InformationHub = () => {
                   />
                   <div className="absolute top-5 left-5">
                     <Badge className="bg-white/95 text-mekong-navy font-black border-none shadow-sm">
-                      Trí tuệ nhân tạo
+                      Hệ thống tự trị
                     </Badge>
                   </div>
                 </div>
 
                 <CardContent className="p-7 lg:p-8 space-y-3">
                   <p className="text-[10px] font-black text-mekong-teal uppercase tracking-[0.2em]">
-                    SALT AGENT • 5 GIỜ TRƯỚC
+                    AGENT LOGIC • 5 GIỜ TRƯỚC
                   </p>
                   <h3 className="text-[20px] font-black text-mekong-navy leading-[1.2] tracking-tight group-hover:text-mekong-teal transition-colors uppercase">
-                    Vận hành hệ thống cống tự động hóa tại Sóc Trăng
+                    AI hoàn thành tối ưu hóa đóng mở cống tại Nút S-08
                   </h3>
                   <p className="text-[14px] text-slate-500 font-medium leading-relaxed line-clamp-2">
-                    Cơ sở hạ tầng mới điều khiển bởi AI sẽ tự động đóng mở cống
-                    dựa trên dữ liệu cảm biến độ mặn thời gian thực...
+                    Thông qua PLC, SALT-Agent đã điều phối thành công việc ngăn
+                    mặn lấn sâu mà không gây gián đoạn tàu thuyền...
                   </p>
 
                   <div className="flex justify-between items-center pt-4 mt-4 border-t border-slate-50">
                     <div className="flex items-center gap-2">
                       <Sparkles size={14} className="text-mekong-teal" />
                       <span className="text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-                        Phân tích từ AI
+                        Tự tối ưu bởi AI
                       </span>
                     </div>
                     <button className="p-2 -mr-2 rounded-full hover:bg-slate-50 transition-colors group">
                       <Bookmark
                         size={20}
                         strokeWidth={2.5}
-                        className="text-slate-400 group-hover:text-mekong-navy transition-colors"
+                        className="text-slate-400 group-hover:text-mekong-navy"
                       />
                     </button>
                   </div>
@@ -283,7 +302,7 @@ export const InformationHub = () => {
             </div>
           </section>
 
-          {/* SECTION: NGHIÊN CỨU KHOA HỌC (DARK VARIANT) */}
+          {/* SECTION: KHO TRI THỨC KHOA HỌC (RAG) */}
           <section className="relative overflow-hidden bg-mekong-navy rounded-[40px] p-10 lg:p-14 text-white shadow-2xl border border-white/5">
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-mekong-cyan/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -293,10 +312,10 @@ export const InformationHub = () => {
               </div>
               <div className="space-y-2">
                 <h2 className="text-4xl lg:text-5xl font-black uppercase tracking-tighter leading-none">
-                  Góc Nhìn Khoa Học
+                  Kho tri thức thích ứng
                 </h2>
                 <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.3em] opacity-80">
-                  Nghiên cứu chuyên sâu & Mô hình thủy văn Delta
+                  Nghiên cứu & Giải pháp nông nghiệp bền vững
                 </p>
               </div>
             </div>
@@ -304,19 +323,19 @@ export const InformationHub = () => {
             <div className="relative z-10 space-y-16">
               {[
                 {
-                  tag: "Báo cáo nghiên cứu",
+                  tag: "Kỹ thuật canh tác",
                   time: "12 PHÚT ĐỌC",
                   title:
-                    "Mô phỏng tác động của các đập thượng nguồn lên động lực mặn vùng cửa sông",
-                  desc: "Một nghiên cứu toàn diện sử dụng các tác nhân thủy văn độc quyền của SALT để dự báo thay đổi dài hạn của hình thái lòng sông và sự di chuyển của ranh mặn.",
+                    "Sử dụng cảm biến đất để điều tiết tưới tiêu trong mùa hạn mặn",
+                  desc: "Hướng dẫn tích hợp IoT vào ruộng vườn để AI có thể giúp bạn tự động tưới vào khung giờ độ mặn thấp nhất.",
                   img: "/src/assets/research-1.jpg",
                 },
                 {
-                  tag: "Mô hình Delta V2.4",
+                  tag: "Giống cây trồng",
                   time: "8 PHÚT ĐỌC",
                   title:
-                    "Nông nghiệp thích ứng: Chuyển đổi sang các giống lúa chịu mặn",
-                  desc: "Cách nông dân Tiền Giang thí điểm thành công giống lúa lai ST25 trong môi trường nước lợ bằng lịch tưới tiêu AI thời gian thực.",
+                    "Phát triển giống lúa ST25 chịu mặn tại vùng ven biển Bến Tre",
+                  desc: "Báo cáo thực địa về các hộ nông dân thí điểm thành công mô hình lúa - tôm thích ứng biến đổi khí hậu.",
                   img: "/src/assets/research-2.jpg",
                 },
               ].map((item, idx) => (
@@ -324,7 +343,7 @@ export const InformationHub = () => {
                   key={idx}
                   className="grid grid-cols-12 gap-12 group cursor-pointer border-b border-white/5 pb-16 last:border-none last:pb-0"
                 >
-                  <div className="col-span-12 md:col-span-4 h-60 rounded-[32px] overflow-hidden shadow-2xl border border-white/10 ring-1 ring-white/5 relative">
+                  <div className="col-span-12 md:col-span-4 h-60 rounded-[32px] overflow-hidden shadow-2xl relative">
                     <img
                       src={item.img}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
@@ -343,17 +362,14 @@ export const InformationHub = () => {
                         <span>{item.time}</span>
                       </div>
                     </div>
-
-                    <h3 className="text-[32px] lg:text-[34px] font-black leading-[1.15] tracking-tight group-hover:text-mekong-cyan transition-colors duration-300">
+                    <h3 className="text-[32px] lg:text-[34px] font-black leading-[1.15] tracking-tight group-hover:text-mekong-cyan transition-colors">
                       {item.title}
                     </h3>
-
-                    <p className="text-[17px] text-slate-400 font-medium leading-relaxed opacity-90 max-w-4xl line-clamp-2 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[17px] text-slate-400 font-medium leading-relaxed opacity-90 line-clamp-2">
                       {item.desc}
                     </p>
-
                     <div className="pt-2 flex items-center gap-3 text-mekong-cyan text-[13px] font-black uppercase tracking-widest opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-500">
-                      Đọc phân tích đầy đủ <ArrowUpRight size={16} />
+                      Đọc chi tiết giải pháp <ArrowUpRight size={16} />
                     </div>
                   </div>
                 </div>
@@ -362,41 +378,33 @@ export const InformationHub = () => {
           </section>
         </div>
 
-        {/* KHU VỰC BÊN PHẢI: SỰ KIỆN & THÔNG TIN (4 Cột) */}
+        {/* RIGHT AREA: SỰ KIỆN & KẾT NỐI (4 Cột) */}
         <div className="col-span-12 lg:col-span-4 space-y-8">
+          {/* SỰ KIỆN CỘNG ĐỒNG */}
           <aside className="space-y-8">
             <div className="space-y-3 mb-8 px-2">
               <h2 className="text-xl font-black text-mekong-navy uppercase tracking-[0.15em]">
-                Sự Kiện Sắp Tới
+                Sự kiện & Hội thảo
               </h2>
-              <div className="w-12 h-1.5 bg-mekong-teal rounded-full shadow-sm shadow-mekong-teal/20" />
+              <div className="w-12 h-1.5 bg-mekong-teal rounded-full shadow-sm" />
             </div>
 
             <div className="space-y-5">
               {[
                 {
-                  date: "30 THÁNG 3",
-                  title: "Tập huấn cho Nông dân",
-                  desc: "Kỹ thuật giảm thiểu độ mặn cho các vườn cây ăn trái quy mô nhỏ.",
-                  loc: "Trung tâm Cộng đồng Mỹ Tho",
+                  date: "30 THÁNG 03",
+                  title: "Tập huấn AI cho Nông dân",
+                  desc: "Cách cài đặt nhận thông báo mặn cá nhân hóa qua Zalo/SMS.",
+                  loc: "Trung tâm Mỹ Tho",
                   icon: Calendar,
                   color: "bg-mekong-teal",
                   textColor: "text-mekong-teal",
                 },
                 {
-                  date: "05 THÁNG 4",
-                  title: "Hội nghị Thượng đỉnh 2024",
-                  desc: "Đánh giá thường niên về độ chính xác thủy văn Mekong-SALT.",
-                  loc: "Trực tuyến / Hybrid (TP. HCM)",
-                  icon: Users,
-                  color: "bg-mekong-cyan",
-                  textColor: "text-mekong-cyan",
-                },
-                {
-                  date: "12 THÁNG 4",
-                  title: "Diễn tập Khẩn cấp: Đỉnh Triều",
-                  desc: "Kiểm tra quy trình phản ứng nhanh trong điều phối cống ngăn mặn.",
-                  loc: "Trạm Điều hành Bến Tre",
+                  date: "12 THÁNG 04",
+                  title: "Diễn tập vận hành cống",
+                  desc: "Phối hợp cùng Sở NN&PTNT kiểm tra hệ thống PLC tự động.",
+                  loc: "Bến Tre Hub",
                   icon: AlertTriangle,
                   color: "bg-mekong-critical",
                   textColor: "text-mekong-critical",
@@ -405,12 +413,11 @@ export const InformationHub = () => {
                 <Card
                   key={idx}
                   padding="none"
-                  className="rounded-[32px] border border-slate-100 bg-white shadow-soft hover:shadow-[0_20px_40px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 group cursor-pointer overflow-hidden relative"
+                  className="rounded-[32px] border border-slate-100 bg-white shadow-soft transition-all duration-500 group cursor-pointer overflow-hidden relative"
                 >
                   <div
                     className={`absolute top-0 left-0 w-2 h-full ${event.color} transition-all duration-500 group-hover:w-3`}
                   />
-
                   <div className="p-7 pl-9 space-y-4">
                     <div className="flex justify-between items-center">
                       <span className="bg-slate-50 text-slate-500 px-3 py-1 rounded-xl text-[10px] font-black tracking-widest border border-slate-100">
@@ -418,10 +425,9 @@ export const InformationHub = () => {
                       </span>
                       <event.icon
                         size={18}
-                        className={`${event.textColor} opacity-60 group-hover:opacity-100 transition-opacity`}
+                        className={`${event.textColor} opacity-60`}
                       />
                     </div>
-
                     <div className="space-y-1.5">
                       <h4 className="text-[17px] font-black text-mekong-navy leading-tight group-hover:text-mekong-teal transition-colors">
                         {event.title}
@@ -430,7 +436,6 @@ export const InformationHub = () => {
                         {event.desc}
                       </p>
                     </div>
-
                     <div
                       className={`flex items-center gap-2 pt-1 text-[10px] font-black uppercase tracking-[0.2em] ${event.textColor}`}
                     >
@@ -441,13 +446,9 @@ export const InformationHub = () => {
                 </Card>
               ))}
             </div>
-
-            <button className="w-full py-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-[12px] font-black text-mekong-navy uppercase tracking-[0.25em] hover:bg-white hover:shadow-md hover:border-mekong-teal/30 transition-all active:scale-[0.98]">
-              Xem toàn bộ lịch trình
-            </button>
           </aside>
 
-          {/* ĐĂNG KÝ BẢN TIN */}
+          {/* NHẬN THÔNG BÁO CÁ NHÂN HÓA */}
           <Card
             variant="white"
             className="bg-[#ECFEFF] border-none shadow-sm relative overflow-hidden p-10"
@@ -455,29 +456,29 @@ export const InformationHub = () => {
             <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-mekong-cyan/30 rounded-full blur-3xl" />
             <div className="relative z-10 space-y-4">
               <h3 className="text-sm font-black text-mekong-navy uppercase tracking-[0.2em]">
-                Nhận tin dự báo
+                Nhận tin khẩn cấp
               </h3>
               <p className="text-xs text-mekong-slate font-medium leading-relaxed">
-                Nhận dự báo độ mặn hàng tuần và các cảnh báo sông ngòi khẩn cấp
-                trực tiếp qua email của bạn.
+                Agent sẽ gửi cảnh báo mặn chính xác cho tọa độ ruộng vườn của
+                bạn qua điện thoại.
               </p>
               <div className="space-y-3 pt-2">
                 <input
                   type="email"
-                  placeholder="Địa chỉ email của bạn"
+                  placeholder="Địa chỉ Email hoặc SĐT"
                   className="w-full bg-white border-none rounded-xl px-4 py-3.5 text-xs font-bold text-mekong-navy focus:ring-2 ring-mekong-teal/20 shadow-sm"
                 />
                 <Button
                   variant="navy"
                   className="w-full h-12 shadow-xl shadow-mekong-navy/10"
                 >
-                  Đăng ký ngay
+                  ĐĂNG KÝ NGAY
                 </Button>
               </div>
             </div>
           </Card>
 
-          {/* THANH BÊN FOOTER */}
+          {/* SIDEBAR FOOTER: BRANDING (Giữ lại tính hỗ trợ) */}
           <div className="mt-6 pt-6 border-t border-slate-200 space-y-8 animate-in fade-in duration-500">
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-4">

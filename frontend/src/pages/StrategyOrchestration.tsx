@@ -8,19 +8,18 @@ import {
   CheckCircle2,
   Info,
   Terminal,
-  Download,
   BrainCircuit,
   SlidersHorizontal,
   Waves,
   Wind,
   History as HistoryIcon,
   Radio,
-  MapPin,
   Cpu,
   ArrowUpRight,
+  ShieldCheck,
 } from "lucide-react";
 
-// Import các UI Components
+// Import UI Components
 import {
   Card,
   CardContent,
@@ -31,39 +30,45 @@ import {
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 
+/**
+ * TRANG 4: ĐIỀU PHỐI CHIẾN LƯỢC (STRATEGY ORCHESTRATION)
+ * -----------------------------------------------------
+ * Chức năng cốt lõi:
+ * 1. Workflow Stepper: Hiển thị quy trình 5 bước (Goal -> Observation -> Planning -> Execution -> Feedback).
+ * 2. Chain-of-Thought (CoT): Nhật ký suy luận chi tiết của Gemini 2.5 Pro.
+ * 3. Human-in-the-loop: Nút phê duyệt kế hoạch hành động.
+ * 4. Goal Settings: Điều chỉnh mục tiêu chiến lược và độ nhạy (Agility).
+ */
+
 export const StrategyOrchestration = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* 1. PHẦN ĐẦU TRANG (HEADER) */}
+      {/* --- 1. TIÊU ĐỀ & TRẠNG THÁI NHÂN SUY LUẬN --- */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
             Điều phối Chiến lược
           </h1>
           <p className="text-base text-mekong-slate font-medium max-w-3xl leading-relaxed">
-            Hệ thống SALT-Agent đang đánh giá dự báo thủy triều 48 giờ cùng các
-            biến số áp lực gió thời gian thực tại khu vực hạ lưu Sông Hậu.
+            Hệ thống{" "}
+            <span className="text-mekong-teal font-bold">Reasoning Engine</span>{" "}
+            đang đánh giá kịch bản xâm nhập mặn 48 giờ dựa trên nồng độ thực tế
+            và dự báo khí tượng.
           </p>
         </div>
         <div className="flex gap-4 w-full lg:w-auto">
           <div className="flex items-center gap-3 px-5 py-3 bg-white rounded-2xl border border-slate-100 shadow-sm flex-1 lg:flex-none justify-center">
-            <div className="w-2 h-2 bg-mekong-mint rounded-full animate-pulse shadow-[0_0_8px_#1BAEA6]" />
+            <div className="w-2.5 h-2.5 bg-mekong-mint rounded-full animate-pulse shadow-[0_0_8px_#1BAEA6]" />
             <span className="text-[11px] font-black text-mekong-navy uppercase tracking-widest">
-              Nhân logic: Đang hoạt động
+              AI Core: Gemini 2.5 Pro Active
             </span>
           </div>
-          <Button
-            variant="navy"
-            className="flex-1 lg:flex-none h-14 px-8 shadow-xl shadow-mekong-navy/20"
-          >
-            <Settings2 size={18} className="mr-2" /> Tối ưu kế hoạch
-          </Button>
         </div>
       </div>
 
-      {/* 2. KHỐI QUY TRÌNH CHÍNH & BẢN ĐỒ TƯ DUY */}
+      {/* --- 2. QUY TRÌNH HÀNH ĐỘNG CHIẾN LƯỢC (8:4 GRID) --- */}
       <div className="grid grid-cols-12 gap-8">
-        {/* Cột trái: Tiến trình công việc (8 cột) */}
+        {/* KHỐI TRÁI: WORKFLOW CHIẾN LƯỢC ĐANG THỰC THI (8 CỘT) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -76,252 +81,207 @@ export const StrategyOrchestration = () => {
                   <Zap size={18} fill="currentColor" />
                 </div>
                 <h3 className="text-[13px] font-black text-mekong-navy uppercase tracking-[0.2em]">
-                  Quy trình chiến lược hiện tại
+                  Tiến trình chiến lược hiện tại
                 </h3>
               </div>
               <Badge
                 variant="cyan"
-                className="bg-mekong-cyan/10 text-mekong-teal border-none px-4 py-1.5 font-black uppercase tracking-widest text-[10px]"
+                className="px-4 py-1.5 font-black uppercase tracking-widest text-[10px]"
               >
                 Lập kế hoạch theo mục tiêu
               </Badge>
             </div>
 
-            {/* Trực quan hóa tiến trình Workflow */}
+            {/* Workflow Visualizer */}
             <div className="relative flex justify-between items-start px-4 mb-20">
-              {/* Đường kẻ nền kết nối */}
-              <div className="absolute top-8 left-10 right-10 h-1 bg-slate-50 rounded-full" />
-              {/* Đường tiến độ */}
+              <div className="absolute top-8 left-10 right-10 h-1 bg-slate-100 rounded-full" />
               <div
-                className="absolute top-8 left-10 h-1 bg-mekong-teal rounded-full transition-all duration-1000 shadow-[0_0_10px_#006877]"
-                style={{ width: "45%" }}
+                className="absolute top-8 left-10 h-1 bg-mekong-teal rounded-full transition-all duration-1000 shadow-[0_0_10px_#1BAEA6]"
+                style={{ width: "50%" }}
               />
 
               {[
                 {
                   id: 1,
                   icon: Database,
-                  label: "Thu thập dữ liệu",
-                  sub: "Cảm biến & API Mesh",
-                  status: "HOÀN THÀNH",
-                  color: "teal",
+                  label: "Thu thập",
+                  status: "XONG",
+                  active: false,
                 },
                 {
                   id: 2,
                   icon: LineChart,
                   label: "Dự báo",
-                  sub: "Đỉnh mặn sau 45p",
-                  status: "HOÀN THÀNH",
-                  color: "teal",
+                  status: "XONG",
+                  active: false,
                 },
                 {
                   id: 3,
-                  icon: Settings2,
-                  label: "Giảm thiểu",
-                  sub: "Đóng cống phòng ngừa",
+                  icon: BrainCircuit,
+                  label: "Lập kịch bản",
                   status: "ĐANG CHẠY",
                   active: true,
-                  color: "cyan",
                 },
                 {
                   id: 4,
                   icon: Zap,
                   label: "Thực thi",
-                  sub: "SMS → Đóng cống",
-                  status: "ĐANG CHỜ",
-                  color: "slate",
+                  status: "ĐỢI LỆNH",
+                  active: false,
                 },
                 {
                   id: 5,
                   icon: RotateCcw,
                   label: "Phản hồi",
-                  sub: "Đánh giá kết quả",
-                  status: "CHƯA CHẠY",
-                  color: "slate",
+                  status: "CHỜ",
+                  active: false,
                 },
               ].map((step) => (
                 <div
                   key={step.id}
-                  className="relative z-10 flex flex-col items-center group w-32"
+                  className="relative z-10 flex flex-col items-center w-32"
                 >
                   <div
                     className={`w-16 h-16 rounded-[22px] flex items-center justify-center transition-all duration-500 shadow-md ${
                       step.active
-                        ? "bg-mekong-cyan text-mekong-navy scale-110 shadow-xl shadow-mekong-cyan/30 border-4 border-white"
-                        : step.status === "HOÀN THÀNH"
+                        ? "bg-mekong-cyan text-mekong-navy scale-110 shadow-xl border-4 border-white"
+                        : step.status === "XONG"
                           ? "bg-mekong-teal text-white"
                           : "bg-slate-100 text-slate-300"
                     }`}
                   >
-                    <step.icon size={26} strokeWidth={step.active ? 2.5 : 2} />
+                    <step.icon size={26} />
                   </div>
-                  <div className="mt-6 text-center space-y-1">
-                    <p
-                      className={`text-[12px] font-black uppercase tracking-tighter ${step.active ? "text-mekong-navy" : "text-mekong-navy/60"}`}
-                    >
-                      {step.label}
-                    </p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      {step.sub}
-                    </p>
-                    <p
-                      className={`text-[9px] font-black uppercase mt-3 tracking-[0.2em] px-2 py-0.5 rounded-full ${
-                        step.active
-                          ? "bg-mekong-navy text-mekong-cyan animate-pulse"
-                          : step.status === "HOÀN THÀNH"
-                            ? "text-mekong-teal bg-mekong-teal/5"
-                            : "text-slate-300"
-                      }`}
-                    >
-                      {step.status}
-                    </p>
-                  </div>
+                  <p
+                    className={`mt-6 text-[12px] font-black uppercase tracking-tighter ${step.active ? "text-mekong-navy" : "text-mekong-slate"}`}
+                  >
+                    {step.label}
+                  </p>
+                  <p
+                    className={`text-[9px] font-black uppercase mt-2 tracking-widest ${step.active ? "text-mekong-teal animate-pulse" : "text-slate-400"}`}
+                  >
+                    {step.status}
+                  </p>
                 </div>
               ))}
             </div>
 
-            {/* Thẻ phụ: Chi tiết chiến lược */}
-            <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 flex gap-6 items-start relative group hover:bg-slate-100/50 transition-all">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-mekong-teal shadow-soft border border-slate-200">
-                <Info size={24} />
+            {/* Chi tiết kịch bản can thiệp (Planning) */}
+            <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 space-y-6">
+              <div className="flex gap-6 items-start">
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-mekong-teal shadow-soft shrink-0">
+                  <Info size={24} />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-[13px] font-black text-mekong-navy uppercase tracking-widest">
+                    Chiến lược đề xuất #042-B
+                  </h4>
+                  <p className="text-[15px] text-slate-600 leading-relaxed font-semibold">
+                    "Phát hiện triều cường đạt đỉnh 1.2m lúc 16:00. Tôi đề xuất
+                    kích hoạt đóng cống Hòa Định lúc 15:40. Điều này giúp ngăn
+                    mặn 1.5g/L nhưng vẫn đảm bảo 20 phút cho tàu bè di chuyển."
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <h4 className="text-[13px] font-black text-mekong-navy uppercase tracking-widest">
-                  Chiến lược can thiệp kích hoạt #042-B
-                </h4>
-                <p className="text-[14px] text-slate-500 leading-relaxed font-semibold opacity-90">
-                  Agent đã xác định cửa sổ rủi ro cao trong khoảng{" "}
-                  <span className="text-mekong-navy font-black">
-                    14:00 - 16:30
-                  </span>
-                  . Cảnh báo SMS sẽ được gửi đến 14 điều hành viên lúc 13:40.
-                  Quy trình đóng cống Sluice-7 tự động sẽ bắt đầu lúc 14:00 để
-                  ngăn mặn xâm nhập nội đồng.
-                </p>
+              <div className="flex gap-4 pl-[72px]">
+                <Button
+                  variant="navy"
+                  className="h-14 px-10 rounded-2xl shadow-xl flex gap-3 group"
+                >
+                  <ShieldCheck size={20} /> PHÊ DUYỆT HÀNH ĐỘNG
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-14 px-8 rounded-2xl border-slate-200"
+                >
+                  XEM KỊCH BẢN PHỤ
+                </Button>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Cột phải: Bản đồ các nút nhận thức (4 cột) */}
+        {/* KHỐI PHẢI: BẢN ĐỒ CÁC NÚT NHẬN THỨC (4 CỘT) */}
         <div className="col-span-12 lg:col-span-4">
           <Card
             variant="navy"
-            padding="lg"
-            className="bg-[#00203F] border-none shadow-2xl h-full rounded-[40px] relative overflow-hidden flex flex-col justify-between"
+            className="bg-[#00203F] border-none shadow-2xl h-full rounded-[40px] relative overflow-hidden flex flex-col"
           >
-            <div className="absolute top-0 right-0 w-80 h-80 bg-mekong-cyan/5 rounded-full blur-[100px] pointer-events-none" />
-
-            <div className="relative z-10 flex items-center gap-4 mb-10">
-              <div className="p-3 bg-mekong-cyan/10 rounded-2xl border border-mekong-cyan/20 text-mekong-cyan">
-                <BrainCircuit size={28} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-white uppercase tracking-tighter leading-none">
-                  Bản đồ nút nhận thức
-                </h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2">
-                  Mạng lưới kết nối tư duy AI
-                </p>
-              </div>
-            </div>
-
-            {/* Sơ đồ tương tác trung tâm */}
-            <div className="relative h-64 flex items-center justify-center">
-              {/* Lõi trung tâm */}
-              <div className="w-20 h-20 bg-mekong-cyan rounded-[24px] flex items-center justify-center text-mekong-navy z-20 shadow-[0_0_40px_rgba(117,231,254,0.4)] border-4 border-white animate-pulse">
-                <Cpu size={32} strokeWidth={2.5} />
-              </div>
-
-              {/* Vị trí các nút ngoại vi */}
-              {[
-                {
-                  icon: Waves,
-                  label: "THỦY TRIỀU",
-                  pos: "-top-4 left-1/2 -translate-x-1/2",
-                },
-                { icon: Wind, label: "GIÓ", pos: "top-1/4 -right-2" },
-                { icon: Radio, label: "CẢM BIẾN", pos: "top-1/4 -left-2" },
-                {
-                  icon: HistoryIcon,
-                  label: "LỊCH SỬ",
-                  pos: "-bottom-4 left-1/2 -translate-x-1/2",
-                },
-              ].map((node, i) => (
-                <div
-                  key={i}
-                  className={`absolute ${node.pos} flex flex-col items-center gap-2 group cursor-pointer`}
-                >
-                  <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-mekong-cyan group-hover:text-mekong-navy transition-all duration-300">
-                    <node.icon size={20} />
-                  </div>
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                    {node.label}
-                  </span>
+            <div className="absolute top-0 right-0 w-80 h-80 bg-mekong-cyan/5 rounded-full blur-[100px]" />
+            <div className="relative z-10 p-10 flex-1 flex flex-col">
+              <div className="flex items-center gap-4 mb-14 border-b border-white/10 pb-6">
+                <div className="p-3 bg-mekong-cyan/10 rounded-2xl text-mekong-cyan border border-mekong-cyan/20">
+                  <HistoryIcon size={24} />
                 </div>
-              ))}
-
-              {/* Đường lưới kết nối SVG */}
-              <svg
-                className="absolute inset-0 w-full h-full opacity-10 pointer-events-none"
-                viewBox="0 0 400 300"
-              >
-                <circle
-                  cx="200"
-                  cy="150"
-                  r="100"
-                  stroke="white"
-                  strokeWidth="1"
-                  fill="none"
-                  strokeDasharray="8 8"
-                />
-                <line
-                  x1="200"
-                  y1="150"
-                  x2="200"
-                  y2="50"
-                  stroke="white"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="200"
-                  y1="150"
-                  x2="300"
-                  y2="100"
-                  stroke="white"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="200"
-                  y1="150"
-                  x2="100"
-                  y2="100"
-                  stroke="white"
-                  strokeWidth="1.5"
-                />
-              </svg>
-            </div>
-
-            <div className="relative z-10 pt-10 border-t border-white/5 space-y-4">
-              <div className="flex justify-between items-end">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                  Mật độ xử lý
-                </p>
-                <span className="text-sm font-mono font-black text-mekong-cyan shadow-sm shadow-mekong-cyan/20 px-2 py-0.5 rounded bg-white/5">
-                  88 Gflops
-                </span>
+                <h3 className="text-lg font-black text-white uppercase tracking-tighter">
+                  Trọng số Quyết định
+                </h3>
               </div>
-              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-mekong-teal to-mekong-cyan w-4/5 rounded-full shadow-[0_0_12px_#75E7FE]" />
+
+              {/* Radar/Weights Visualization Simulation */}
+              <div className="space-y-8 flex-1">
+                {[
+                  {
+                    label: "Mực nước triều",
+                    weight: "90%",
+                    icon: Waves,
+                    color: "bg-mekong-cyan",
+                  },
+                  {
+                    label: "Vận tốc gió",
+                    weight: "65%",
+                    icon: Wind,
+                    color: "bg-white",
+                  },
+                  {
+                    label: "Dữ liệu lịch sử",
+                    weight: "42%",
+                    icon: HistoryIcon,
+                    color: "bg-slate-500",
+                  },
+                  {
+                    label: "Cảm biến thượng nguồn",
+                    weight: "88%",
+                    icon: Radio,
+                    color: "bg-mekong-mint",
+                  },
+                ].map((node, i) => (
+                  <div key={i} className="space-y-3">
+                    <div className="flex justify-between items-center text-white">
+                      <div className="flex items-center gap-3">
+                        <node.icon size={16} className="text-slate-400" />
+                        <span className="text-[11px] font-black uppercase tracking-widest">
+                          {node.label}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-black text-mekong-cyan">
+                        {node.weight}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${node.color} rounded-full`}
+                        style={{ width: node.weight }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-10 pt-8 border-t border-white/5 text-center">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                  AI xử lý: 2.5 Gemini Pro <br></br> Latency: 1.2s | Độ tin cậy:
+                  94%
+                </p>
               </div>
             </div>
           </Card>
         </div>
       </div>
 
-      {/* 3. NỘI DUNG PHÍA DƯỚI: NHẬT KÝ & CÀI ĐẶT */}
+      {/* --- 3. NHẬT KÝ SUY LUẬN & CÀI ĐẶT MỤC TIÊU (8:4 GRID) --- */}
       <div className="grid grid-cols-12 gap-8">
-        {/* Nhật ký suy luận trực tiếp (8 cột) */}
+        {/* CHAIN-OF-THOUGHT LOGS (8 CỘT) */}
         <div className="col-span-12 lg:col-span-8">
           <Card
             variant="white"
@@ -332,66 +292,51 @@ export const StrategyOrchestration = () => {
               <div className="flex items-center gap-3 text-mekong-navy">
                 <Terminal size={22} />
                 <h3 className="text-base font-black uppercase tracking-widest">
-                  Nhật ký suy luận hệ thống
+                  Luồng suy luận thực tế (CoT)
                 </h3>
               </div>
-              <Button
-                variant="outline"
-                className="h-10 text-[10px] font-black border-slate-200 px-4"
-              >
-                <Download size={14} className="mr-2" /> XUẤT NHẬT KÝ
-              </Button>
+              <Badge variant="navy" className="font-mono text-[10px]">
+                SYSTEM_V4.2_STABLE
+              </Badge>
             </div>
 
-            <div className="flex-1 p-8 space-y-4 overflow-y-auto font-mono bg-[#FAFAFB] custom-scrollbar">
+            <div className="flex-1 p-8 space-y-4 overflow-y-auto font-mono bg-[#FAFAFB]">
               {[
                 {
-                  t: "14:22:10",
-                  cat: "LÕI_HỆ_THỐNG",
-                  msg: "Vận tốc gió tăng lên 6 Bft, đẩy nhanh sự xâm nhập của nêm mặn thêm 12%... hệ thống đã điều chỉnh thời gian đóng cống sớm hơn.",
-                  color: "border-l-mekong-teal text-mekong-navy",
+                  time: "14:22:10",
+                  msg: "Đang phân tích dữ liệu cảm biến vùng S-04... độ mặn tăng 0.15g/L mỗi giờ.",
+                  cat: "DỮ LIỆU",
                 },
                 {
-                  t: "14:18:05",
-                  cat: "NHẬN_DỮ_LIỆU",
-                  msg: "Đang tiếp nhận dữ liệu đo đạc vệ tinh độ phân giải cao. Tính toán lại hệ số ma sát lòng sông cho mô hình lan truyền.",
-                  color: "border-l-slate-300 text-slate-500",
+                  time: "14:22:15",
+                  msg: "Đối chiếu mô hình hạn mặn 2016... phát hiện sự tương đồng 94%.",
+                  cat: "TRUY XUẤT RAG",
                 },
                 {
-                  t: "14:15:52",
-                  cat: "DỰ_BÁO_ĐỒNG_BỘ",
-                  msg: "Dữ liệu lịch sử từ đợt hạn mặn 2016 khớp 94.2%. Đang điều chỉnh ngưỡng nhạy cảm cho Cống Gate-09.",
-                  color: "border-l-slate-300 text-slate-500",
+                  time: "14:22:20",
+                  msg: "GIẢ LẬP: Nếu đóng cống Mỹ Tho bây giờ -> Rủi ro kẹt 4 tàu vận tải. Nếu lùi 20p -> Giảm 85% thiệt hại logistics.",
+                  cat: "MÔ PHỎNG",
                 },
                 {
-                  t: "14:10:30",
-                  cat: "NHÁNH_QUYẾT_ĐỊNH",
-                  msg: "Phát hiện ghi đè thủ công tại Gate-12. Đang tính toán lại luồng xâm nhập mặn dự kiến qua khu vực Delta-4.",
-                  color: "border-l-mekong-navy text-mekong-navy",
-                },
-                {
-                  t: "14:05:00",
-                  cat: "TRẠNG_THÁI_HỆ_THỐNG",
-                  msg: "Tất cả 142 node cảm biến đang báo cáo trong tham số độ trễ định danh (45ms).",
-                  color: "border-l-slate-300 text-slate-500",
+                  time: "14:22:25",
+                  msg: "QUYẾT ĐỊNH: Chờ 20 phút. Đã thiết lập thông báo SMS cho đội vận hành.",
+                  cat: "CHIẾN LƯỢC",
                 },
               ].map((log, i) => (
                 <div
                   key={i}
-                  className={`p-5 rounded-2xl bg-white border border-slate-100 border-l-[5px] ${log.color} group hover:shadow-md transition-all`}
+                  className="flex gap-4 p-4 rounded-xl bg-white border border-slate-100 group hover:shadow-md transition-all"
                 >
-                  <div className="flex gap-4 items-start">
-                    <span className="text-[11px] font-bold text-slate-400 opacity-60 leading-tight">
-                      [{log.t}]
+                  <span className="text-[11px] font-black text-slate-400 opacity-60">
+                    [{log.time}]
+                  </span>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black text-mekong-teal uppercase tracking-widest">
+                      [{log.cat}]
                     </span>
-                    <div className="space-y-1.5 flex-1">
-                      <p className="text-[11px] font-black uppercase tracking-widest">
-                        {log.cat}
-                      </p>
-                      <p className="text-[13px] font-medium leading-relaxed">
-                        {log.msg}
-                      </p>
-                    </div>
+                    <p className="text-[13px] font-medium text-mekong-navy leading-relaxed">
+                      {log.msg}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -399,70 +344,51 @@ export const StrategyOrchestration = () => {
           </Card>
         </div>
 
-        {/* Cài đặt mục tiêu chiến lược (4 cột) */}
+        {/* CÀI ĐẶT MỤC TIÊU CHIẾN LƯỢC (4 CỘT) */}
         <div className="col-span-12 lg:col-span-4">
           <Card
             variant="white"
             padding="lg"
             className="rounded-[40px] bg-slate-100/50 border-none shadow-soft h-full flex flex-col justify-between"
           >
-            <div className="space-y-2 mb-10">
-              <div className="flex items-center gap-3 text-mekong-navy">
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 text-mekong-navy mb-10">
                 <SlidersHorizontal size={22} />
                 <h3 className="text-base font-black uppercase tracking-widest leading-none">
-                  Cài đặt mục tiêu
+                  Thiết lập Mục tiêu
                 </h3>
               </div>
-              <p className="text-[12px] text-slate-500 font-medium leading-relaxed italic pl-9">
-                Các chuyên viên quản lý được ủy quyền có thể điều chỉnh các tham
-                số cơ sở của AI.
-              </p>
-            </div>
 
-            <div className="space-y-10 flex-1">
-              {/* Ngưỡng độ mặn Slider */}
+              {/* Ngưỡng mặn an toàn */}
               <div className="space-y-4">
                 <div className="flex justify-between items-end">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Ngưỡng độ mặn
+                    Ngưỡng mặn an toàn
                   </label>
                   <span className="text-sm font-black text-mekong-navy bg-white px-3 py-1 rounded-lg border border-slate-200">
-                    0.3 g/L
+                    0.5 g/L
                   </span>
                 </div>
                 <div className="relative h-2 bg-slate-200 rounded-full">
-                  <div className="absolute top-0 left-0 h-full w-1/3 bg-mekong-teal rounded-full" />
-                  <div className="absolute top-1/2 -translate-y-1/2 left-1/3 w-5 h-5 bg-white border-2 border-mekong-teal rounded-full shadow-lg cursor-pointer hover:scale-110 transition-transform" />
-                </div>
-                <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  <span>0.1 g/L</span>
-                  <span className="text-mekong-teal/60 italic">
-                    Mục tiêu: Mùa xuống giống
-                  </span>
-                  <span>1.0 g/L</span>
+                  <div className="absolute top-0 left-0 h-full w-1/2 bg-mekong-teal rounded-full" />
+                  <div className="absolute top-1/2 -translate-y-1/2 left-1/2 w-5 h-5 bg-white border-2 border-mekong-teal rounded-full shadow-lg cursor-pointer hover:scale-110 transition-all" />
                 </div>
               </div>
 
-              {/* Lựa chọn độ linh hoạt */}
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Độ nhạy can thiệp
-                  </label>
-                  <span className="text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-                    Cao (Chủ động)
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-inner">
-                  <button className="py-2.5 text-[9px] font-black uppercase text-slate-400 hover:text-mekong-navy">
-                    Thận trọng
-                  </button>
-                  <button className="py-2.5 text-[9px] font-black uppercase bg-mekong-navy text-mekong-cyan rounded-xl shadow-lg">
-                    Cân bằng
-                  </button>
-                  <button className="py-2.5 text-[9px] font-black uppercase text-slate-400 hover:text-mekong-navy">
-                    Quyết liệt
-                  </button>
+              {/* Chế độ can thiệp */}
+              <div className="space-y-4 pt-6">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Độ nhạy Can thiệp (Agility)
+                </label>
+                <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-2xl border border-slate-200">
+                  {["An toàn", "Cân bằng", "Quyết liệt"].map((mode, i) => (
+                    <button
+                      key={i}
+                      className={`py-3 text-[10px] font-black uppercase rounded-xl transition-all ${i === 1 ? "bg-mekong-navy text-mekong-cyan shadow-lg" : "text-slate-400 hover:text-mekong-navy"}`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -472,64 +398,12 @@ export const StrategyOrchestration = () => {
                 variant="navy"
                 className="w-full h-16 rounded-[24px] shadow-2xl flex gap-2"
               >
-                <CheckCircle2 size={20} /> Lưu các thay đổi
+                <CheckCircle2 size={20} /> LƯU CÀI ĐẶT CHIẾN LƯỢC
               </Button>
             </div>
           </Card>
         </div>
       </div>
-
-      {/* 4. THANH TỔNG HỢP DƯỚI CÙNG */}
-      <Card
-        variant="white"
-        padding="md"
-        className="border-none shadow-soft rounded-[32px] group overflow-hidden"
-      >
-        <div className="relative flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-6 flex-1">
-            <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center p-4 relative overflow-hidden group-hover:bg-mekong-teal/5 transition-all">
-              <div className="absolute inset-0 bg-mekong-teal/10 flex items-center justify-center text-mekong-teal">
-                <MapPin size={32} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <h4 className="text-xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-                Nút hạ lưu Sóc Trăng
-              </h4>
-              <p className="text-[13px] text-slate-500 font-semibold max-w-xl">
-                Hiện đang giám sát 4 cống thủy lợi trọng yếu tại khu vực phía
-                Nam. Độ chính xác dự báo trong chu kỳ hiện tại:{" "}
-                <span className="text-mekong-teal font-black">98.4%</span>.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-12 text-right border-l border-slate-100 pl-12 h-16 items-center">
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
-                Độ mặn TB
-              </p>
-              <p className="text-3xl font-black text-mekong-critical tracking-tighter leading-none">
-                0.52
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">
-                Trạm hoạt động
-              </p>
-              <p className="text-3xl font-black text-mekong-navy tracking-tighter leading-none">
-                42/42
-              </p>
-            </div>
-            <div className="pl-6">
-              <ArrowUpRight
-                size={24}
-                className="text-slate-200 group-hover:text-mekong-teal transition-all"
-              />
-            </div>
-          </div>
-        </div>
-      </Card>
     </div>
   );
 };
