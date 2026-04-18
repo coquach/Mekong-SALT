@@ -65,12 +65,13 @@ class SimulationRuntimeConfig:
 SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
     "critical-timeout-replan": SensorScenarioProfile(
         key="critical-timeout-replan",
-        description="Tăng dần độ mặn lên mức nguy cấp, rồi giữ thêm một nhịp hậu planning để chờ auto-reject.",
+        description="Đẩy salinity qua band danger/critical, đồng thời giữ ngữ cảnh đủ mới để engine thể hiện trend và freshness.",
         objective="Xử lý leo thang độ mặn nguy cấp với luồng HITL bắt buộc và timeout tự từ chối.",
         warning_threshold_dsm="2.50",
         critical_threshold_dsm="4.00",
         frames=(
             SensorFrame("3.90", "1.48", "29.20", "84.00", note="mốc nguy cơ ban đầu"),
+            SensorFrame("4.15", "1.54", "29.28", "83.85", note="đang đi qua danger"),
             SensorFrame("4.45", "1.60", "29.40", "83.70", note="vượt ngưỡng nguy cấp"),
             SensorFrame("5.15", "1.72", "29.70", "83.20", note="duy trì trạng thái nguy cấp"),
         ),
@@ -84,12 +85,13 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
     ),
     "fast-approve-execute": SensorScenarioProfile(
         key="fast-approve-execute",
-        description="Bắn dữ liệu rủi ro cao, tạo plan pending, sau đó duyệt và mô phỏng thực thi.",
+        description="Bắn chuỗi sensor làm nổi bật salinity nền, trend tăng, và bối cảnh đủ mới để tạo plan reviewable.",
         objective="Sinh ra plan hành động có thể duyệt nhanh cho operator và kiểm tra luồng feedback.",
         warning_threshold_dsm="2.50",
         critical_threshold_dsm="4.00",
         frames=(
             SensorFrame("3.35", "1.30", "28.90", "88.50", note="cảnh báo tăng"),
+            SensorFrame("3.75", "1.36", "29.00", "88.20", note="đưa trend window lên rõ hơn"),
             SensorFrame("4.05", "1.42", "29.10", "88.00", note="chạm ngưỡng nguy cấp"),
             SensorFrame("4.60", "1.55", "29.30", "87.60", note="kích hoạt pending plan"),
         ),
@@ -109,6 +111,7 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
         critical_threshold_dsm="3.90",
         frames=(
             SensorFrame("2.60", "1.12", "28.60", "91.00", note="mở đầu cảnh báo"),
+            SensorFrame("2.95", "1.18", "28.72", "90.80", note="trend window có thêm nhịp trung gian"),
             SensorFrame("3.20", "1.24", "28.80", "90.50", note="xu hướng tăng"),
             SensorFrame("3.85", "1.36", "29.00", "90.10", note="tiệm cận nguy cấp"),
         ),
@@ -122,23 +125,24 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
     ),
     "warning-observe-recover": SensorScenarioProfile(
         key="warning-observe-recover",
-        description="Gây cảnh báo mức vừa rồi để backend đi qua cửa sổ quan sát và hồi phục tự nhiên.",
+        description="Giữ reading ở band warning với context còn mới để engine ưu tiên quan sát thay vì đẩy nhanh lên critical.",
         objective="Quan sát nhịp warning, giữ posture thận trọng, rồi kiểm tra recovery window.",
         warning_threshold_dsm="1.80",
         critical_threshold_dsm="3.20",
         frames=(
             SensorFrame("1.92", "1.16", "28.70", "92.20", wind_speed_mps="5.20", wind_direction_deg=135, note="cảnh giác ban đầu"),
+            SensorFrame("2.10", "1.17", "28.78", "92.00", wind_speed_mps="5.60", wind_direction_deg=132, note="giữ ở warning để lấp trend window"),
             SensorFrame("2.18", "1.18", "28.82", "91.90", wind_speed_mps="5.80", wind_direction_deg=130, note="xu hướng tăng nhưng chưa tới critical"),
             SensorFrame("2.05", "1.15", "28.76", "91.70", wind_speed_mps="5.10", wind_direction_deg=145, note="giữ ở warning"),
         ),
         post_planning_frame=SensorFrame(
-            "1.68",
+            "0.92",
             "1.12",
             "28.60",
             "91.50",
             wind_speed_mps="4.30",
             wind_direction_deg=160,
-            note="recovery window bắt đầu mở ra",
+            note="recovery window đã quay về dưới ngưỡng warning",
         ),
     ),
 }
@@ -761,6 +765,7 @@ def _prepare_plan_from_sensor_profile(
 ) -> dict[str, Any]:
     del timeout_seconds, close_open_incidents
     station = str(station_code or "GOCONG-01")
+    baseline_plan_ids = {str(plan.get("id") or "") for plan in _list_plans(base_url, limit=100)}
     emitted_frames = _ingest_sensor_profile(
         base_url,
         profile=profile,
@@ -785,16 +790,24 @@ def _prepare_plan_from_sensor_profile(
         )
         emitted_frames.append(follow_up_payload)
 
+    station_scope = _resolve_station_scope(base_url, station_code=station)
+    goal = _ensure_monitoring_goal(
+        base_url,
+        profile=profile,
+        station_scope=station_scope,
+    )
+
     return {
         "profile_key": profile.key,
         "goal_name": _goal_name(profile.key, station),
+        "goal_id": str(goal.get("id") or ""),
         "station_code": station,
         "emitted_frames": emitted_frames,
         "closed_incident_ids": [],
         "trigger_run": None,
         "plan": None,
         "plan_id": None,
-        "baseline_plan_ids": set(),
+        "baseline_plan_ids": baseline_plan_ids,
     }
 
 
@@ -893,6 +906,37 @@ def scenario_fast_approve_execute(
         frame_pause_seconds=frame_pause_seconds,
         close_open_incidents=close_open_incidents,
     )
+
+    pending_plan = _wait_new_pending_plan(
+        base_url,
+        baseline_plan_ids=set(prepared["baseline_plan_ids"]),
+        timeout_seconds=timeout_seconds,
+    )
+    plan_id = str(pending_plan.get("id") or "")
+    if not plan_id:
+        raise SimulationError("Không lấy được plan_id cho kịch bản fast-approve-execute.")
+
+    approval_result = _http_json(
+        base_url=base_url,
+        method="POST",
+        path=f"/api/v1/approvals/plans/{plan_id}/decision",
+        payload={
+            "decision": "approved",
+            "comment": "Approved by demo simulation.",
+        },
+    )
+
+    simulated_result = _http_json(
+        base_url=base_url,
+        method="POST",
+        path=f"/api/v1/execution-batches/plans/{plan_id}/simulate",
+        payload={
+            "idempotency_key": f"demo-fast-approve-execute-{prepared['station_code']}-{int(time.time())}",
+        },
+    )
+
+    approved_plan = approval_result.get("plan") or {}
+    batch = simulated_result.get("batch") or {}
     post_execute_feedback: dict[str, Any]
     if inject_post_execute_reading:
         feedback_frame = SCENARIO_SENSOR_PROFILES["fast-approve-execute"].post_planning_frame
@@ -924,11 +968,11 @@ def scenario_fast_approve_execute(
         "scenario": "fast-approve-execute",
         "station_code": prepared["station_code"],
         "goal_name": prepared["goal_name"],
-        "pending_plan_id": None,
-        "approved_plan_id": None,
-        "execution_batch_id": None,
-        "post_execute_status": None,
-        "action_log_count": 0,
+        "pending_plan_id": plan_id,
+        "approved_plan_id": str(approved_plan.get("id") or plan_id),
+        "execution_batch_id": str(batch.get("id") or ""),
+        "post_execute_status": str(batch.get("status") or ""),
+        "action_log_count": len(simulated_result.get("executions") or []),
         "post_execute_feedback": post_execute_feedback,
     }
 

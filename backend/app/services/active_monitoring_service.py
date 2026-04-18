@@ -106,6 +106,18 @@ async def run_monitoring_goal_cycle(
         region_id=goal.region_id,
     )
     target_reading = await resolve_target_reading(session, filters)
+    logger.info(
+        "Running monitoring goal cycle",
+        extra={
+            "goal_id": str(goal.id),
+            "goal_name": goal.name,
+            "mode": mode,
+            "station_id": str(goal.station_id) if goal.station_id is not None else None,
+            "region_id": str(goal.region_id) if goal.region_id is not None else None,
+            "target_reading_id": str(target_reading.id),
+            "target_reading_recorded_at": target_reading.recorded_at.isoformat(),
+        },
+    )
     if goal.last_processed_reading_id == target_reading.id:
         await _mark_goal_cycle(
             session,
@@ -139,6 +151,16 @@ async def run_monitoring_goal_cycle(
         actor_name="active-monitoring-worker",
     )
     incident = incident_result.incident
+    logger.info(
+        "Risk and incident phase complete for goal cycle",
+        extra={
+            "goal_id": str(goal.id),
+            "goal_name": goal.name,
+            "risk_level": risk_bundle.assessment.risk_level.value,
+            "incident_decision": incident_result.decision,
+            "incident_id": str(incident.id) if incident is not None else None,
+        },
+    )
 
     if incident is None:
         await _mark_goal_cycle(
@@ -200,6 +222,16 @@ async def run_monitoring_goal_cycle(
             reason="A plan already exists for this incident.",
         )
 
+    logger.info(
+        "No open plan found; generating new plan",
+        extra={
+            "goal_id": str(goal.id),
+            "goal_name": goal.name,
+            "incident_id": str(incident.id) if incident is not None else None,
+            "risk_level": risk_bundle.assessment.risk_level.value,
+        },
+    )
+
     plan_bundle = await generate_agent_plan(
         session,
         payload=AgentPlanRequest(
@@ -223,6 +255,15 @@ async def run_monitoring_goal_cycle(
         session,
         plan=plan_bundle.plan,
         settings=resolved_settings,
+    )
+    logger.info(
+        "Lifecycle graph advanced plan",
+        extra={
+            "goal_id": str(goal.id),
+            "plan_id": str(plan_bundle.plan.id),
+            "lifecycle_status": lifecycle_result.status,
+            "reason": lifecycle_result.reason,
+        },
     )
     replan_result = await _maybe_auto_replan_after_feedback(
         session,
@@ -253,6 +294,16 @@ async def run_monitoring_goal_cycle(
         status = "succeeded_plan_replanned"
     else:
         status = "succeeded_plan_created"
+    logger.info(
+        "Monitoring goal cycle completed",
+        extra={
+            "goal_id": str(goal.id),
+            "goal_name": goal.name,
+            "status": status,
+            "plan_id": str(lifecycle_result.plan.id),
+            "replan_attempts": replan_attempts,
+        },
+    )
     await _mark_goal_cycle(
         session,
         goal,
@@ -294,6 +345,15 @@ async def run_due_monitoring_goals(
     due_goals = [goal for goal in goals if is_goal_due(goal, current_time)]
     results: list[MonitoringCycleResult] = []
     locked = 0
+    logger.info(
+        "Running active monitoring worker tick",
+        extra={
+            "scanned": len(goals),
+            "due": len(due_goals),
+            "batch_size": resolved_settings.active_monitoring_batch_size,
+            "current_time": current_time.isoformat(),
+        },
+    )
 
     for goal in due_goals:
         token = uuid4().hex
@@ -311,6 +371,14 @@ async def run_due_monitoring_goals(
         if not has_lock:
             continue
         locked += 1
+        logger.info(
+            "Acquired monitoring goal lock",
+            extra={
+                "goal_id": str(goal.id),
+                "goal_name": goal.name,
+                "lock_key": lock_key,
+            },
+        )
 
         try:
             results.append(
@@ -334,6 +402,24 @@ async def run_due_monitoring_goals(
                 key=lock_key,
                 token=token,
             )
+            logger.info(
+                "Released monitoring goal lock",
+                extra={
+                    "goal_id": str(goal.id),
+                    "goal_name": goal.name,
+                    "lock_key": lock_key,
+                },
+            )
+
+    logger.info(
+        "Active monitoring worker tick completed",
+        extra={
+            "scanned": len(goals),
+            "due": len(due_goals),
+            "locked": locked,
+            "result_count": len(results),
+        },
+    )
 
     return WorkerTickResult(
         scanned=len(goals),

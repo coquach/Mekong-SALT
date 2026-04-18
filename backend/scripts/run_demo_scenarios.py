@@ -15,8 +15,8 @@ SCENARIOS = {
     "critical-timeout-replan": {
         "title": "Critical Risk -> Pending Approval -> Timeout Auto-Reject -> Replan",
         "objective": (
-            "Send escalating sensor frames to trigger critical plan and timeout recovery "
-            "(canonical dS/m, display g/L)."
+            "Send sensor frames that drive the engine from elevated salinity into critical risk, "
+            "then show timeout recovery and replan."
         ),
         "preconditions": [
             "Backend API is running.",
@@ -34,7 +34,7 @@ SCENARIOS = {
         ],
         "steps": [
             {
-                "step": "Publish scenario sensor stream via MQTT device path (danger -> critical).",
+                "step": "Publish scenario sensor stream via MQTT device path (danger -> critical) with an extra window frame.",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan",
                 "expect": "Backend ingests device frames and active monitoring worker x? l? lifecycle theo policy hi?n c?.",
             },
@@ -63,6 +63,7 @@ SCENARIOS = {
         ],
         "highlights": [
             "Sensor scenario is the trigger point (not manual plan API).",
+            "Risk is sensor-first: salinity is the base band, while trend and fresh context can only nudge it upward.",
             "MQTT is the primary device path; HTTP is a fallback for demo/debug only.",
             "Approval-timeout policy recovers automatically.",
             "Same scenario can run with HTTP or MQTT transport for parity checks.",
@@ -71,8 +72,8 @@ SCENARIOS = {
     "fast-approve-execute": {
         "title": "Fast Approve -> Simulated Execution -> Feedback + Memory",
         "objective": (
-            "Send high-risk sensor stream, approve, and execute simulated batch end-to-end "
-            "with dual-unit salinity traces."
+            "Send a high-risk sensor stream that produces a reviewable plan, approve it, and execute "
+            "the simulated batch end-to-end with dual-unit salinity traces."
         ),
         "preconditions": [
             "Backend API is running.",
@@ -87,7 +88,7 @@ SCENARIOS = {
         ],
         "steps": [
             {
-                "step": "Publish full sensor-driven fast execution scenario.",
+                "step": "Publish full sensor-driven fast execution scenario with an extra trend frame.",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute",
                 "expect": "Backend receives the stream and the follow-up feedback probe without script-side GET polling.",
             },
@@ -101,6 +102,7 @@ SCENARIOS = {
         ],
         "highlights": [
             "Sensor feed triggers agentic planning first.",
+            "The current risk engine is sensor-first: salinity anchors the band, while trend and fresh weather/tide context only modify it.",
             "Execution and approval happen in backend/UI flow, not from the simulator script.",
             "Salinity values are shown as dS/m and equivalent g/L.",
             "Use --no-post-execute-reading if you want to disable the feedback-probe publish.",
@@ -122,7 +124,7 @@ SCENARIOS = {
         ],
         "steps": [
             {
-                "step": "Publish scenario frames for provenance drilldown.",
+                "step": "Publish scenario frames for provenance drilldown with a fuller trend window.",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json",
                 "expect": "Script returns a publish summary; provenance trace is inspected from backend state or UI.",
             },
@@ -137,11 +139,12 @@ SCENARIOS = {
         "highlights": [
             "Retrieval evidence is tied to a specific sensor-triggered planning run.",
             "Top citations/source mix can be explained to stakeholders.",
+            "The plan trace should reflect the current risk engine outputs, not a fixed salinity-only story.",
         ],
     },
     "warning-observe-recover": {
         "title": "Warning Observe -> Recovery Window",
-        "objective": "Publish a warning-level stream that stabilizes into a recovery window so the backend can demonstrate conservative posture.",
+        "objective": "Publish a warning-level stream that stays conservative under the current engine, then stabilize into a recovery window.",
         "preconditions": [
             "Backend API is running.",
             "Seed/setup data is available.",
@@ -155,7 +158,7 @@ SCENARIOS = {
         ],
         "steps": [
             {
-                "step": "Publish warning-to-recovery sensor stream via MQTT device path.",
+                "step": "Publish warning-to-recovery sensor stream via MQTT device path with an extra warning frame.",
                 "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
                 "expect": "Backend ingests the warning stream and transitions into a cautious recovery posture.",
             },
@@ -169,11 +172,12 @@ SCENARIOS = {
             {
                 "step": "Kiểm tra risk và plan sau chuỗi warning-recovery.",
                 "command": "curl http://localhost:8000/api/v1/risk/latest && curl http://localhost:8000/api/v1/plans?limit=10",
-                "expect": "Risk latest phản ánh posture cảnh giác/recovery; plan list thể hiện nhánh quan sát nếu worker tạo plan.",
+                "expect": "Risk latest phản ánh nhịp recovery đã quay về dưới warning; plan list thể hiện nhánh quan sát nếu worker tạo plan.",
             },
         ],
         "highlights": [
             "This scenario shows a conservative operational posture rather than only critical escalation.",
+            "Trend and freshness matter, but the engine still keeps salinity as the anchor band.",
             "The demo now includes both escalation and recovery patterns.",
             "MQTT remains the primary path; HTTP is a fallback for parity checks.",
         ],

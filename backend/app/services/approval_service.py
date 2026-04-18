@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from http import HTTPStatus
 from uuid import UUID
@@ -18,6 +19,9 @@ from app.repositories.approval import ApprovalRepository
 from app.schemas.approval import ApprovalRequest
 from app.services.approval.policy import resolve_approval_gate_policy
 from app.services.audit_service import write_audit_log
+
+
+logger = logging.getLogger(__name__)
 
 
 async def decide_plan(
@@ -54,6 +58,16 @@ async def decide_plan(
             code="high_risk_auto_approval_forbidden",
             message="Lifecycle auto-approval is forbidden for high-risk plans.",
         )
+
+    logger.info(
+        "Applying plan approval decision",
+        extra={
+            "plan_id": str(plan.id),
+            "decision": payload.decision.value,
+            "actor_name": actor_name,
+            "risk_level": risk_level.value if risk_level is not None else None,
+        },
+    )
 
     approval = Approval(
         plan_id=plan.id,
@@ -94,6 +108,15 @@ async def decide_plan(
     await session.commit()
     await session.refresh(approval)
     await session.refresh(plan)
+    logger.info(
+        "Plan approval persisted",
+        extra={
+            "plan_id": str(plan.id),
+            "approval_id": str(approval.id),
+            "decision": payload.decision.value,
+            "new_plan_status": plan.status.value,
+        },
+    )
     return approval, plan
 
 

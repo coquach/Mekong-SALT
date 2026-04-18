@@ -355,34 +355,34 @@ export function StrategyOrchestration() {
       return {
         label: "Chưa chọn plan",
         tone: "neutral" as const,
-        detail: "Chọn một plan để xem đầy đủ lý do nên duyệt hay nên từ chối.",
+        detail: "Chọn một kế hoạch ở bên phải để xem vì sao hệ thống đề xuất như vậy và có nên duyệt không.",
       };
     }
     if (isPlanValid === false || validationErrors.length > 0) {
       return {
         label: "Chưa nên duyệt",
         tone: "critical" as const,
-        detail: "Policy guard đang báo lỗi. Operator nên sửa plan hoặc yêu cầu agent lập lại trước khi duyệt.",
+        detail: "Kế hoạch đang có lỗi an toàn. Nên sửa hoặc yêu cầu hệ thống lập lại trước khi duyệt.",
       };
     }
     if (validationWarnings.length > 0) {
       return {
         label: "Duyệt có điều kiện",
         tone: "warning" as const,
-        detail: "Plan hợp lệ nhưng vẫn còn cảnh báo. Có thể duyệt nếu operator chấp nhận rủi ro đã nêu.",
+        detail: "Kế hoạch vẫn dùng được nhưng còn cảnh báo. Chỉ nên duyệt nếu chấp nhận rủi ro đã nêu.",
       };
     }
     if (totalEvidence < 3) {
       return {
         label: "Cân nhắc thêm bằng chứng",
         tone: "warning" as const,
-        detail: "Plan đã qua guard, nhưng dữ liệu tham chiếu còn mỏng. Nên xem thêm bằng chứng trước khi duyệt.",
+        detail: "Kế hoạch đã qua kiểm tra, nhưng bằng chứng còn ít. Nên xem thêm trước khi quyết định.",
       };
     }
     return {
       label: "Có thể duyệt",
       tone: "optimal" as const,
-      detail: "Plan có đủ ngữ cảnh, evidence và kiểm tra policy để operator cân nhắc approve.",
+      detail: "Kế hoạch đã có đủ ngữ cảnh, bằng chứng và kiểm tra an toàn để bạn cân nhắc duyệt.",
     };
   }, [isPlanValid, selectedPlan, totalEvidence, validationErrors.length, validationWarnings.length]);
   const isBootstrapping = state.loading && state.goals.length === 0 && state.plans.length === 0;
@@ -451,13 +451,39 @@ export function StrategyOrchestration() {
         />
       </div>
 
+      <Card variant="white" className={`rounded-4xl border border-slate-200 p-6 shadow-soft ${isBootstrapping ? "hidden" : ""}`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2 max-w-3xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cách đọc nhanh</p>
+            <h3 className="text-xl font-black text-mekong-navy">Màn này cho biết hệ thống đang đề xuất gì và vì sao bạn nên duyệt hoặc từ chối.</h3>
+            <p className="text-sm font-semibold leading-relaxed text-slate-600">
+              Chọn một kế hoạch đang chờ duyệt, đọc phần rủi ro và bằng chứng tham chiếu, rồi xem các bước mà hệ thống sẽ thực hiện nếu được chấp thuận.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:w-md">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">1. Chọn kế hoạch</p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">Xem kế hoạch nào đang chờ bạn quyết định.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">2. Đọc lý do</p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">Xem rủi ro, bằng chứng và cảnh báo.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">3. Quyết định</p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">Phê duyệt hoặc từ chối trước khi chạy mô phỏng.</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       <div className={`grid grid-cols-12 gap-6 ${isBootstrapping ? "hidden" : ""}`}>
         <div className="col-span-12 xl:col-span-6">
           <Card variant="white" padding="lg" className="rounded-4xl shadow-soft border border-slate-200 h-full">
             <div className="flex items-center justify-between gap-3 mb-6">
               <div className="flex items-center gap-3 text-mekong-navy">
                 <BrainCircuit size={20} />
-                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Trạng thái mục tiêu</h3>
+                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Mục tiêu đang theo dõi</h3>
               </div>
               <Badge variant="optimal" className="text-[9px]">
                 {activeGoalsCount}/{state.goals.length} đang bật
@@ -507,7 +533,7 @@ export function StrategyOrchestration() {
             <div className="flex items-center justify-between gap-3 mb-6">
               <div className="flex items-center gap-3 text-mekong-navy">
                 <Zap size={20} />
-                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Kế hoạch chờ duyệt</h3>
+                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Kế hoạch cần quyết định</h3>
               </div>
               <Badge variant="warning" className="text-[9px]">
                 {reviewablePlans.length} kế hoạch
@@ -547,7 +573,7 @@ export function StrategyOrchestration() {
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 space-y-2">
                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                          Mục tiêu
+                          Vì sao hệ thống đề xuất
                         </p>
                         <h4 className="text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {selectedPlan.objective}
@@ -567,7 +593,7 @@ export function StrategyOrchestration() {
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Rủi ro</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Rủi ro hiện tại</p>
                         <p className="mt-2 text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {getString(observationAssessment?.risk_level) ?? "Chưa rõ"}
                         </p>
@@ -577,7 +603,7 @@ export function StrategyOrchestration() {
                       </div>
 
                       <div className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Bằng chứng</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Bằng chứng tham chiếu</p>
                         <p className="mt-2 text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {totalEvidence} evidence
                         </p>
@@ -589,7 +615,7 @@ export function StrategyOrchestration() {
                       </div>
 
                       <div className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Cửa khuyến nghị</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Điểm đến khuyến nghị</p>
                         <p className="mt-2 text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {recommendedGateTarget ? getString(recommendedGateTarget.name) ?? getString(recommendedGateTarget.code) ?? "--" : "--"}
                         </p>
@@ -601,7 +627,7 @@ export function StrategyOrchestration() {
                       </div>
 
                       <div className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Policy guard</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Kiểm tra an toàn</p>
                         <p className="mt-2 text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {validationErrors.length > 0
                             ? `${validationErrors.length} lỗi`
@@ -621,10 +647,10 @@ export function StrategyOrchestration() {
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <Quote size={14} />
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Lý do thuyết phục</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Vì sao hệ thống đề xuất</p>
                         </div>
                         <p className="text-[13px] font-semibold leading-relaxed text-slate-700">
-                          {getString(observationAssessment?.rationale) ?? selectedPlan.summary}
+                          {getString(selectedPlan.approval_explanation) ?? getString(observationAssessment?.rationale) ?? selectedPlan.summary}
                         </p>
                         <p className="text-[12px] font-semibold leading-relaxed text-slate-500">
                           {getString(observationWeather?.condition_summary)
@@ -641,7 +667,7 @@ export function StrategyOrchestration() {
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <MapPinned size={14} />
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Ngữ cảnh vận hành</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Dữ liệu tham chiếu</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {topCitations.length > 0 ? (
@@ -669,7 +695,7 @@ export function StrategyOrchestration() {
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <AlertTriangle size={14} />
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Điểm cần cân nhắc</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Điểm cần chú ý</p>
                         </div>
                         <div className="space-y-2">
                           {validationErrors.length > 0 ? (
@@ -718,7 +744,7 @@ export function StrategyOrchestration() {
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <ListChecks size={14} />
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Các bước đề xuất</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Việc hệ thống sẽ làm</p>
                         </div>
                         <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
                           {planSteps.slice(0, 4).map((step, index) => {
@@ -750,7 +776,7 @@ export function StrategyOrchestration() {
                           {planSteps.length === 0 ? (
                             <EmptyState
                               title="Chưa có plan steps"
-                              description="Khi agent sinh bước thực thi, các bước sẽ hiện tại đây để operator đọc nhanh." 
+                              description="Khi hệ thống sinh ra các bước cụ thể, chúng sẽ hiện ở đây để bạn đọc nhanh." 
                             />
                           ) : null}
                         </div>
@@ -793,7 +819,7 @@ export function StrategyOrchestration() {
             <div className="mb-5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 text-white">
                 <Terminal size={19} />
-                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Dấu vết lần chạy</h3>
+                <h3 className="text-sm font-black uppercase tracking-[0.18em]">Dấu vết suy luận</h3>
               </div>
               <Badge className="bg-white/10 text-slate-200 border-white/10 text-[9px]">{latestRuns.length} runs</Badge>
             </div>
@@ -832,7 +858,7 @@ export function StrategyOrchestration() {
       <Card variant="white" className="rounded-4xl border border-slate-200 p-6 shadow-soft">
         <div className="flex items-center gap-3 text-mekong-navy">
           <HistoryIcon size={20} />
-          <h3 className="text-sm font-black uppercase tracking-[0.18em]">Tóm tắt lịch sử kế hoạch</h3>
+        <h3 className="text-sm font-black uppercase tracking-[0.18em]">Kế hoạch gần đây</h3>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           {state.plans.slice(0, 8).map((plan) => (
@@ -859,7 +885,7 @@ export function StrategyOrchestration() {
         <div className="mt-4 pt-4 border-t border-slate-200">
           <Button variant="navy" className="h-11 rounded-xl px-4" disabled>
             <CheckCircle2 size={16} />
-            Trình chỉnh sửa goal (sắp mở)
+            Chỉnh mục tiêu (sắp mở)
           </Button>
         </div>
       </Card>

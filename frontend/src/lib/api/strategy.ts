@@ -54,6 +54,7 @@ export interface ActionPlanRead {
   assumptions: Record<string, unknown> | null;
   plan_steps: Array<Record<string, unknown>>;
   validation_result: Record<string, unknown> | null;
+  approval_explanation: string | null;
 }
 
 export interface ApprovalRead {

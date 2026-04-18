@@ -14,7 +14,9 @@ def test_build_plan_prompt_requests_vietnamese_human_readable_fields() -> None:
         context={"region": {"code": "TG-01"}},
     )
 
+    assert "Use only information present in the Context." in prompt
     assert "Return all human-readable fields in Vietnamese" in prompt
+    assert "Prefer a direct mitigation step when risk is danger or critical." in prompt
     assert "Keep JSON keys and action_type values in English." in prompt
 
 

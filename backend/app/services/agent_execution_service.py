@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
+import logging
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -43,6 +44,9 @@ from app.services.db import append_domain_event_and_dispatch
 from app.services.notify import get_domain_event_notification_dispatcher
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(slots=True)
 class SimulatedExecutionBundle:
     """Aggregate result returned after simulated execution."""
@@ -63,6 +67,14 @@ async def execute_simulated_plan(
     actor_name: str = "operator",
 ) -> SimulatedExecutionBundle:
     """Execute a validated plan in simulated mode only."""
+    logger.info(
+        "Starting simulated execution",
+        extra={
+            "action_plan_id": str(payload.action_plan_id),
+            "idempotency_key": payload.idempotency_key,
+            "actor_name": actor_name,
+        },
+    )
     plan_repo = ActionPlanRepository(session)
     batch_repo = ExecutionBatchRepository(session)
     execution_repo = ActionExecutionRepository(session)
@@ -90,6 +102,14 @@ async def execute_simulated_plan(
             decision_logs = await decision_repo.list_for_execution_ids(
                 [execution.id for execution in executions]
             ) if executions else []
+            logger.info(
+                "Reused simulated execution batch from idempotency key",
+                extra={
+                    "action_plan_id": str(payload.action_plan_id),
+                    "execution_batch_id": str(existing_batch.id),
+                    "idempotency_key": payload.idempotency_key,
+                },
+            )
             feedback = FeedbackEvaluation(
                 outcome_class="inconclusive",
                 status="insufficient_new_observation",
@@ -116,6 +136,14 @@ async def execute_simulated_plan(
         )
 
     steps = validate_execution_plan(plan)
+    logger.info(
+        "Validated plan for simulated execution",
+        extra={
+            "action_plan_id": str(plan.id),
+            "step_count": len(steps),
+            "incident_id": str(plan.incident_id) if plan.incident_id is not None else None,
+        },
+    )
     now = datetime.now(UTC)
     batch = ExecutionBatch(
         plan_id=plan.id,
@@ -137,6 +165,16 @@ async def execute_simulated_plan(
         plan.incident.status = IncidentStatus.EXECUTING
 
     for step in steps:
+        logger.info(
+            "Executing simulated plan step",
+            extra={
+                "action_plan_id": str(plan.id),
+                "execution_batch_id": str(batch.id),
+                "step_index": step.step_index,
+                "action_type": step.action_type.value,
+                "target_gate_code": step.target_gate_code,
+            },
+        )
         result_summary = _build_execution_summary(step.action_type)
         result_payload: dict[str, object] = {
             "title": step.title,
@@ -183,32 +221,6 @@ async def execute_simulated_plan(
         )
         await execution_repo.add(execution)
         executions.append(execution)
-
-        if step.action_type in {ActionType.SEND_ALERT, ActionType.NOTIFY_FARMERS}:
-            await append_domain_event_and_dispatch(
-                session,
-                event_type="notification.execution_alert",
-                source="execution-service",
-                summary="Phản ứng độ mặn Mekong-SALT",
-                payload={
-                    "event": "execution_alert",
-                    "subject": "Phản ứng độ mặn Mekong-SALT",
-                    "message": step.instructions,
-                    "execution_id": str(execution.id),
-                    "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
-                    "details": {
-                        "action_plan_id": str(plan.id),
-                        "execution_batch_id": str(batch.id),
-                    },
-                },
-                aggregate_type="incident" if plan.incident_id is not None else "action_plan",
-                aggregate_id=plan.incident_id if plan.incident_id is not None else plan.id,
-                region_id=plan.region_id,
-                incident_id=plan.incident_id,
-                action_plan_id=plan.id,
-                execution_batch_id=batch.id,
-                dispatcher=get_domain_event_notification_dispatcher(),
-            )
 
         decision_log = build_execution_decision_log(
             region_id=plan.region_id,
@@ -294,27 +306,18 @@ async def execute_simulated_plan(
         session,
         event_type="notification.execution_summary",
         source="execution-service",
-        summary=f"Tổng kết thực thi: {feedback.outcome_class}",
+        summary="Tổng kết mô phỏng đã sẵn sàng.",
         payload={
             "event": "execution_summary",
-            "subject": f"Tổng kết thực thi: {feedback.outcome_class}",
+            "subject": "Thông báo kết quả mô phỏng",
             "message": _build_execution_summary_notification_message(
                 plan=plan,
                 feedback=feedback,
                 executions=executions,
             ),
-            "execution_id": str(executions[-1].id) if executions else None,
-            "channels": ["dashboard"],
             "details": {
-                "action_plan_id": str(plan.id),
-                "execution_batch_id": str(batch.id),
-                "execution_count": len(executions),
                 "outcome_class": feedback.outcome_class,
                 "replan_recommended": feedback.replan_recommended,
-                "assessment_summary": (
-                    plan.risk_assessment.summary if plan.risk_assessment is not None else None
-                ),
-                "plan_summary": plan.summary,
                 "action_summary": _summarize_execution_steps(executions),
             },
         },
@@ -392,6 +395,17 @@ async def execute_simulated_plan(
     await session.refresh(batch)
     await session.refresh(plan)
 
+    logger.info(
+        "Simulated execution completed",
+        extra={
+            "action_plan_id": str(plan.id),
+            "execution_batch_id": str(batch.id),
+            "execution_count": len(executions),
+            "outcome_class": feedback.outcome_class,
+            "plan_status": plan.status.value,
+        },
+    )
+
     return SimulatedExecutionBundle(
         batch=batch,
         plan=plan,
@@ -467,7 +481,7 @@ def _summarize_execution_steps(executions: list[ActionExecution], max_items: int
     steps: list[str] = []
     for execution in executions[:max_items]:
         summary = execution.result_summary or execution.action_type.value
-        steps.append(str(summary).strip())
+        steps.append(str(summary).strip().rstrip(".。!！?？"))
     return " -> ".join(step for step in steps if step)
 
 
@@ -477,17 +491,72 @@ def _build_execution_summary_notification_message(
     feedback: FeedbackEvaluation,
     executions: list[ActionExecution],
 ) -> str:
-    """Build the single dashboard notification summarizing the final outcome."""
-    assessment_summary = (
-        plan.risk_assessment.summary if plan.risk_assessment is not None else "Chưa có tóm tắt đánh giá rủi ro."
-    )
+    """Build a short citizen-friendly notification for the execution result."""
+    outcome_label = {
+        "success": "thành công",
+        "partial_success": "thành công một phần",
+        "failed_execution": "thực thi thất bại",
+        "failed_plan": "kế hoạch thất bại",
+        "inconclusive": "chưa đủ dữ liệu để kết luận",
+    }.get(feedback.outcome_class, feedback.outcome_class)
     action_summary = _summarize_execution_steps(executions)
-    plan_summary = plan.summary.strip() if plan.summary.strip() else "Chưa có mô tả kế hoạch."
+    effectiveness_reason = _build_execution_effectiveness_reason(feedback=feedback, executions=executions)
     parts = [
-        f"Kế hoạch {plan.status.value} cho mục tiêu '{plan.objective}'.",
-        f"Đánh giá sự việc: {assessment_summary}",
-        f"Phương án xử lý: {plan_summary}",
-        f"Hành động đã làm: {action_summary or 'Chưa có bước thực thi.'}",
-        f"Kết quả cuối: {feedback.summary}",
+        f"Hệ thống đã hoàn tất mô phỏng cho mục tiêu: {plan.objective}.",
+        f"Kết quả mô phỏng: {outcome_label}.",
     ]
+    if action_summary:
+        parts.append(f"Các bước đã thực hiện: {action_summary}.")
+    if effectiveness_reason:
+        parts.append(effectiveness_reason)
+    if feedback.replan_recommended:
+        parts.append("Hệ thống đề xuất xem xét lập lại kế hoạch để an toàn hơn.")
+    parts.append("Nếu cần, bạn có thể mở bảng điều khiển để xem chi tiết.")
     return " ".join(parts)
+
+
+def _build_execution_effectiveness_reason(
+    *,
+    feedback: FeedbackEvaluation,
+    executions: list[ActionExecution],
+) -> str:
+    """Explain why the executed plan is considered effective in plain language."""
+    executed_step_count = len(executions)
+    action_summary = _summarize_execution_steps(executions)
+
+    if feedback.outcome_class == "success":
+        return (
+            f"Điều này cho thấy phương án mô phỏng đang đi đúng hướng, vì hệ thống đã thực hiện đủ {executed_step_count} bước chính "
+            f"và duy trì chuỗi hành động theo đúng trình tự. Cách làm này giúp phản ứng sớm hơn và giảm nguy cơ để tình trạng xấu lan rộng."
+        )
+
+    if feedback.outcome_class == "partial_success":
+        return (
+            "Kết quả này cho thấy hệ thống đã xử lý được một phần vấn đề, tức là các bước quan trọng đã đi đúng hướng nhưng vẫn còn điểm cần tối ưu. "
+            "Điều đó hữu ích vì nó giúp giảm một phần áp lực vận hành trong khi vẫn để lại không gian điều chỉnh an toàn hơn."
+        )
+
+    if feedback.outcome_class == "inconclusive":
+        if action_summary:
+            return (
+                f"Mặc dù kết quả chưa đủ để kết luận, hệ thống vẫn đã hoàn thành chuỗi hành động chính là {action_summary}. "
+                "Điều này chứng minh quy trình phản ứng đã chạy đến cuối luồng, nhưng cần thêm dữ liệu quan sát để đánh giá hiệu quả thực tế chính xác hơn."
+            )
+        return (
+            "Mặc dù kết quả chưa đủ để kết luận, hệ thống vẫn đã chạy xong luồng mô phỏng cần thiết. "
+            "Điều này cho thấy quy trình phản ứng đã hoạt động, nhưng cần thêm dữ liệu để chứng minh hiệu quả cuối cùng."
+        )
+
+    if feedback.outcome_class == "failed_execution":
+        return (
+            "Kết quả này cho thấy phương án hiện tại chưa vận hành như mong muốn, vì vậy cần xem lại điểm nghẽn trước khi áp dụng rộng hơn. "
+            "Dù vậy, việc phát hiện sớm vấn đề cũng có giá trị vì nó giúp tránh triển khai một phương án chưa ổn định ra thực tế."
+        )
+
+    if feedback.outcome_class == "failed_plan":
+        return (
+            "Kế hoạch chưa đạt yêu cầu ở bước đánh giá, điều này giúp hệ thống chặn phương án chưa đủ an toàn trước khi đi xa hơn. "
+            "Cách này vẫn có giá trị vì nó bảo vệ người dùng khỏi một phương án chưa chắc chắn."
+        )
+
+    return None

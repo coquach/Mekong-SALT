@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from app.services.notify.summary import build_human_summary
+
 
 DEFAULT_ZALO_MESSAGE_ENDPOINT = "https://openapi.zalo.me/v3.0/oa/message/cs"
 DEFAULT_ZALO_TEMPLATE_MESSAGE_ENDPOINT = "https://openapi.zalo.me/v3.0/oa/message/template"
@@ -84,11 +86,13 @@ def build_zalo_text(subject: str | None, message: str, payload: dict[str, Any] |
             extras.append(f"Trạm: {payload['station_code']}")
         if payload.get("region_code"):
             extras.append(f"Vùng: {payload['region_code']}")
-        if payload.get("summary") and payload.get("summary") != message:
-            extras.append(str(payload["summary"]).strip())
+        human_summary = build_human_summary(payload, message)
+        if human_summary:
+            extras.append(f"Diễn giải ngắn: {human_summary}")
     if extras:
         lines.append("")
-        lines.extend(extras)
+        lines.append("Chi tiết:")
+        lines.extend(f"- {item}" for item in extras)
 
     body = "\n".join(line for line in lines if line)
     return body[:900]

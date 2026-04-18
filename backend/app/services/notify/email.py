@@ -10,6 +10,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Any
 
+from app.services.notify.summary import build_human_summary
 from app.services.notify.zalo import (
     _localize_event_label,
     _localize_severity_label,
@@ -38,8 +39,8 @@ def build_email_text(subject: str | None, message: str, payload: dict[str, Any] 
     """Build a compact Vietnamese text body for email delivery."""
     lines: list[str] = []
     if subject:
-        lines.append(subject.strip())
-    lines.append(message.strip())
+        lines.append(f"Tiêu đề: {subject.strip()}")
+    lines.append(f"Nội dung: {message.strip()}")
 
     extras: list[str] = []
     if payload:
@@ -57,11 +58,21 @@ def build_email_text(subject: str | None, message: str, payload: dict[str, Any] 
         if payload.get("region_code"):
             extras.append(f"Vùng: {payload['region_code']}")
         if payload.get("summary") and payload.get("summary") != message:
-            extras.append(str(payload["summary"]).strip())
+            extras.append(f"Tóm tắt: {str(payload['summary']).strip()}")
+        if payload.get("plan_summary"):
+            extras.append(f"Tóm tắt kế hoạch: {str(payload['plan_summary']).strip()}")
+        if payload.get("assessment_summary"):
+            extras.append(f"Tóm tắt đánh giá: {str(payload['assessment_summary']).strip()}")
+        if payload.get("action_summary"):
+            extras.append(f"Tóm lược hành động: {str(payload['action_summary']).strip()}")
+        human_summary = build_human_summary(payload, message)
+        if human_summary:
+            extras.append(f"Diễn giải ngắn: {human_summary}")
 
     if extras:
         lines.append("")
-        lines.extend(extras)
+        lines.append("Chi tiết:")
+        lines.extend(f"- {item}" for item in extras)
 
     body = "\n".join(line for line in lines if line)
     return body[:4_000]

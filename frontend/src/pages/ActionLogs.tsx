@@ -263,15 +263,15 @@ export function ActionLogs() {
       <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
-            Trung tâm can thiệp & học tập
+            Nhật ký thực thi
           </h1>
           <p className="text-base text-mekong-slate font-medium max-w-3xl leading-relaxed">
-            Theo dõi lô chạy, nhật ký hành động, outcome và vòng đời feedback từ backend.
+            Xem hệ thống đã làm gì sau khi một kế hoạch được duyệt, kết quả ra sao và phản hồi nào được ghi nhận.
           </p>
         </div>
           <div className="flex gap-4 w-full lg:w-auto">
           <Button variant="outline" className="flex-1 lg:flex-none h-14 px-8 border-slate-200 bg-white">
-            <Share2 size={18} className="mr-2" /> Chia sẻ báo cáo
+            <Share2 size={18} className="mr-2" /> Chia sẻ
           </Button>
           <Button
             variant="navy"
@@ -280,10 +280,30 @@ export function ActionLogs() {
             disabled={simulateBusy}
           >
             <Download size={18} className="mr-2" />
-            {simulateBusy ? "Đang mô phỏng..." : "Mô phỏng plan đã duyệt"}
+            {simulateBusy ? "Đang chạy..." : "Chạy kế hoạch đã duyệt"}
           </Button>
         </div>
       </div>
+
+      <Card variant="white" className={`rounded-[32px] border border-slate-200 p-5 shadow-soft ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cách đọc nhanh</p>
+            <h3 className="text-lg font-black text-mekong-navy">Màn này cho biết mỗi lần hệ thống đã làm gì và kết quả cuối cùng ra sao.</h3>
+            <p className="text-sm font-semibold leading-relaxed text-slate-600">
+              Mỗi thẻ bên phải là một lần chạy. Bảng bên dưới là từng bước nhỏ trong lần chạy đó. Nếu muốn xem phản hồi sau chạy, nhìn card feedback ở bên trái.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">1. Phiên chạy</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700">Một lần hệ thống xử lý một kế hoạch.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">2. Nhật ký bước</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700">Từng hành động trong lần chạy đó.</p>
+          </div>
+        </div>
+      </Card>
 
       <div className={`grid grid-cols-12 gap-8 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="col-span-12 lg:col-span-4 space-y-8">
@@ -294,11 +314,11 @@ export function ActionLogs() {
               </div>
               <div className="space-y-4">
                 <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
-                Feedback mới nhất
-              </p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
+                    Kết quả sau chạy
+                  </p>
                   <p className="text-[15px] font-bold text-mekong-navy leading-relaxed italic">
-                    {state.feedback?.evaluation.summary ?? "Chưa có feedback lifecycle cho batch gần nhất."}
+                    {state.feedback?.evaluation.summary ?? "Chưa có kết quả phản hồi cho phiên chạy gần nhất."}
                   </p>
                 </div>
                 <div className="flex justify-between items-center pt-2">
@@ -314,7 +334,7 @@ export function ActionLogs() {
                   disabled={!latestBatch || feedbackBusy}
                   onClick={() => void handleEvaluateFeedback()}
                 >
-                  {feedbackBusy ? "Đang đánh giá..." : "Đánh giá feedback"}
+                  {feedbackBusy ? "Đang cập nhật..." : "Xem kết quả sau chạy"}
                 </button>
               </div>
             </div>
@@ -323,19 +343,19 @@ export function ActionLogs() {
           <Card variant="navy" padding="none" className="bg-mekong-navy text-white rounded-[40px] overflow-hidden min-h-[220px] flex flex-col p-10 shadow-2xl relative border border-white/5">
             <div className="relative z-10 space-y-2 flex-1">
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">
-                Tổng quan nhanh
+                Tóm tắt nhanh
               </p>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Lô chạy</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Phiên chạy</span>
                   <span className="text-2xl font-black text-mekong-cyan">{state.batches.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Nhật ký</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Bước thực thi</span>
                   <span className="text-2xl font-black text-mekong-cyan">{state.actionLogs.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Thành công</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Bước thành công</span>
                   <span className="text-2xl font-black text-mekong-cyan">{successfulActions}</span>
                 </div>
               </div>
@@ -352,10 +372,10 @@ export function ActionLogs() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tighter leading-none">
-                    Các lô chạy gần đây
+                    Các phiên chạy gần đây
                   </h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                    Lô gần nhất: {latestBatch ? latestBatch.id.slice(0, 8) : "--"}
+                    Phiên gần nhất: {latestBatch ? latestBatch.id.slice(0, 8) : "--"}
                   </p>
                 </div>
               </div>
@@ -373,17 +393,17 @@ export function ActionLogs() {
                   <div>
                     <div className="flex justify-between items-start mb-5">
                       <h5 className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em]">
-                        Batch #{batch.id.slice(0, 8)}
+                        Phiên #{batch.id.slice(0, 8)}
                       </h5>
                       <Badge variant="navy" className="text-[9px] uppercase">
                         {batch.status}
                       </Badge>
                     </div>
                     <p className="text-[13px] font-semibold text-slate-600">
-                      Plan: {batch.plan_id.slice(0, 8)} · Steps: {batch.step_count}
+                      Kế hoạch: {batch.plan_id.slice(0, 8)} · Số bước: {batch.step_count}
                     </p>
                     <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                      Start: {formatDateTimeUtil(batch.started_at)}
+                      Bắt đầu: {formatDateTimeUtil(batch.started_at)}
                     </p>
                   </div>
                 </div>
@@ -395,23 +415,23 @@ export function ActionLogs() {
 
       <section className={`bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="bg-mekong-navy px-10 py-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
-                <ClipboardList size={26} />
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
+                  <ClipboardList size={26} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Chi tiết từng bước</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 opacity-80">
+                    Nguồn: dữ liệu nhật ký từ backend
+                  </p>
+                </div>
               </div>
-              <div>
-              <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Lịch sử nhật ký hành động chi tiết</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 opacity-80">
-                Nguồn: GET /api/v1/actions/logs
-              </p>
-            </div>
-          </div>
           <div className="flex gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input
                 type="text"
-                placeholder="Tìm kiếm action/status..."
+                placeholder="Tìm theo hành động, trạng thái, kết quả..."
                 value={state.searchText}
                 onChange={(event) =>
                   setState((previous) => ({ ...previous, searchText: event.target.value }))
@@ -429,11 +449,11 @@ export function ActionLogs() {
           <table className="w-full text-left border-collapse">
             <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Thời gian</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Loại hành động</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Thời điểm</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Hành động</th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kết quả</th>
                 <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Dấu vết</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Có phản hồi?</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -487,12 +507,12 @@ export function ActionLogs() {
           </table>
         </div>
 
-        <div className="bg-slate-50 px-10 py-6 flex justify-between items-center border-t border-slate-100">
+            <div className="bg-slate-50 px-10 py-6 flex justify-between items-center border-t border-slate-100">
           <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-            Hiển thị {Math.min(filteredLogs.length, 20)} / {filteredLogs.length} nhật ký hành động
+            Hiển thị {Math.min(filteredLogs.length, 20)} / {filteredLogs.length} bước
           </span>
           <div className="flex items-center gap-2 text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-            Kết quả: {state.outcomes.length} <ArrowUpRight size={12} />
+            Kết quả đã ghi: {state.outcomes.length} <ArrowUpRight size={12} />
           </div>
         </div>
       </section>

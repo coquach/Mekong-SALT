@@ -1,4 +1,4 @@
-# Hướng Dẫn Từ Seed Đến Simulate
+﻿# Hướng Dẫn Từ Seed Đến Simulate
 
 Tài liệu này mô tả đường chạy demo chuẩn cho backend Mekong-SALT, theo thứ tự:
 
@@ -17,6 +17,7 @@ Nếu cần chạy nhanh theo thứ tự chuẩn, dùng đúng các lệnh sau t
 ```bash
 docker compose up -d --build
 cd backend
+set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mekong_salt
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe scripts/seed.py
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
@@ -26,6 +27,8 @@ curl http://localhost:8000/api/v1/execution-batches?limit=10
 curl http://localhost:8000/api/v1/action-outcomes?limit=10
 curl http://localhost:8000/api/v1/agent/runs?limit=10
 ```
+
+Lưu ý quan trọng: trong cấu hình local Docker Compose, backend container dùng Postgres nội bộ của compose, còn `backend/.env` trên host đang trỏ sang Neon. Vì vậy, nếu bạn chạy migrate/seed/ingest bằng `backend/.venv`, hãy override `DATABASE_URL` sang `postgresql://postgres:postgres@localhost:5432/mekong_salt` trước khi chạy các lệnh demo. Nếu không, host script sẽ ghi vào DB khác và backend/API trong compose sẽ không thấy dữ liệu.
 
 Nếu muốn chạy kịch bản timeout auto-reject thay vì fast approve:
 
@@ -117,6 +120,8 @@ python -m alembic upgrade head
 
 Seed hiện tại có cơ chế reset demo region trước khi nạp lại, nên mỗi lần chạy sẽ đưa dữ liệu demo về trạng thái sạch.
 
+Nếu bạn đang chạy demo local bằng Docker Compose, nhớ set `DATABASE_URL` sang Postgres của compose trước khi seed.
+
 ```bash
 ./.venv/Scripts/python.exe scripts/seed.py
 ```
@@ -132,6 +137,8 @@ Nếu bạn chỉ muốn seed lại dữ liệu và không chạy toàn bộ set
 ## 5) Nạp RAG sample corpus
 
 RAG sample corpus cần có trước khi chạy scenario liên quan đến provenance.
+
+Nếu môi trường local chưa có Vertex AI credentials, bước ingest có thể báo lỗi embedding. Trong trường hợp đó, core demo vẫn chạy được, nhưng scenario provenance / RAG drilldown chỉ đầy đủ khi corpus đã được ingest thành công trong đúng database của compose.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
@@ -153,6 +160,8 @@ Script này sẽ:
 - chạy migrate,
 - seed lại dữ liệu demo,
 - ingest RAG sample corpus.
+
+Script này cũng cần `DATABASE_URL` trỏ về Postgres của compose nếu bạn chạy từ host.
 
 Các flag hữu ích:
 
@@ -187,10 +196,10 @@ Mỗi scenario hiện được chia thành 3 phần:
 
 | Scenario | Khi nào dùng | Lệnh chính | Điểm nhấn demo |
 |---|---|---|---|
-| `fast-approve-execute` | Muốn thể hiện luồng chuẩn end-to-end trong thời gian ngắn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Dữ liệu vào, approval, execution mô phỏng, feedback |
-| `critical-timeout-replan` | Muốn thể hiện cơ chế auto-reject và lập plan mới | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Escalation lên critical, timeout, replan |
-| `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, quan sát, recovery window |
-| `rag-provenance-drilldown` | Muốn soi trace truy hồi và nguồn tri thức | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json` | Citations, knowledge context, trace provenance |
+| `fast-approve-execute` | Muốn thể hiện luồng chuẩn end-to-end trong thời gian ngắn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Salinity nền, trend tăng, approval, execution mô phỏng, feedback |
+| `critical-timeout-replan` | Muốn thể hiện cơ chế auto-reject và lập plan mới | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Escalation lên critical theo sensor-first engine, nhiều nhịp trend hơn, timeout, replan |
+| `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, trend ổn định qua nhiều nhịp, recovery window |
+| `rag-provenance-drilldown` | Muốn soi trace truy hồi và nguồn tri thức | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json` | Citations, knowledge context, trace provenance, trend window đầy hơn |
 
 ## 8) Chạy simulate
 
@@ -206,6 +215,7 @@ Scenario dễ demo nhất là `fast-approve-execute`:
 
 - sensor frames được bắn theo MQTT,
 - plan được tạo từ ingest thật,
+- risk engine bám salinity nền, trend gần đây qua nhiều frame và weather/tide mới,
 - script chờ plan pending_approval,
 - operator duyệt plan qua API approval,
 - backend simulate execution batch,
@@ -219,7 +229,8 @@ Scenario dễ demo nhất là `fast-approve-execute`:
 
 Scenario này dùng để demo:
 
-- salinity leo thang,
+- salinity leo thang qua band danger/critical,
+- thêm một nhịp trung gian để trend window ổn định hơn trước khi chạm critical,
 - plan vào trạng thái `pending_approval`,
 - timeout tự chuyển sang reject,
 - hệ thống tạo plan mới cho nhịp tiếp theo.
@@ -245,6 +256,7 @@ Scenario này dùng để xem:
 Scenario này dùng để demo:
 
 - mức cảnh báo trung gian thay vì chỉ critical escalation,
+- thêm một frame warning nữa để window trend rõ hơn,
 - posture quan sát thận trọng trước khi phục hồi,
 - luồng recovery window và rule quyết định bảo thủ,
 - hành vi fallback HTTP khi MQTT broker không sẵn sàng.
@@ -399,3 +411,4 @@ Một cách đọc đơn giản:
 - `trend` chỉ làm xấu thêm.
 - `external context` chỉ khuếch đại.
 - `mới nhất` thắng, không phải `mặn nhất`.
+

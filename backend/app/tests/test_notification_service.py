@@ -7,8 +7,9 @@ from pydantic import SecretStr
 
 from app.models.enums import NotificationChannel, NotificationStatus
 from app.schemas.notification import NotificationCreate
-from app.services.notification_service import create_notification
-from app.services.notify.email import send_email_message
+from app.services.notification_service import create_notification, create_operational_notifications
+from app.services.agent_execution_service import _build_execution_summary_notification_message
+from app.services.notify.email import build_email_text, send_email_message
 from app.services.notify.zalo import ZaloDeliveryResult, build_zalo_template_data, build_zalo_text
 
 
@@ -238,8 +239,10 @@ async def test_send_email_message_builds_and_sends_plain_text_email(monkeypatch)
     assert smtp.login_args == ("ops@example.test", "smtp-secret")
     assert smtp.sent_message["To"] == "farmer@example.test"
     assert smtp.sent_message["From"] == "ops@example.test"
-    assert "Độ mặn đã vượt ngưỡng." in smtp.sent_message.get_content()
+    assert "Tiêu đề: Cảnh báo mặn" in smtp.sent_message.get_content()
+    assert "Nội dung: Độ mặn đã vượt ngưỡng." in smtp.sent_message.get_content()
     assert "Sự kiện: cảnh báo rủi ro" in smtp.sent_message.get_content()
+    assert "Chi tiết:" in smtp.sent_message.get_content()
 
 
 def test_build_zalo_template_data_localizes_common_labels():
@@ -264,3 +267,123 @@ def test_build_zalo_text_localizes_common_labels():
     assert "Sự kiện: cảnh báo rủi ro" in text
     assert "Mức độ: khẩn cấp" in text
     assert "Trạm: TG-01" in text
+
+
+def test_build_email_text_humanizes_execution_summary():
+    text = build_email_text(
+        "Tổng kết thực thi",
+        "Tổng kết thực thi: success",
+        payload={
+            "event": "execution_summary",
+            "outcome_class": "success",
+            "action_summary": "Đã đóng cống mô phỏng và dừng bơm",
+            "action_plan_id": "plan-123",
+            "execution_batch_id": "batch-456",
+            "replan_recommended": False,
+        },
+    )
+
+    assert "Diễn giải ngắn: Kết quả mô phỏng: thành công." in text
+    assert "Các bước chính: Đã đóng cống mô phỏng và dừng bơm." in text
+    assert "Điều này cho thấy hệ thống đã phản ứng đúng trình tự" in text
+    assert "plan-123" not in text
+    assert "batch-456" not in text
+
+
+def test_build_zalo_text_humanizes_execution_summary():
+    text = build_zalo_text(
+        "Tổng kết thực thi",
+        "Tổng kết thực thi: success",
+        payload={
+            "event": "execution_summary",
+            "outcome_class": "success",
+            "action_summary": "Đã đóng cống mô phỏng và dừng bơm",
+            "replan_recommended": False,
+        },
+    )
+
+    assert "Diễn giải ngắn: Kết quả mô phỏng: thành công." in text
+    assert "Các bước chính: Đã đóng cống mô phỏng và dừng bơm." in text
+    assert "Điều này cho thấy hệ thống đã phản ứng đúng trình tự" in text
+
+
+def test_execution_summary_message_is_plain_language():
+    message = _build_execution_summary_notification_message(
+        plan=SimpleNamespace(objective="Bảo vệ chất lượng nước tưới"),
+        feedback=SimpleNamespace(outcome_class="success", replan_recommended=False),
+        executions=[
+            SimpleNamespace(result_summary="Đã chấp nhận lệnh đóng cống mô phỏng."),
+            SimpleNamespace(result_summary="Đã gửi cảnh báo mô phỏng tới các bên liên quan."),
+        ],
+    )
+
+    assert message.startswith("Hệ thống đã hoàn tất mô phỏng")
+    assert "Kết quả mô phỏng: thành công." in message
+    assert "Các bước đã thực hiện:" in message
+    assert "Đánh giá sự việc" not in message
+    assert "Phương án xử lý" not in message
+    assert "Kế hoạch" not in message
+
+
+@pytest.mark.asyncio
+async def test_create_notification_skips_duplicate_dedupe_key(
+    db_session,
+    monkeypatch,
+):
+    send_count = 0
+
+    async def fake_send_email_message(**kwargs):
+        nonlocal send_count
+        send_count += 1
+        return SimpleNamespace(
+            ok=True,
+            message_id="<msg-dup>",
+            smtp_response="sent",
+            error_message=None,
+        )
+
+    fake_settings = SimpleNamespace(
+        email_notifications_enabled=True,
+        email_smtp_host="smtp.example.test",
+        email_smtp_port=587,
+        email_smtp_username="ops@example.test",
+        email_smtp_password=SecretStr("smtp-secret"),
+        email_from_address="ops@example.test",
+        email_use_tls=True,
+        email_use_ssl=False,
+        email_timeout_seconds=7,
+        zalo_notifications_enabled=False,
+    )
+
+    monkeypatch.setattr("app.services.notification_service.get_settings", lambda: fake_settings)
+    monkeypatch.setattr(
+        "app.services.notification_service.send_email_message",
+        fake_send_email_message,
+    )
+
+    first = await create_notification(
+        db_session,
+        NotificationCreate(
+            channel=NotificationChannel.EMAIL_MOCK,
+            recipient="ops@example.test",
+            subject="Cảnh báo mặn tăng",
+            message="Độ mặn đã vượt ngưỡng cảnh báo.",
+            payload={"event": "risk_alert", "dedupe_key": "execution-summary-001"},
+        ),
+    )
+    await db_session.commit()
+
+    second = await create_notification(
+        db_session,
+        NotificationCreate(
+            channel=NotificationChannel.EMAIL_MOCK,
+            recipient="ops@example.test",
+            subject="Cảnh báo mặn tăng",
+            message="Độ mặn đã vượt ngưỡng cảnh báo.",
+            payload={"event": "risk_alert", "dedupe_key": "execution-summary-001"},
+        ),
+    )
+    await db_session.commit()
+
+    assert send_count == 1
+    assert first.id == second.id

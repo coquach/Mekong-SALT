@@ -113,7 +113,7 @@ For hackathon demo, prefer MQTT as the primary device path and keep HTTP only as
 
 The demo story should be presented as:
 
-device/gateway -> MQTT broker -> backend worker -> shared ingest service -> risk/plan/approval/execution -> dashboard
+device/gateway -> MQTT broker -> backend worker -> shared ingest service -> sensor-first risk engine -> plan/approval/execution -> dashboard
 
 Demo UI (Gradio control center):
 
@@ -130,6 +130,8 @@ From the repository root:
 ```bash
 docker compose up -d --build
 ```
+
+If you run `alembic`, `seed.py`, or `run_demo_simulation.py` from the host against this compose stack, override `DATABASE_URL` to `postgresql://postgres:postgres@localhost:5432/mekong_salt` first. The checked-in `backend/.env` points to Neon, so without the override the host scripts will write to a different database than the docker backend.
 
 ## Apply migrations
 
@@ -154,10 +156,10 @@ curl http://localhost:8000/api/v1/health
 ## Current Orchestration Flow
 
 1. Observe: ingest and monitor readings (`/sensors/ingest`, `/goals/*`, worker tick).
-2. Assess risk: deterministic risk evaluation and incident decision.
-3. Retrieve context (RAG): gather SOP/threshold/similar-case evidence before drafting.
+2. Assess risk: deterministic sensor-first evaluation with salinity band, trend, freshness, and external modifiers.
+3. Retrieve context (RAG): gather SOP/guideline/similar-case evidence before drafting.
 4. Generate AI plan (Vertex Gemini) and validate plan with deterministic policy rules.
-5. Classify risk and branch approval gate: high risk waits for human decision, low risk may auto-approve.
+5. Classify risk and branch approval gate: high risk waits for human decision, low or moderate risk may auto-approve.
 6. Execute simulated actions and emit milestone notifications.
 7. Evaluate outcome from post-action observations and persist memory case evidence for re-planning.
 8. Stream operational updates via dashboard SSE + durable domain event cursor.

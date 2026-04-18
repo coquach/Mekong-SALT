@@ -42,7 +42,10 @@ class ActionPlanRepository(AsyncRepository[ActionPlan]):
     async def list_recent(self, *, limit: int = 100) -> list[ActionPlan]:
         """Return recent action plans."""
         result = await self.session.scalars(
-            select(ActionPlan).order_by(desc(ActionPlan.created_at)).limit(limit)
+            select(ActionPlan)
+            .options(selectinload(ActionPlan.risk_assessment))
+            .order_by(desc(ActionPlan.created_at))
+            .limit(limit)
         )
         return list(result.all())
 

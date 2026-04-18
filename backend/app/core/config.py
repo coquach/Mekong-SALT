@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     vertex_ai_project: str | None = None
     vertex_ai_location: str = "us-central1"
     gemini_api_key: SecretStr | None = None
-    gemini_model: Literal["gemini-2.5-flash"] = "gemini-2.5-flash"
+    gemini_model: Literal["gemini-2.5-pro"] = "gemini-2.5-pro"
     rag_use_vertex_vector_search: bool = True
     rag_enable_local_fallback: bool = True
     rag_static_corpus_provider: Literal["vector_search", "vertex_rag_engine_adapter"] = "vector_search"
@@ -285,8 +285,8 @@ class Settings(BaseSettings):
     @field_validator("gemini_model", mode="before")
     @classmethod
     def enforce_gemini_flash_model(cls, _value: str | None) -> str:
-        """Force Gemini Flash 2.5 as the planning model."""
-        return "gemini-2.5-flash"
+        """Force Gemini Pro 2.5 as the planning model."""
+        return "gemini-2.5-pro"
 
     @field_validator("rag_static_corpus_provider", mode="before")
     @classmethod

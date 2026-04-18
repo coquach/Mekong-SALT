@@ -27,6 +27,7 @@ class ActionPlanBase(ORMBaseSchema):
     assumptions: dict[str, Any] | None = None
     plan_steps: list[dict[str, Any]] = Field(default_factory=list)
     validation_result: dict[str, Any] | None = None
+    approval_explanation: str | None = None
 
 
 class ActionPlanRead(EntityReadSchema, ActionPlanBase):

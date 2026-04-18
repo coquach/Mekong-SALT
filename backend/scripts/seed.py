@@ -758,7 +758,7 @@ async def run_seed() -> None:
             wind_direction_deg=135,
             tide_level_m=Decimal("1.72"),
             rainfall_mm=Decimal("0.00"),
-            condition_summary="Gió từ biển thổi vào, triều đang lên.",
+            condition_summary="Gió từ biển thổi vào, triều đang lên và áp lực mặn ở cửa lấy nước vẫn cao.",
             source_payload={"provider": "simulated-weather-feed"},
         )
         session.add(weather)
@@ -770,16 +770,20 @@ async def run_seed() -> None:
             based_on_reading_id=reading_a.id,
             based_on_weather_id=weather.id,
             assessed_at=now - timedelta(minutes=15),
-            risk_level=RiskLevel.DANGER,
+            risk_level=RiskLevel.CRITICAL,
             salinity_dsm=Decimal("4.80"),
             trend_direction=TrendDirection.RISING,
             trend_delta_dsm=Decimal("0.90"),
             rule_version="v1",
-            summary="Độ mặn đang vượt ngưỡng tưới và còn tiếp tục tăng.",
+            summary="Độ mặn đã vượt ngưỡng nguy cấp và vẫn tiếp tục tăng trong cửa sổ quan trắc hiện tại.",
             rationale={
+                "base_level": "critical",
                 "salinity_threshold_dsm": 4.0,
+                "trend_direction": "rising",
+                "trend_delta_dsm": "0.90",
                 "wind_factor": "đẩy mặn vào sâu hơn",
                 "tide_factor": "cửa triều đang cao",
+                "sensor_confidence": "high",
             },
         )
         session.add(risk)
@@ -789,9 +793,9 @@ async def run_seed() -> None:
             region_id=region.id,
             risk_assessment_id=risk.id,
             triggered_at=now - timedelta(minutes=14),
-            severity=RiskLevel.DANGER,
+            severity=RiskLevel.CRITICAL,
             title="Cảnh báo xâm nhập mặn nguy cấp",
-            message="Độ mặn quan sát được vượt ngưỡng cho phép gần cống lấy nước chính.",
+            message="Độ mặn quan sát được đã vượt ngưỡng nguy cấp gần cống lấy nước chính.",
         )
         session.add(alert)
         await session.flush()
@@ -801,8 +805,8 @@ async def run_seed() -> None:
             station_id=station_a.id,
             risk_assessment_id=risk.id,
             title="Sự cố xâm nhập mặn tại cống lấy nước Gò Công Đông",
-            description="Độ mặn vượt ngưỡng tưới và cần luồng phản ứng có giám sát.",
-            severity=RiskLevel.DANGER,
+            description="Độ mặn vượt ngưỡng nguy cấp và cần luồng phản ứng có giám sát.",
+            severity=RiskLevel.CRITICAL,
             status=IncidentStatus.APPROVED,
             source="seed",
             evidence={"risk_assessment_id": str(risk.id), "alert_id": str(alert.id)},
@@ -818,10 +822,10 @@ async def run_seed() -> None:
             risk_assessment_id=risk.id,
             incident_id=incident.id,
             status=ActionPlanStatus.APPROVED,
-            objective="Giảm lượng nước mặn đi vào hệ thống trong cửa sổ rủi ro đang hoạt động.",
+            objective="Chặn đà xâm nhập mặn nguy cấp trong cửa sổ rủi ro đang hoạt động.",
             generated_by="phase-2-seed",
             model_provider="mock",
-            summary="Thông báo các bên liên quan, tạm ngưng lấy nước và mô phỏng đóng cống cho đến khi điều kiện an toàn hơn.",
+            summary="Thông báo các bên liên quan, tạm ngưng lấy nước và mô phỏng đóng cống chính cho đến khi điều kiện an toàn hơn.",
             assumptions={
                 "items": [
                     "Operator có mặt để duyệt plan.",
@@ -840,15 +844,16 @@ async def run_seed() -> None:
                 },
                 {
                     "step_index": 2,
-                    "action_type": ActionType.CLOSE_GATE.value,
+                    "action_type": ActionType.CLOSE_GATE_SIMULATED.value,
                     "priority": 2,
                     "title": "Mô phỏng đóng cống lấy nước",
-                    "instructions": "Chạy execution mô phỏng đóng cống cho điểm lấy nước chính.",
+                    "instructions": "Chạy execution mô phỏng đóng cống cho cổng GATE-HOA-DINH.",
                     "rationale": "Giảm lấy nước trong giai đoạn salinity cao sẽ giảm phơi nhiễm.",
                     "simulated": True,
+                    "target_gate_code": "GATE-HOA-DINH",
                 },
             ],
-            validation_result={"is_valid": True, "policy": "simulated-actions-only"},
+            validation_result={"is_valid": True, "policy": "critical_alert_then_simulated_mitigation"},
         )
         session.add(plan)
         await session.flush()
@@ -886,8 +891,8 @@ async def run_seed() -> None:
             channel=NotificationChannel.DASHBOARD,
             status=NotificationStatus.SENT,
             recipient="dashboard",
-            subject="Phản ứng mặn đã được seed",
-            message="Thông báo dashboard mô phỏng cho plan response đã được seed.",
+            subject="Phản ứng mặn nguy cấp đã được seed",
+            message="Thông báo dashboard mô phỏng cho plan phản ứng nguy cấp đã được seed.",
             payload={"mock": True},
             sent_at=now - timedelta(minutes=8),
         )

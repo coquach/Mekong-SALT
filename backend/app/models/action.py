@@ -80,6 +80,25 @@ class ActionPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         """Semantic alias for execution batches during terminology migration."""
         return self.execution_batches
 
+    @property
+    def approval_explanation(self) -> str | None:
+        """Human-friendly explanation for review decisions on this plan."""
+        if self.risk_assessment is None:
+            return None
+
+        from app.services.approval.policy import build_approval_explanation
+
+        validation_result = self.validation_result or {}
+        errors = validation_result.get("errors") or []
+        warnings = validation_result.get("warnings") or []
+        return build_approval_explanation(
+            risk_level=self.risk_assessment.risk_level,
+            plan_summary=self.summary,
+            risk_summary=getattr(self.risk_assessment, "summary", None),
+            validation_errors=errors,
+            validation_warnings=warnings,
+        )
+
 
 class ExecutionBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Execution transaction grouping one simulated plan run."""

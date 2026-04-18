@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -30,6 +31,9 @@ from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidat
 from app.services.risk_service import RiskEvaluationBundle
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(slots=True)
 class AgentPlanBundle:
     """Aggregate result returned from the agent planning service."""
@@ -50,6 +54,16 @@ async def generate_agent_plan(
     trigger_payload: dict[str, Any] | None = None,
 ) -> AgentPlanBundle:
     """Run the LangGraph planning workflow and persist the resulting plan draft."""
+    logger.info(
+        "Starting agent plan generation",
+        extra={
+            "station_id": str(payload.station_id) if payload.station_id is not None else None,
+            "region_id": str(payload.region_id) if payload.region_id is not None else None,
+            "incident_id": str(payload.incident_id) if payload.incident_id is not None else None,
+            "provider": payload.provider,
+            "trigger_source": trigger_source,
+        },
+    )
     run = await start_agent_run(
         session,
         run_type="plan_generation",
@@ -82,6 +96,18 @@ async def generate_agent_plan(
         generated_plan = state["draft_plan"]
         validation_result = state["validation_result"]
         transition_log = state.get("transition_log") or []
+        logger.info(
+            "Draft plan generated",
+            extra={
+                "provider": provider.name,
+                "station_id": str(payload.station_id) if payload.station_id is not None else None,
+                "region_id": str(payload.region_id) if payload.region_id is not None else None,
+                "incident_id": str(payload.incident_id) if payload.incident_id is not None else None,
+                "risk_level": resolved_risk_bundle.assessment.risk_level.value,
+                "is_valid": validation_result.is_valid,
+                "step_count": len(generated_plan.steps),
+            },
+        )
 
         await _capture_plan_observation(
             session=session,
@@ -105,6 +131,15 @@ async def generate_agent_plan(
         )
         if incident is not None and validation_result.is_valid:
             incident.status = IncidentStatus.PENDING_APPROVAL
+        logger.info(
+            "Plan persisted",
+            extra={
+                "plan_id": str(plan.id),
+                "status": plan.status.value,
+                "provider": provider.name,
+                "is_valid": validation_result.is_valid,
+            },
+        )
 
         await _write_plan_audit(
             session,
@@ -139,6 +174,16 @@ async def generate_agent_plan(
             run_id=run.id,
         )
     except Exception as exc:
+        logger.exception(
+            "Agent plan generation failed",
+            extra={
+                "station_id": str(payload.station_id) if payload.station_id is not None else None,
+                "region_id": str(payload.region_id) if payload.region_id is not None else None,
+                "incident_id": str(payload.incident_id) if payload.incident_id is not None else None,
+                "provider": payload.provider,
+                "trigger_source": trigger_source,
+            },
+        )
         finish_agent_run(
             run,
             status="failed",

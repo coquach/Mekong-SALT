@@ -1,4 +1,4 @@
-"""Notification delivery services."""
+﻿"""Notification delivery services."""
 
 from __future__ import annotations
 
@@ -31,32 +31,9 @@ from app.services.notify.zalo import (
 
 _DEFAULT_CHANNEL_RECIPIENTS: tuple[tuple[NotificationChannel, str], ...] = (
     (NotificationChannel.DASHBOARD, "dashboard"),
-    (NotificationChannel.SMS_MOCK, "+84000000000"),
-    (NotificationChannel.ZALO_MOCK, "zalo-operator-group"),
     (NotificationChannel.EMAIL_MOCK, "ops@example.local"),
 )
 
-_SEVERITY_LABELS_VI = {
-    "warning": "cảnh báo",
-    "danger": "nguy hiểm",
-    "critical": "khẩn cấp",
-}
-_PLAN_STATUS_LABELS_VI = {
-    "draft": "bản nháp",
-    "validated": "đã thẩm định",
-    "pending_approval": "chờ duyệt",
-    "approved": "đã duyệt",
-    "rejected": "bị từ chối",
-    "simulated": "mô phỏng",
-    "closed": "đã đóng",
-}
-_OUTCOME_LABELS_VI = {
-    "success": "thành công",
-    "partial_success": "thành công một phần",
-    "failed_plan": "kế hoạch thất bại",
-    "failed_execution": "thực thi thất bại",
-    "inconclusive": "chưa kết luận",
-}
 _CHANNEL_LABELS_VI = {
     NotificationChannel.DASHBOARD.value: "bảng điều khiển",
     NotificationChannel.SMS_MOCK.value: "SMS mô phỏng",
@@ -81,6 +58,7 @@ class MockDomainEventNotificationDispatcher(DomainEventNotificationDispatcher):
         if not isinstance(details, dict):
             details = {}
         details.setdefault("event", event.event_type.removeprefix("notification."))
+        details.setdefault("dedupe_key", f"{event.sequence}:{event.event_type}")
 
         await create_operational_notifications(
             session,
@@ -108,6 +86,27 @@ async def create_notification(
 ) -> Notification:
     """Create a notification record and attempt live delivery when enabled."""
     settings = get_settings()
+    payload_body = dict(payload.payload or {})
+    dedupe_key = _build_notification_dedupe_key(
+        channel=payload.channel,
+        recipient=payload.recipient,
+        payload=payload_body,
+        incident_id=payload.incident_id,
+        execution_id=execution_id,
+    )
+    if dedupe_key is not None:
+        payload_body["dedupe_key"] = dedupe_key
+        existing_notification = await _find_recent_duplicate_notification(
+            session,
+            dedupe_key=dedupe_key,
+            channel=payload.channel,
+            recipient=payload.recipient,
+            incident_id=payload.incident_id,
+            execution_id=execution_id,
+        )
+        if existing_notification is not None:
+            return existing_notification
+
     notification = Notification(
         incident_id=payload.incident_id,
         execution_id=execution_id,
@@ -116,7 +115,7 @@ async def create_notification(
         recipient=payload.recipient,
         subject=payload.subject,
         message=payload.message,
-        payload=payload.payload,
+        payload=payload_body,
     )
 
     delivery_mode = "mock"
@@ -136,7 +135,7 @@ async def create_notification(
         if delivery.ok:
             notification.sent_at = datetime.now(UTC)
         notification.payload = _merge_delivery_payload(
-            payload=payload.payload,
+            payload=payload_body,
             mode=delivery.mode,
             provider="mock" if delivery.mode == "mock" else "zalo",
             message_id=delivery.message_id,
@@ -157,7 +156,7 @@ async def create_notification(
         if delivery.ok:
             notification.sent_at = datetime.now(UTC)
         notification.payload = _merge_delivery_payload(
-            payload=payload.payload,
+            payload=payload_body,
             mode=delivery.mode,
             provider="mock" if delivery.mode == "mock" else "email",
             message_id=delivery.message_id,
@@ -192,24 +191,6 @@ async def create_notification(
         },
     )
     return notification
-
-
-async def create_execution_alert_notifications(
-    session: AsyncSession,
-    *,
-    incident_id: UUID | None,
-    execution_id: UUID | None,
-    message: str,
-) -> list[Notification]:
-    """Create dashboard/SMS/Zalo/email notifications for send_alert."""
-    return await create_operational_notifications(
-        session,
-        incident_id=incident_id,
-        execution_id=execution_id,
-        subject="Phản ứng độ mặn Mekong-SALT",
-        message=message,
-        payload={"mock": True, "event": "execution_alert"},
-    )
 
 
 async def create_operational_notifications(
@@ -426,6 +407,52 @@ def _merge_delivery_payload(
     return merged
 
 
+def _build_notification_dedupe_key(
+    *,
+    channel: NotificationChannel,
+    recipient: str,
+    payload: dict[str, Any],
+    incident_id: UUID | None,
+    execution_id: UUID | None,
+) -> str | None:
+    explicit_key = payload.get("dedupe_key")
+    if explicit_key is None:
+        return None
+    return (
+        f"{channel.value}:{recipient}:{explicit_key}:"
+        f"{incident_id if incident_id is not None else '-'}:"
+        f"{execution_id if execution_id is not None else '-'}"
+    )
+
+
+async def _find_recent_duplicate_notification(
+    session: AsyncSession,
+    *,
+    dedupe_key: str,
+    channel: NotificationChannel,
+    recipient: str,
+    incident_id: UUID | None,
+    execution_id: UUID | None,
+) -> Notification | None:
+    recent_notifications = await NotificationRepository(session).list_recent(limit=200)
+    for notification in recent_notifications:
+        if notification.channel is not channel:
+            continue
+        if notification.recipient != recipient:
+            continue
+        if notification.incident_id != incident_id:
+            continue
+        if notification.execution_id != execution_id:
+            continue
+        if notification.status is not NotificationStatus.SENT:
+            continue
+        payload = notification.payload or {}
+        delivery = payload.get("delivery") if isinstance(payload.get("delivery"), dict) else {}
+        if payload.get("dedupe_key") == dedupe_key or delivery.get("dedupe_key") == dedupe_key:
+            return notification
+    return None
+
+
 def _extract_uuid(payload: dict | None, key: str) -> UUID | None:
     raw = (payload or {}).get(key)
     if raw is None:
@@ -448,35 +475,8 @@ def _parse_uuid(raw: Any) -> UUID | None:
 def _channel_recipients_from_event_payload(
     payload: dict[str, Any],
 ) -> tuple[tuple[NotificationChannel, str], ...]:
-    channels = payload.get("channels")
-    if not isinstance(channels, list):
-        return _DEFAULT_CHANNEL_RECIPIENTS
-
-    resolved: list[tuple[NotificationChannel, str]] = []
-    by_channel = {channel.value: recipient for channel, recipient in _DEFAULT_CHANNEL_RECIPIENTS}
-    for item in channels:
-        channel_name = str(item)
-        if channel_name not in by_channel:
-            continue
-        resolved.append((NotificationChannel(channel_name), by_channel[channel_name]))
-    if not resolved:
-        return _DEFAULT_CHANNEL_RECIPIENTS
-    return tuple(resolved)
-
-
-def _localize_severity_label(value: Any) -> str:
-    text = str(value).strip()
-    return _SEVERITY_LABELS_VI.get(text.lower(), text)
-
-
-def _localize_plan_status_label(value: Any) -> str:
-    text = str(value).strip()
-    return _PLAN_STATUS_LABELS_VI.get(text.lower(), text)
-
-
-def _localize_outcome_label(value: Any) -> str:
-    text = str(value).strip()
-    return _OUTCOME_LABELS_VI.get(text.lower(), text)
+    _ = payload
+    return _DEFAULT_CHANNEL_RECIPIENTS
 
 
 def _localize_channel_label(channel: NotificationChannel) -> str:
@@ -490,80 +490,6 @@ def _localize_delivery_mode_label(value: str) -> str:
     if mode == "smtp":
         return "SMTP"
     return mode
-
-
-async def create_incident_created_notifications(
-    session: AsyncSession,
-    *,
-    incident_id: UUID,
-    title: str,
-    severity: str,
-    source: str,
-) -> list[Notification]:
-    """Notify stakeholders when an incident is opened."""
-    return await create_operational_notifications(
-        session,
-        incident_id=incident_id,
-        subject=f"Mở sự cố độ mặn {_localize_severity_label(severity)}",
-        message=f"Đã mở sự cố '{title}' từ nguồn '{source}'.",
-        payload={
-            "event": "incident_created",
-            "severity": severity,
-            "title": title,
-            "source": source,
-        },
-    )
-
-
-async def create_plan_created_notifications(
-    session: AsyncSession,
-    *,
-    incident_id: UUID | None,
-    action_plan_id: UUID,
-    objective: str,
-    status: str,
-) -> list[Notification]:
-    """Notify stakeholders when a plan is generated."""
-    return await create_operational_notifications(
-        session,
-        incident_id=incident_id,
-        subject=f"Kế hoạch hành động {_localize_plan_status_label(status)}",
-        message=f"Kế hoạch '{action_plan_id}' đã được tạo cho mục tiêu: {objective}",
-        payload={
-            "event": "plan_created",
-            "action_plan_id": str(action_plan_id),
-            "status": status,
-            "objective": objective,
-        },
-    )
-
-
-async def create_execution_summary_notifications(
-    session: AsyncSession,
-    *,
-    incident_id: UUID | None,
-    execution_id: UUID | None,
-    action_plan_id: UUID,
-    outcome_class: str,
-    summary: str,
-    execution_count: int,
-    replan_recommended: bool,
-) -> list[Notification]:
-    """Notify stakeholders after execution finishes and feedback is available."""
-    return await create_operational_notifications(
-        session,
-        incident_id=incident_id,
-        execution_id=execution_id,
-        subject=f"Tổng kết thực thi: {_localize_outcome_label(outcome_class)}",
-        message=summary,
-        payload={
-            "event": "execution_summary",
-            "action_plan_id": str(action_plan_id),
-            "execution_count": execution_count,
-            "outcome_class": outcome_class,
-            "replan_recommended": replan_recommended,
-        },
-    )
 
 
 async def list_notifications(session: AsyncSession, *, limit: int = 100) -> list[Notification]:
@@ -604,4 +530,6 @@ async def mark_notification_read(
     await session.commit()
     await session.refresh(notification)
     return notification
+
+
 

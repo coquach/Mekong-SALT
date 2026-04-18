@@ -185,8 +185,8 @@ Luồng demo trung tâm:
 
 1. Device/gateway gửi sensor reading.
 2. Backend validate và lưu reading.
-3. Risk engine đánh giá mức độ mặn.
-4. Nếu vượt ngưỡng, tạo incident.
+3. Risk engine đánh giá theo mô hình sensor-first.
+4. Nếu risk đủ cao, tạo incident.
 5. AI retrieval lấy context từ SOP / guideline / casebook.
 6. AI tạo plan nháp.
 7. Policy guard kiểm tra plan.
@@ -201,7 +201,7 @@ Luồng demo trung tâm:
 flowchart TD
     A[Reading mới từ sensor] --> B[Validate + persist]
     B --> C[Risk evaluation]
-    C --> D{Vượt ngưỡng?}
+    C --> D{Risk đủ cao?}
     D -- Không --> E[Update dashboard]
     D -- Có --> F[Create incident]
     F --> G[Retrieve context]
@@ -225,8 +225,9 @@ Hệ thống không đánh giá risk theo cảm tính. Risk được tính bằn
 
 - Đơn vị canonical để lưu và so sánh là `dS/m`.
 - Reading mới nhất là nguồn chính để quyết định risk.
-- Trend chỉ được phép làm xấu thêm hoặc giữ nguyên mức risk, không tự ý kéo giảm.
-- Context ngoài như thời tiết, tide, hoặc Earth Engine chỉ là yếu tố bổ trợ.
+- Trend gần đây có thể đẩy risk tăng thêm nếu đủ mạnh và đủ tin cậy.
+- Context ngoài như thời tiết, tide, hoặc Earth Engine chỉ là yếu tố bổ trợ, không được tự mình override một reading an toàn.
+- Hysteresis giữ mức risk ổn định khi reading dao động quanh ngưỡng.
 - Nếu AI hoặc nguồn context lỗi, hệ thống vẫn ra quyết định từ rule cốt lõi.
 
 #### Risk scoring matrix
@@ -244,9 +245,9 @@ Hệ thống không đánh giá risk theo cảm tính. Risk được tính bằn
 |---|---|
 | Trend tăng nhanh | Có thể đẩy risk lên 1 band nếu vượt ngưỡng hỗ trợ |
 | Trend giảm | Ghi trong rationale, nhưng không tự động kéo risk xuống dưới band salinity |
-| Wind / tide mạnh | Tăng mức cảnh giác khi reading đã ở band warning trở lên |
-| Confidence thấp | Tăng mức cần review của operator |
-| Dữ liệu thiếu / lỗi | Hệ thống fallback về trạng thái safe-observe hoặc yêu cầu kiểm tra |
+| Wind / tide mạnh | Chỉ khuếch đại risk khi reading đã ở band warning trở lên và context còn mới |
+| Confidence thấp | Không đổi band một mình, nhưng được ghi rõ trong rationale để operator cân nhắc |
+| Dữ liệu thiếu / lỗi | Hệ thống fallback về đánh giá bảo thủ hoặc yêu cầu kiểm tra lại |
 
 #### Logic diễn giải nội bộ
 
@@ -254,9 +255,9 @@ Hệ thống không đánh giá risk theo cảm tính. Risk được tính bằn
 
 Trong đó:
 
-- `risk_from_salinity` là band chính.
-- `risk_from_trend_modifier` chỉ có tác dụng làm xấu thêm.
-- `risk_from_context_modifier` chỉ có tác dụng khuếch đại khi context đủ tin cậy.
+- `risk_from_salinity` là band nền.
+- `risk_from_trend_modifier` chỉ có tác dụng làm xấu thêm nếu trend đủ mạnh và đủ mới.
+- `risk_from_context_modifier` chỉ có tác dụng khuếch đại khi context đủ tin cậy và reading chưa quá cũ.
 
 #### Vì sao chọn cách này
 

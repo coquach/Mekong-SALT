@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from http import HTTPStatus
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -31,6 +32,9 @@ from app.services.agent_trace_service import (
     finish_agent_run,
     start_agent_run,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -87,6 +91,16 @@ async def evaluate_current_risk(
         },
         region_id=region.id,
         station_id=reading.station_id,
+    )
+    logger.info(
+        "Starting risk evaluation",
+        extra={
+            "reading_id": str(reading.id),
+            "station_id": str(reading.station_id),
+            "region_id": str(region.id),
+            "trigger_source": trigger_source,
+            "target_reading_id": str(reading.id),
+        },
     )
 
     try:
@@ -151,6 +165,15 @@ async def evaluate_current_risk(
         )
         assessment_repo = RiskAssessmentRepository(session)
         await assessment_repo.add(assessment)
+        logger.info(
+            "Risk assessment persisted",
+            extra={
+                "assessment_id": str(assessment.id),
+                "risk_level": assessment.risk_level.value,
+                "station_id": str(reading.station_id),
+                "region_id": str(region.id),
+            },
+        )
 
         await capture_observation_snapshot(
             session,
@@ -224,6 +247,18 @@ async def evaluate_current_risk(
         )
 
         incident_decision = await ensure_incident_for_assessment(session, assessment)
+        logger.info(
+            "Incident decision resolved for risk assessment",
+            extra={
+                "assessment_id": str(assessment.id),
+                "incident_decision": incident_decision.decision,
+                "incident_id": (
+                    str(incident_decision.incident.id)
+                    if incident_decision.incident is not None
+                    else None
+                ),
+            },
+        )
 
         finish_agent_run(
             run,
@@ -265,6 +300,14 @@ async def evaluate_current_risk(
             run_id=run.id,
         )
     except Exception as exc:
+        logger.exception(
+            "Risk evaluation failed",
+            extra={
+                "region_id": str(region.id),
+                "station_id": str(reading.station_id),
+                "trigger_source": trigger_source,
+            },
+        )
         finish_agent_run(
             run,
             status="failed",
@@ -298,6 +341,16 @@ async def evaluate_alerts(
         trigger_source="alerts.evaluate",
         trigger_payload={"mode": "alert_evaluation"},
     )
+    logger.info(
+        "Evaluating alert eligibility",
+        extra={
+            "assessment_id": str(risk_bundle.assessment.id),
+            "risk_level": risk_bundle.assessment.risk_level.value,
+            "station_id": str(risk_bundle.assessment.station_id)
+            if risk_bundle.assessment.station_id is not None
+            else None,
+        },
+    )
     if not should_create_alert(risk_bundle.assessment.risk_level):
         return AlertEvaluationBundle(
             assessment=risk_bundle.assessment,
@@ -314,6 +367,14 @@ async def evaluate_alerts(
         risk_bundle.assessment.risk_level,
     )
     if existing_alert is not None:
+        logger.info(
+            "Reused existing open alert",
+            extra={
+                "assessment_id": str(risk_bundle.assessment.id),
+                "alert_id": str(existing_alert.id),
+                "risk_level": risk_bundle.assessment.risk_level.value,
+            },
+        )
         return AlertEvaluationBundle(
             assessment=risk_bundle.assessment,
             reading=risk_bundle.reading,
@@ -333,6 +394,14 @@ async def evaluate_alerts(
         status=AlertStatus.OPEN,
     )
     await alert_repo.add(alert)
+    logger.warning(
+        "Created new alert from risk assessment",
+        extra={
+            "assessment_id": str(risk_bundle.assessment.id),
+            "alert_id": str(alert.id),
+            "risk_level": risk_bundle.assessment.risk_level.value,
+        },
+    )
     await session.commit()
     await session.refresh(alert)
 
