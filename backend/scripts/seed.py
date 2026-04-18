@@ -453,6 +453,7 @@ async def run_seed() -> None:
             latitude=Decimal("10.378420"),
             longitude=Decimal("106.327890"),
             location_description="Cống vận hành ở phía tây bắc để làm mốc cố định trên bản đồ demo.",
+            station_id=station_a.id,
             gate_metadata=_build_gate_metadata(
                 display_name="Cống Thới Tân",
                 operational_role="sluice_gate",
@@ -479,6 +480,7 @@ async def run_seed() -> None:
             latitude=Decimal("10.256120"),
             longitude=Decimal("106.607840"),
             location_description="Cống biên phía nam dùng để khóa ranh giới của hành lang demo.",
+            station_id=station_b.id,
             gate_metadata=_build_gate_metadata(
                 display_name="Cống Phú Đông",
                 operational_role="boundary_gate",

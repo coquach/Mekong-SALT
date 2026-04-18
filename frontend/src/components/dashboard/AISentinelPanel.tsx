@@ -6,6 +6,7 @@ import { AISentinel } from "./AISentinel";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { type AgentRunRead } from "../../lib/api/strategy";
+import { formatTime } from "../../lib/format";
 
 type StreamStatus = "connecting" | "connected" | "disconnected";
 
@@ -59,7 +60,7 @@ export function AISentinelPanel({ agentRun, streamStatus, lastStreamAt }: AISent
           </div>
           <p className="text-sm leading-relaxed text-slate-300 max-w-3xl">{summaryText}</p>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-            Cập nhật lúc {lastStreamAt ?? "--:--"}
+            Cập nhật lúc {formatTime(lastStreamAt)}
           </p>
         </div>
 

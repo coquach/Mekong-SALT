@@ -79,6 +79,20 @@ export interface RiskLatestResponse {
   weather_snapshot: Record<string, unknown> | null;
 }
 
+export interface OpenMeteoWeatherSnapshot {
+  observed_at: string;
+  wind_speed_mps: number | null;
+  wind_direction_deg: number | null;
+  tide_level_m: number | null;
+  rainfall_mm: number | null;
+  condition_summary: string | null;
+  source_payload: {
+    weather: Record<string, unknown> | null;
+    marine: Record<string, unknown> | null;
+    provider: string;
+  };
+}
+
 export interface ActionExecution {
   id: string;
   created_at: string;
@@ -125,6 +139,97 @@ export function getLatestReadings(
   signal?: AbortSignal,
 ): Promise<SensorReadingCollection> {
   return apiGet<SensorReadingCollection>("/readings/latest", { query, signal });
+}
+
+function resolveOpenMeteoBaseUrl(envValue: string | undefined, fallback: string): string {
+  return (envValue ?? fallback).replace(/\/+$/, "");
+}
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeObservedAt(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  return value.endsWith("Z") ? value : `${value}Z`;
+}
+
+async function fetchOpenMeteoJson(url: URL, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new Error(`Open-Meteo request failed with status ${response.status}.`);
+  }
+  return (await response.json()) as Record<string, unknown>;
+}
+
+export async function fetchOpenMeteoWeatherSnapshot(
+  params: { latitude: number; longitude: number },
+  signal?: AbortSignal,
+): Promise<OpenMeteoWeatherSnapshot | null> {
+  const weatherBaseUrl = resolveOpenMeteoBaseUrl(
+    import.meta.env.VITE_OPEN_METEO_WEATHER_BASE_URL,
+    "https://api.open-meteo.com/v1/forecast",
+  );
+  const marineBaseUrl = resolveOpenMeteoBaseUrl(
+    import.meta.env.VITE_OPEN_METEO_MARINE_BASE_URL,
+    "https://marine-api.open-meteo.com/v1/marine",
+  );
+
+  const weatherUrl = new URL(weatherBaseUrl);
+  weatherUrl.searchParams.set("latitude", String(params.latitude));
+  weatherUrl.searchParams.set("longitude", String(params.longitude));
+  weatherUrl.searchParams.set("current", "wind_speed_10m,wind_direction_10m,precipitation");
+  weatherUrl.searchParams.set("timezone", "UTC");
+
+  const marineUrl = new URL(marineBaseUrl);
+  marineUrl.searchParams.set("latitude", String(params.latitude));
+  marineUrl.searchParams.set("longitude", String(params.longitude));
+  marineUrl.searchParams.set("current", "sea_level_height_msl");
+  marineUrl.searchParams.set("timezone", "UTC");
+
+  try {
+    const [weatherPayload, marinePayload] = await Promise.all([
+      fetchOpenMeteoJson(weatherUrl, signal),
+      fetchOpenMeteoJson(marineUrl, signal),
+    ]);
+
+    const weatherCurrent = (weatherPayload.current ?? {}) as Record<string, unknown>;
+    const marineCurrent = (marinePayload.current ?? {}) as Record<string, unknown>;
+    const observedAt = normalizeObservedAt(weatherCurrent.time ?? marineCurrent.time);
+
+    if (observedAt === null) {
+      return null;
+    }
+
+    const windSpeedKmh = toNumber(weatherCurrent.wind_speed_10m);
+    const windSpeedMps = windSpeedKmh === null ? null : Number((windSpeedKmh / 3.6).toFixed(2));
+    const tideLevel = toNumber(marineCurrent.sea_level_height_msl);
+
+    return {
+      observed_at: observedAt,
+      wind_speed_mps: windSpeedMps,
+      wind_direction_deg: toNumber(weatherCurrent.wind_direction_10m),
+      tide_level_m: tideLevel,
+      rainfall_mm: toNumber(weatherCurrent.precipitation),
+      condition_summary:
+        windSpeedKmh === null || tideLevel === null
+          ? null
+          : `wind=${windSpeedKmh} km/h, tide=${tideLevel} m`,
+      source_payload: {
+        provider: "open-meteo",
+        weather: weatherCurrent,
+        marine: marineCurrent,
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getActionLogs(

@@ -10,13 +10,25 @@ Backend MVP scope includes:
 - AI planning orchestration (mock + provider abstractions)
 - reactive approval + simulated execution orchestration
 - goal-driven active monitoring worker with Redis locks enabled by default
-- notifications (dashboard + SMS/Zalo/email mock)
+- notifications (dashboard + SMS/Zalo + mock/SMTP email)
 - audit logging and outcomes
 - dashboard summary + SSE stream
 - shared logging, middleware, exceptions, and response envelope
 - Alembic migrations for PostgreSQL + pgvector
 - Docker Compose runtime topology for PostgreSQL, Redis, MQTT, backend API, and frontend
 - seed script with demo data
+
+For full-stack setup and Docker at the repository root, see [../README.md](../README.md).
+For the root demo runbook, see [../demo-runbook-5-phut.md](../demo-runbook-5-phut.md).
+
+## Backend Documentation Map
+
+- `../README.md`: repo entry point và full-stack setup.
+- `../demo-runbook-5-phut.md`: runbook seed-to-simulate.
+- `document/backend-db-erd.md`: tổng quan schema quan hệ.
+- `document/rag-operations-guide.md`: vận hành RAG và corpus.
+- `document/phase-rollout-pubsub-mqtt-gee-frontend.md`: thứ tự rollout.
+- `document/proposal_unit_alignment.md`: quy ước đơn vị và diễn đạt nghiệp vụ.
 
 ## Local setup
 
@@ -32,7 +44,8 @@ Python 3.11+ is required. On this machine, `py -3.13` is the correct interpreter
 ## Start local infrastructure
 
 ```bash
-docker compose up -d
+cd ..
+docker compose up -d --build
 ```
 
 The compose topology already includes `postgres`, `redis`, `mqtt`, `backend`,
@@ -112,8 +125,10 @@ Open `http://127.0.0.1:7860` to run scenarios and monitor plans/runs in one scre
 
 ## Run full stack in Docker Compose
 
+From the repository root:
+
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 ## Apply migrations
@@ -150,7 +165,7 @@ curl http://localhost:8000/api/v1/health
 Integration rollout plan:
 
 - `document/phase-rollout-pubsub-mqtt-gee-frontend.md`
-- `document/demo-runbook-5-phut.md`
+- `../demo-runbook-5-phut.md`
 
 Watch state:
 
@@ -182,7 +197,7 @@ Approval and feedback boundaries:
 | `/plans` | `app.repositories.action` (read) | plan visibility for operators and FE | stable |
 | `/execution-batches`, `/action-outcomes` | `app.services.agent_execution_service` | simulated execution transaction view | stable |
 | `/actions/logs` | `app.services.agent_execution_service` | execution + decision log timeline | stable |
-| `/notifications` | `app.services.notification_service` | dashboard/SMS/Zalo/email mock records | stable |
+| `/notifications` | `app.services.notification_service` | dashboard/SMS/Zalo/mock email/SMTP email records | stable |
 | `/agent/*`, `/audit/*` | `app.services.agent_trace_service`, `app.services.audit_service` | traceability and auditability | stable |
 | `/dashboard/*` | `app.services.dashboard_service` | operational summary and timeline stream | stable |
 | `/approvals/*` | `app.services.approval_service` | HITL approval workflow and decision history | active |

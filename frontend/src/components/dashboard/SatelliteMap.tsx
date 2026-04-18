@@ -17,6 +17,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 
 import type { GateRead, StationMetadata } from "../../lib/api/telemetry";
+import { toNumber } from "../../lib/format";
 
 const DEFAULT_MAP_CENTER: [number, number] = [10.32, 106.45];
 
@@ -149,14 +150,6 @@ function formatStationPackage(station: MapStation): string {
 
 function getStationMetaDisplay(station: MapStation, key: string, fallback = "--"): string {
   return getStationMetadataValue(station, key) ?? fallback;
-}
-
-function toNumber(value: string | number | null | undefined): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function getGateMetadataValue(gate: MapGate, key: string): string | null {

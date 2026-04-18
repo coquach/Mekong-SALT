@@ -32,7 +32,7 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./backend/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mqtt_data:/mosquitto/data
       - mqtt_log:/mosquitto/log
     healthcheck:
@@ -44,8 +44,9 @@ services:
   backend:
     build:
       context: .
+      dockerfile: Dockerfile
     env_file:
-      - ./.env
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mekong_salt
       REDIS_URL: redis://redis:6379/0
@@ -57,9 +58,17 @@ services:
       EARTH_ENGINE_ENABLED: "false"
       ACTIVE_MONITORING_ENABLED: "true"
       ACTIVE_MONITORING_MODE: active
+      ZALO_NOTIFICATIONS_ENABLED: "false"
+      ZALO_DELIVERY_MODE: template
+      ZALO_OA_ACCESS_TOKEN: ""
+      ZALO_OA_RECIPIENT_PHONE_NUMBER: ""
+      ZALO_OA_TEMPLATE_ID: ""
+      ZALO_OA_TEMPLATE_MESSAGE_ENDPOINT: https://openapi.zalo.me/v3.0/oa/message/template
+      ZALO_OA_MESSAGE_ENDPOINT: https://openapi.zalo.me/v3.0/oa/message/cs
+      ZALO_OA_TIMEOUT_SECONDS: "10"
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
-      - ./:/app
+      - ./backend:/app/backend
     ports:
       - "8000:8000"
     healthcheck:
@@ -81,8 +90,10 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
     environment:
       VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_OPEN_METEO_WEATHER_BASE_URL: https://api.open-meteo.com/v1/forecast
+      VITE_OPEN_METEO_MARINE_BASE_URL: https://marine-api.open-meteo.com/v1/marine
     volumes:
-      - ../frontend:/frontend
+      - ./frontend:/frontend
       - frontend_node_modules:/frontend/node_modules
     ports:
       - "5173:5173"

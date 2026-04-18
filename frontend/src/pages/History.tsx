@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Bell,
@@ -15,6 +15,7 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
 import { type RiskLatestResponse, type SensorReading } from "../lib/api/dashboard";
+import { getApiErrorMessage } from "../lib/api/error";
 import {
   getAuditLogs,
   getIncidents,
@@ -25,7 +26,8 @@ import {
   type IncidentRead,
   type SensorStationRead,
 } from "../lib/api/telemetry";
-import { ApiError, type ErrorResponse } from "../lib/api/types";
+import { ApiError } from "../lib/api/types";
+import { formatDateTime as formatDateTimeUtil, formatNumber as formatNumberUtil, formatTime as formatTimeUtil, toNumber as toNumberUtil } from "../lib/format";
 
 type HistoryState = {
   loading: boolean;
@@ -39,56 +41,6 @@ type HistoryState = {
   auditLogs: AuditLogRead[];
   lastRefreshAt: string | null;
 };
-
-function parseApiError(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  if (error && typeof error === "object") {
-    const maybeError = error as ErrorResponse;
-    if (typeof maybeError.message === "string") {
-      return maybeError.message;
-    }
-  }
-  return "Không tải được dữ liệu history.";
-}
-
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatNumber(value: number | null, digits = 2): string {
-  if (value === null) {
-    return "--";
-  }
-  return value.toFixed(digits);
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) {
-    return "--";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--";
-  }
-  return date.toLocaleString("vi-VN", { hour12: false });
-}
-
-function formatTime(value: string | null): string {
-  if (!value) {
-    return "--:--";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--:--";
-  }
-  return date.toLocaleTimeString("vi-VN", { hour12: false });
-}
 
 async function loadStationContext(
   stationCode: string,
@@ -192,7 +144,7 @@ export function History() {
         ...previous,
         loading: false,
         stationLoading: false,
-        error: parseApiError(error),
+        error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u history."),
       }));
     }
   };
@@ -224,7 +176,7 @@ export function History() {
   const salinityValues = useMemo(
     () =>
       state.readings
-        .map((reading) => toNumber(reading.salinity_gl))
+        .map((reading) => toNumberUtil(reading.salinity_gl))
         .filter((value): value is number => value !== null),
     [state.readings],
   );
@@ -245,8 +197,8 @@ export function History() {
   }, [salinityValues]);
 
   const trendDelta = useMemo(() => {
-    const latest = toNumber(latestReading?.salinity_gl);
-    const oldest = toNumber(oldestReading?.salinity_gl);
+    const latest = toNumberUtil(latestReading?.salinity_gl);
+    const oldest = toNumberUtil(oldestReading?.salinity_gl);
     if (latest === null || oldest === null) {
       return null;
     }
@@ -310,7 +262,7 @@ export function History() {
       setState((previous) => ({
         ...previous,
         stationLoading: false,
-        error: parseApiError(error),
+        error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u history."),
       }));
     }
   };
@@ -320,14 +272,14 @@ export function History() {
       <PageHeading
         trailing={
           <Badge variant="neutral" className="text-[9px]">
-            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+            Äá»“ng bá»™ lÃºc {formatTimeUtil(state.lastRefreshAt)}
           </Badge>
         }
       />
 
       {state.error ? (
         <InlineError
-          title="Lỗi điều tra lịch sử"
+          title="Lá»—i Ä‘iá»u tra lá»‹ch sá»­"
           message={state.error}
           onRetry={() => {
             void loadPageData({ selectedStationId: state.selectedStationId });
@@ -345,14 +297,14 @@ export function History() {
           <div className="space-y-1">
             <div className="flex items-center gap-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">
               <span className="bg-slate-100 px-2 py-0.5 rounded">
-                Nguồn: API backend
+                Nguá»“n: API backend
               </span>
               <span className="text-mekong-teal italic">
                 /readings/history, /risk/latest, /audit/logs
               </span>
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-              Điều tra dữ liệu lịch sử
+              Äiá»u tra dá»¯ liá»‡u lá»‹ch sá»­
             </h1>
           </div>
         </div>
@@ -403,15 +355,15 @@ export function History() {
           <div className="space-y-3">
             <div className="flex items-end gap-2">
               <span className="text-5xl font-black text-mekong-navy tracking-tight">
-                {formatNumber(toNumber(latestReading?.salinity_gl), 2)}
+                {formatNumberUtil(toNumberUtil(latestReading?.salinity_gl), 2)}
               </span>
               <span className="text-sm font-black text-slate-400 uppercase mb-1">g/L</span>
             </div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-              Ghi nhận: {formatDateTime(latestReading?.recorded_at ?? null)}
+              Ghi nháº­n: {formatDateTimeUtil(latestReading?.recorded_at ?? null)}
             </p>
             <Badge variant="warning" className="uppercase text-[10px]">
-              Rủi ro: {state.risk?.assessment.risk_level ?? "unknown"}
+              Rá»§i ro: {state.risk?.assessment.risk_level ?? "unknown"}
             </Badge>
           </div>
         </Card>
@@ -423,19 +375,19 @@ export function History() {
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Độ mặn trung bình</span>
-              <span className="font-black text-mekong-navy">{formatNumber(averageSalinity, 2)} g/L</span>
+              <span>Äá»™ máº·n trung bÃ¬nh</span>
+              <span className="font-black text-mekong-navy">{formatNumberUtil(averageSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Độ mặn cao nhất</span>
-              <span className="font-black text-mekong-navy">{formatNumber(maxSalinity, 2)} g/L</span>
+              <span>Äá»™ máº·n cao nháº¥t</span>
+              <span className="font-black text-mekong-navy">{formatNumberUtil(maxSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Độ lệch (mới nhất-cũ nhất)</span>
-              <span className="font-black text-mekong-navy">{formatNumber(trendDelta, 2)} g/L</span>
+              <span>Äá»™ lá»‡ch (má»›i nháº¥t-cÅ© nháº¥t)</span>
+              <span className="font-black text-mekong-navy">{formatNumberUtil(trendDelta, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Số mẫu</span>
+              <span>Sá»‘ máº«u</span>
               <span className="font-black text-mekong-navy">{state.readings.length}</span>
             </div>
           </div>
@@ -448,19 +400,19 @@ export function History() {
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Sự cố đang mở</span>
+              <span>Sá»± cá»‘ Ä‘ang má»Ÿ</span>
               <span className="font-black text-mekong-critical">{openIncidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Tổng sự cố</span>
+              <span>Tá»•ng sá»± cá»‘</span>
               <span className="font-black text-mekong-navy">{state.incidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Nhật ký audit</span>
+              <span>Nháº­t kÃ½ audit</span>
               <span className="font-black text-mekong-navy">{state.auditLogs.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Trạng thái trạm</span>
+              <span>Tráº¡ng thÃ¡i tráº¡m</span>
               <span className="font-black text-mekong-navy">{selectedStation?.status ?? "--"}</span>
             </div>
           </div>
@@ -497,16 +449,16 @@ export function History() {
                 {state.readings.slice(0, 20).map((reading) => (
                   <tr key={reading.id} className="hover:bg-slate-50/40 transition-colors">
                     <td className="px-4 py-4 text-[13px] font-semibold text-mekong-navy">
-                      {formatDateTime(reading.recorded_at)}
+                      {formatDateTimeUtil(reading.recorded_at)}
                     </td>
                     <td className="px-4 py-4 text-[13px] font-black text-mekong-navy">
-                      {formatNumber(toNumber(reading.salinity_gl), 2)}
+                      {formatNumberUtil(toNumberUtil(reading.salinity_gl), 2)}
                     </td>
                     <td className="px-4 py-4 text-[13px] font-semibold text-slate-600">
-                      {formatNumber(toNumber(reading.water_level_m), 2)}
+                      {formatNumberUtil(toNumberUtil(reading.water_level_m), 2)}
                     </td>
                     <td className="px-4 py-4 text-[13px] font-semibold text-slate-600">
-                      {formatNumber(toNumber(reading.wind_speed_mps), 2)}
+                      {formatNumberUtil(toNumberUtil(reading.wind_speed_mps), 2)}
                     </td>
                   </tr>
                 ))}
@@ -514,8 +466,8 @@ export function History() {
                   <tr>
                     <td colSpan={4} className="px-4 py-6">
                       <EmptyState
-                        title="Chưa có dữ liệu lịch sử cho trạm này"
-                        description="Thử chọn station khác hoặc đợi chu kỳ ghi nhận tiếp theo."
+                        title="ChÆ°a cÃ³ dá»¯ liá»‡u lá»‹ch sá»­ cho tráº¡m nÃ y"
+                        description="Thá»­ chá»n station khÃ¡c hoáº·c Ä‘á»£i chu ká»³ ghi nháº­n tiáº¿p theo."
                       />
                     </td>
                   </tr>
@@ -533,7 +485,7 @@ export function History() {
                 <div className="flex items-center justify-between gap-3">
                   <Badge className="uppercase text-[9px]">{log.event_type}</Badge>
                   <span className="text-[10px] font-black text-slate-400">
-                    {formatDateTime(log.occurred_at)}
+                    {formatDateTimeUtil(log.occurred_at)}
                   </span>
                 </div>
                 <p className="mt-2 text-[13px] font-semibold text-slate-700 leading-relaxed">{log.summary}</p>
@@ -544,8 +496,8 @@ export function History() {
             ))}
             {state.auditLogs.length === 0 ? (
               <EmptyState
-                title="Chưa có audit log"
-                description="Audit trail sẽ xuất hiện khi backend ghi nhận event vận hành."
+                title="ChÆ°a cÃ³ audit log"
+                description="Audit trail sáº½ xuáº¥t hiá»‡n khi backend ghi nháº­n event váº­n hÃ nh."
               />
             ) : null}
           </div>

@@ -29,6 +29,9 @@ AsyncSessionFactory = async_sessionmaker(
     autoflush=False,
 )
 
+_engine_dispose_lock = asyncio.Lock()
+_engine_disposed = False
+
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session for request-scoped usage."""
@@ -56,5 +59,20 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def close_database_engine() -> None:
     """Dispose the shared database engine."""
-    await engine.dispose()
+    global _engine_disposed
+
+    if _engine_disposed:
+        return
+
+    async with _engine_dispose_lock:
+        if _engine_disposed:
+            return
+
+        # Detach the pool during shutdown without forcing asyncpg to terminate
+        # every live connection immediately. This avoids noisy shutdown traces
+        # when the process is already winding down.
+        with contextlib.suppress(Exception):
+            await engine.dispose(close=False)
+
+        _engine_disposed = True
 

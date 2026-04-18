@@ -28,6 +28,7 @@ import {
   type SensorStationRead,
 } from "../lib/api/telemetry";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
+import { formatNumber as formatNumberUtil, formatTime as formatTimeUtil, toNumber as toNumberUtil } from "../lib/format";
 
 type RiskFilter = "all" | "critical" | "warning" | "safe";
 
@@ -95,17 +96,6 @@ function deriveRiskLevel(salinityGl: number | null | undefined): "critical" | "w
   return "safe";
 }
 
-function formatTime(value: string | null): string {
-  if (!value) {
-    return "--:--";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--:--";
-  }
-  return date.toLocaleTimeString("vi-VN", { hour12: false });
-}
-
 export function InteractiveMap() {
   const [layers, setLayers] = useState({
     heatmap: true,
@@ -128,6 +118,12 @@ export function InteractiveMap() {
   const navigate = useNavigate();
   const riskRequestIdRef = useRef(0);
   const riskAbortControllerRef = useRef<AbortController | null>(null);
+  const selectedStationIdRef = useRef<string | null>(null);
+  const isBootstrapping = state.loading && state.stations.length === 0 && state.gates.length === 0;
+
+  useEffect(() => {
+    selectedStationIdRef.current = state.selectedStationId;
+  }, [state.selectedStationId]);
 
   const readingsByStationId = useMemo(() => {
     const map = new Map<string, SensorReading>();
@@ -136,6 +132,41 @@ export function InteractiveMap() {
     });
     return map;
   }, [state.latestReadings]);
+
+  const requestSelectedRisk = useCallback(async (stationCode: string | null) => {
+    riskAbortControllerRef.current?.abort();
+
+    if (!stationCode) {
+      setState((previous) => ({ ...previous, selectedRisk: null }));
+      return;
+    }
+
+    const riskAbortController = new AbortController();
+    riskAbortControllerRef.current = riskAbortController;
+    const requestId = ++riskRequestIdRef.current;
+
+    try {
+      const risk = await getLatestRisk({ station_code: stationCode }, riskAbortController.signal);
+      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
+        return;
+      }
+      setState((previous) => ({
+        ...previous,
+        selectedRisk: risk,
+        error: null,
+        lastRefreshAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
+        return;
+      }
+      if (error instanceof ApiError && error.statusCode === 404) {
+        setState((previous) => ({ ...previous, selectedRisk: null }));
+        return;
+      }
+      setState((previous) => ({ ...previous, error: parseApiError(error) }));
+    }
+  }, []);
 
   const refreshData = useCallback(async (
     options?: {
@@ -172,7 +203,7 @@ export function InteractiveMap() {
 
       const selectedStationIdCandidate =
         stationIdOverride ??
-        state.selectedStationId ??
+        selectedStationIdRef.current ??
         stations.items[0]?.id ??
         null;
       const selectedStation =
@@ -180,17 +211,6 @@ export function InteractiveMap() {
         stations.items[0] ??
         null;
       const selectedStationId = selectedStation?.id ?? null;
-
-      let selectedRisk = null;
-      if (selectedStation) {
-        try {
-          selectedRisk = await getLatestRisk({ station_code: selectedStation.code }, signal);
-        } catch (error) {
-          if (!(error instanceof ApiError && error.statusCode === 404)) {
-            throw error;
-          }
-        }
-      }
 
       setState((previous) => ({
         ...previous,
@@ -201,9 +221,12 @@ export function InteractiveMap() {
         latestReadings: latestReadings.items,
         incidents: incidents.items,
         selectedStationId,
-        selectedRisk,
+        selectedRisk:
+          previous.selectedRisk?.assessment.station_id === selectedStationId ? previous.selectedRisk : null,
         lastRefreshAt: new Date().toISOString(),
       }));
+
+      void requestSelectedRisk(selectedStation?.code ?? null);
     } catch (error) {
       if (signal?.aborted) {
         return;
@@ -214,7 +237,7 @@ export function InteractiveMap() {
         error: parseApiError(error),
       }));
     }
-  }, [state.selectedStationId]);
+  }, [requestSelectedRisk]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -241,7 +264,7 @@ export function InteractiveMap() {
             ? Number(reading.salinity_gl)
             : null;
         const derivedRisk = deriveRiskLevel(latestSalinityGl);
-        const latitude = toNumber(station.latitude);
+        const latitude = toNumberUtil(station.latitude);
         const longitude = toNumber(station.longitude);
 
         if (latitude === null || longitude === null) {
@@ -272,7 +295,7 @@ export function InteractiveMap() {
   const mapGates = useMemo<MapGate[]>(
     () =>
       state.gates.flatMap((gate) => {
-          const latitude = toNumber(gate.latitude);
+          const latitude = toNumberUtil(gate.latitude);
           const longitude = toNumber(gate.longitude);
           if (latitude === null || longitude === null) {
             return [] as MapGate[];
@@ -325,37 +348,14 @@ export function InteractiveMap() {
 
   const handleSelectStation = async (stationId: string) => {
     const station = state.stations.find((item) => item.id === stationId);
+    selectedStationIdRef.current = stationId;
     setState((previous) => ({ ...previous, selectedStationId: stationId }));
     if (!station) {
+      void requestSelectedRisk(null);
       return;
     }
 
-    riskAbortControllerRef.current?.abort();
-    const riskAbortController = new AbortController();
-    riskAbortControllerRef.current = riskAbortController;
-    const requestId = ++riskRequestIdRef.current;
-
-    try {
-      const risk = await getLatestRisk({ station_code: station.code }, riskAbortController.signal);
-      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
-        return;
-      }
-      setState((previous) => ({
-        ...previous,
-        selectedRisk: risk,
-        error: null,
-        lastRefreshAt: new Date().toISOString(),
-      }));
-    } catch (error) {
-      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
-        return;
-      }
-      if (error instanceof ApiError && error.statusCode === 404) {
-        setState((previous) => ({ ...previous, selectedRisk: null }));
-        return;
-      }
-      setState((previous) => ({ ...previous, error: parseApiError(error) }));
-    }
+    void requestSelectedRisk(station.code);
   };
 
   const criticalIncidents = useMemo(
@@ -368,7 +368,7 @@ export function InteractiveMap() {
       <PageHeading
         trailing={
           <Badge variant="neutral" className="text-[9px]">
-            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+            Đồng bộ lúc {formatTimeUtil(state.lastRefreshAt)}
           </Badge>
         }
       />
@@ -383,11 +383,11 @@ export function InteractiveMap() {
         />
       ) : null}
 
-      {state.loading && state.stations.length === 0 ? (
+      {isBootstrapping ? (
         <SkeletonCards count={3} />
       ) : null}
 
-      <div className={`relative w-full h-[calc(100vh-300px)] min-h-150 rounded-[40px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
+      <div className="relative w-full h-[calc(100vh-300px)] min-h-150 rounded-[40px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10">
         <SatelliteMap
           layers={layers}
           zoom={11}
@@ -399,6 +399,24 @@ export function InteractiveMap() {
             void handleSelectStation(stationId);
           }}
         />
+
+        {isBootstrapping ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/35 backdrop-blur-[2px]">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950/80 px-6 py-5 text-white shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 animate-pulse rounded-2xl bg-mekong-cyan/20" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Đang tải bản đồ
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-200">
+                    Station và gate đang được đồng bộ, bản đồ sẽ hiển thị marker ngay khi dữ liệu sẵn sàng.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="absolute top-6 left-6 z-20 space-y-4 w-80">
           <Card variant="glass" className="p-5 rounded-3xl border-white/40 shadow-glass backdrop-blur-2xl">
@@ -545,7 +563,7 @@ export function InteractiveMap() {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
           {[
-            { label: "Độ mặn hiện tại", value: `${formatValue(selectedReading?.salinity_gl)} g/L` },
+            { label: "Độ mặn hiện tại", value: `${formatNumberUtil(toNumberUtil(selectedReading?.salinity_gl))} g/L` },
             { label: "Mực nước", value: `${formatValue(selectedReading?.water_level_m)} m` },
             { label: "Tốc độ gió", value: `${formatValue(selectedReading?.wind_speed_mps)} m/s` },
             { label: "Xu hướng", value: state.selectedRisk?.assessment.trend_direction ?? "--" },

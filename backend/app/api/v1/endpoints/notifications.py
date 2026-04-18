@@ -20,13 +20,13 @@ async def create_notification_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Create a mock notification."""
+    """Create a notification and trigger live delivery when enabled."""
     notification = await create_notification(session, payload)
     await session.commit()
     await session.refresh(notification)
     return success_response(
         request=request,
-        message="Notification sent successfully.",
+        message="Đã gửi thông báo thành công.",
         data=NotificationRead.model_validate(notification),
         status_code=201,
     )
@@ -42,7 +42,7 @@ async def list_notification_endpoint(
     notifications = await list_notifications(session, limit=limit)
     return success_response(
         request=request,
-        message="Notifications retrieved successfully.",
+        message="Đã tải danh sách thông báo thành công.",
         data=NotificationCollection(
             items=[NotificationRead.model_validate(notification) for notification in notifications],
             count=len(notifications),
@@ -64,7 +64,7 @@ async def mark_notification_read_endpoint(
     )
     return success_response(
         request=request,
-        message="Notification marked as read successfully.",
+        message="Đã đánh dấu thông báo là đã đọc.",
         data=NotificationRead.model_validate(notification),
     )
 

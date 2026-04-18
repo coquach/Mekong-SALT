@@ -121,11 +121,11 @@ async def generate_agent_plan(
             session,
             event_type="notification.plan_created",
             source="planning-service",
-            summary=f"Action plan generated ({plan.status.value})",
+            summary=f"Kế hoạch hành động đã được tạo ({plan.status.value})",
             payload={
                 "event": "plan_created",
-                "subject": f"Action plan generated ({plan.status.value})",
-                "message": f"Plan '{plan.id}' generated for objective: {plan.objective}",
+                "subject": f"Kế hoạch hành động đã được tạo ({plan.status.value})",
+                "message": f"Kế hoạch '{plan.id}' đã được tạo cho mục tiêu: {plan.objective}",
                 "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
                 "details": {
                     "action_plan_id": str(plan.id),

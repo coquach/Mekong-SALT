@@ -22,6 +22,12 @@ from app.services.notify import get_domain_event_notification_dispatcher
 
 INCIDENT_RISK_LEVELS = {RiskLevel.WARNING, RiskLevel.DANGER, RiskLevel.CRITICAL}
 
+_RISK_LEVEL_LABELS_VI = {
+    RiskLevel.WARNING.value: "cảnh báo",
+    RiskLevel.DANGER.value: "nguy hiểm",
+    RiskLevel.CRITICAL.value: "khẩn cấp",
+}
+
 
 async def _emit_incident_opened_notification_event(
     session: AsyncSession,
@@ -32,11 +38,11 @@ async def _emit_incident_opened_notification_event(
         session,
         event_type="notification.incident_created",
         source="incident-service",
-        summary=f"Incident opened: {incident.severity.value.upper()} salinity",
+        summary=f"Đã mở sự cố độ mặn {_localize_risk_level_label(incident.severity.value)}",
         payload={
             "event": "incident_created",
-            "subject": f"Incident opened: {incident.severity.value.upper()} salinity",
-            "message": f"Incident '{incident.title}' was opened from source '{incident.source}'.",
+            "subject": f"Đã mở sự cố độ mặn {_localize_risk_level_label(incident.severity.value)}",
+            "message": f"Sự cố '{incident.title}' đã được mở từ nguồn '{incident.source}'.",
             "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
             "details": {
                 "severity": incident.severity.value,
@@ -88,13 +94,18 @@ async def create_incident(
         actor_name=actor_name,
         region_id=incident.region_id,
         incident_id=incident.id,
-        summary=f"Incident created: {incident.title}",
+        summary=f"Đã tạo sự cố: {incident.title}",
         payload={"severity": incident.severity.value, "source": incident.source},
     )
     await _emit_incident_opened_notification_event(session, incident=incident)
     await session.commit()
     await session.refresh(incident)
     return incident
+
+
+def _localize_risk_level_label(value: str) -> str:
+    text = str(value).strip().lower()
+    return _RISK_LEVEL_LABELS_VI.get(text, text)
 
 
 async def ensure_incident_for_assessment(
@@ -108,7 +119,7 @@ async def ensure_incident_for_assessment(
         return IncidentDecisionResult(
             incident=None,
             decision="skipped",
-            reason=f"Risk level '{assessment.risk_level.value}' is below incident threshold.",
+            reason=f"Mức rủi ro '{assessment.risk_level.value}' thấp hơn ngưỡng tạo sự cố.",
         )
 
     repo = IncidentRepository(session)
@@ -118,7 +129,7 @@ async def ensure_incident_for_assessment(
             return IncidentDecisionResult(
                 incident=existing,
                 decision="existing",
-                reason="Open incident already linked to this risk assessment.",
+                reason="Đã có sự cố đang mở gắn với đánh giá rủi ro này.",
             )
     existing = await repo.get_open_by_region_and_severity(
         assessment.region_id,
@@ -128,7 +139,7 @@ async def ensure_incident_for_assessment(
         return IncidentDecisionResult(
             incident=existing,
             decision="existing",
-            reason="Open incident with same region and severity already exists.",
+            reason="Đã tồn tại sự cố đang mở cùng vùng và cùng mức độ.",
         )
 
     incident = Incident(
@@ -167,14 +178,14 @@ async def ensure_incident_for_assessment(
         actor_name=actor_name,
         region_id=incident.region_id,
         incident_id=incident.id,
-        summary=f"Incident opened from risk assessment {assessment.id}.",
+        summary=f"Đã mở sự cố từ đánh giá rủi ro {assessment.id}.",
         payload=incident.evidence,
     )
     await _emit_incident_opened_notification_event(session, incident=incident)
     return IncidentDecisionResult(
         incident=incident,
         decision="created",
-        reason="Risk level meets threshold and no active matching incident exists.",
+        reason="Mức rủi ro đạt ngưỡng và chưa có sự cố đang mở phù hợp.",
     )
 
 
@@ -200,7 +211,7 @@ async def get_incident(session: AsyncSession, incident_id: UUID) -> Incident:
         raise AppException(
             status_code=HTTPStatus.NOT_FOUND,
             code="incident_not_found",
-            message=f"Incident '{incident_id}' was not found.",
+            message=f"Không tìm thấy sự cố '{incident_id}'.",
         )
     return incident
 
@@ -226,7 +237,7 @@ async def update_incident_status(
         actor_name=actor_name,
         region_id=incident.region_id,
         incident_id=incident.id,
-        summary=f"Incident status updated to {payload.status.value}.",
+        summary=f"Đã cập nhật trạng thái sự cố sang {payload.status.value}.",
         payload={"note": payload.note},
     )
     await session.commit()

@@ -30,8 +30,10 @@ import {
   getLatestRisk,
   type ActionLogEntry,
   type DashboardSummary,
+  fetchOpenMeteoWeatherSnapshot,
   type RiskLatestResponse,
   type SensorReading,
+  type OpenMeteoWeatherSnapshot,
 } from "../lib/api/dashboard";
 import { getGates, getStations, type GateRead, type SensorStationRead } from "../lib/api/telemetry";
 import {
@@ -488,6 +490,7 @@ export function Dashboard() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [plcBusy, setPlcBusy] = useState(false);
   const [plcStatusMessage, setPlcStatusMessage] = useState<string | null>(null);
+  const [weatherSnapshot, setWeatherSnapshot] = useState<OpenMeteoWeatherSnapshot | null>(null);
   const [state, setState] = useState<DashboardState>({
     loading: true,
     error: null,
@@ -505,6 +508,48 @@ export function Dashboard() {
     streamStatus: "connecting",
     lastStreamAt: null,
   });
+  const weatherStationCode = state.latestReading?.station.code ?? state.summary?.latest_station_code ?? null;
+  const weatherStation = useMemo(
+    () => {
+      if (!weatherStationCode) {
+        return null;
+      }
+      return state.stations.find((station) => station.code === weatherStationCode) ?? null;
+    },
+    [state.stations, weatherStationCode],
+  );
+
+  useEffect(() => {
+    if (!weatherStation) {
+      setWeatherSnapshot(null);
+      return;
+    }
+
+    const latitude = toNumber(weatherStation.latitude);
+    const longitude = toNumber(weatherStation.longitude);
+    if (latitude === null || longitude === null) {
+      setWeatherSnapshot(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void fetchOpenMeteoWeatherSnapshot({ latitude, longitude }, abortController.signal)
+      .then((snapshot) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setWeatherSnapshot(snapshot);
+      })
+      .catch(() => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setWeatherSnapshot(null);
+      });
+
+    return () => abortController.abort();
+  }, [reloadVersion, weatherStation]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -681,9 +726,17 @@ export function Dashboard() {
   const salinityGl = toNumber(
     state.risk?.assessment.salinity_gl ?? state.latestReading?.salinity_gl,
   );
-  const waterLevel = toNumber(state.latestReading?.water_level_m);
-  const windSpeed = toNumber(state.latestReading?.wind_speed_mps);
-  const windDirection = state.latestReading?.wind_direction_deg;
+  const activeWeatherSnapshot = weatherSnapshot;
+  const waterLevel = toNumber(
+    activeWeatherSnapshot?.tide_level_m ?? state.latestReading?.water_level_m,
+  );
+  const windSpeed = toNumber(
+    activeWeatherSnapshot?.wind_speed_mps ?? state.latestReading?.wind_speed_mps,
+  );
+  const windDirection =
+    activeWeatherSnapshot?.wind_direction_deg ?? state.latestReading?.wind_direction_deg;
+  const weatherSourceLabel = activeWeatherSnapshot ? "Open-Meteo" : "Cảm biến";
+  const weatherObservedAt = activeWeatherSnapshot?.observed_at ?? state.latestReading?.recorded_at ?? null;
   const trendDeltaGl = toNumber(state.risk?.assessment.trend_delta_gl);
   const stationCode =
     state.latestReading?.station.code ??
@@ -1022,7 +1075,9 @@ export function Dashboard() {
                 <span className="text-[11px] font-black uppercase tracking-widest leading-none">
                   Dữ liệu mới nhất
                 </span>
-                <span className="text-[9px] font-bold opacity-70">{state.latestReading ? formatTime(state.latestReading.recorded_at) : "--:--"}</span>
+                <span className="text-[9px] font-bold opacity-70">
+                  {weatherSourceLabel} · {formatTime(weatherObservedAt)}
+                </span>
               </div>
             </div>
           </div>
@@ -1053,7 +1108,7 @@ export function Dashboard() {
           <div className="relative z-10 pt-6 border-t border-slate-50 flex items-center gap-2">
             <Compass size={14} strokeWidth={2.5} className="text-slate-400" />
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-              Từ cảm biến gần nhất
+              {weatherSourceLabel} · {formatTime(weatherObservedAt)}
             </span>
           </div>
         </Card>

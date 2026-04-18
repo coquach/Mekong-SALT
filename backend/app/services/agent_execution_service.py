@@ -189,10 +189,10 @@ async def execute_simulated_plan(
                 session,
                 event_type="notification.execution_alert",
                 source="execution-service",
-                summary="Mekong-SALT salinity response",
+                summary="Phản ứng độ mặn Mekong-SALT",
                 payload={
                     "event": "execution_alert",
-                    "subject": "Mekong-SALT salinity response",
+                    "subject": "Phản ứng độ mặn Mekong-SALT",
                     "message": step.instructions,
                     "execution_id": str(execution.id),
                     "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
@@ -294,10 +294,10 @@ async def execute_simulated_plan(
         session,
         event_type="notification.execution_summary",
         source="execution-service",
-        summary=f"Execution summary: {feedback.outcome_class}",
+        summary=f"Tổng kết thực thi: {feedback.outcome_class}",
         payload={
             "event": "execution_summary",
-            "subject": f"Execution summary: {feedback.outcome_class}",
+            "subject": f"Tổng kết thực thi: {feedback.outcome_class}",
             "message": feedback.summary,
             "execution_id": str(executions[-1].id) if executions else None,
             "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
@@ -440,14 +440,14 @@ async def list_action_logs(
 def _build_execution_summary(action_type) -> str:
     """Return a fixed summary for each simulated action type."""
     summaries = {
-        "close_gate": "Mock gate close command accepted.",
-        "open_gate": "Mock gate open command accepted.",
-        "start_pump": "Mock pump start command accepted.",
-        "stop_pump": "Mock pump stop command accepted.",
-        "send_alert": "Mock stakeholder alert sent.",
-        "notify-farmers": "Simulated advisory notification sent to farmers.",
-        "wait-safe-window": "Simulated wait window applied pending safer intake conditions.",
-        "close-gate-simulated": "Simulated temporary gate closure scenario completed.",
-        "start-pump-simulated": "Simulated pump activation scenario completed.",
+        "close_gate": "Đã chấp nhận lệnh đóng cống mô phỏng.",
+        "open_gate": "Đã chấp nhận lệnh mở cống mô phỏng.",
+        "start_pump": "Đã chấp nhận lệnh khởi động bơm mô phỏng.",
+        "stop_pump": "Đã chấp nhận lệnh dừng bơm mô phỏng.",
+        "send_alert": "Đã gửi cảnh báo mô phỏng tới các bên liên quan.",
+        "notify-farmers": "Đã gửi thông báo hướng dẫn mô phỏng tới nông dân.",
+        "wait-safe-window": "Đã áp dụng khoảng chờ mô phỏng trong khi chờ điều kiện an toàn hơn.",
+        "close-gate-simulated": "Đã hoàn tất kịch bản đóng cống tạm thời mô phỏng.",
+        "start-pump-simulated": "Đã hoàn tất kịch bản khởi động bơm mô phỏng.",
     }
     return summaries[action_type.value]

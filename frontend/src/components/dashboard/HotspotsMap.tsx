@@ -2,6 +2,7 @@ import { Maximize2, MousePointer2 } from "lucide-react";
 import { useMemo } from "react";
 import { Card } from "../ui/Card";
 import type { MapStation } from "./SatelliteMap";
+import { formatNumber } from "../../lib/format";
 
 type HotspotIntensity = "critical" | "warning";
 
@@ -208,7 +209,7 @@ export function HotspotsMap({
               {hotspot.label}
             </text>
             <text x="8" y="2.8" className="fill-slate-200 text-[2.4px] font-bold drop-shadow-lg">
-              {hotspot.stationCode} · {hotspot.salinityGl?.toFixed(2) ?? "--"} g/L
+              {hotspot.stationCode} · {formatNumber(hotspot.salinityGl, 2)} g/L
             </text>
           </g>
         ))}

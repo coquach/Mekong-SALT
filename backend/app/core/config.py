@@ -123,6 +123,24 @@ class Settings(BaseSettings):
     active_monitoring_approval_timeout_action: Literal["none", "auto_reject"] = "auto_reject"
     active_monitoring_feedback_replan_max_attempts: int = 1
     reactive_auto_execute_enabled: bool = True
+    zalo_notifications_enabled: bool = False
+    zalo_delivery_mode: Literal["text", "template"] = "template"
+    zalo_oa_access_token: SecretStr | None = None
+    zalo_oa_recipient_phone_number: str | None = None
+    zalo_oa_template_id: str | None = None
+    zalo_oa_template_message_endpoint: str = "https://openapi.zalo.me/v3.0/oa/message/template"
+    zalo_oa_message_endpoint: str = "https://openapi.zalo.me/v3.0/oa/message/cs"
+    zalo_oa_timeout_seconds: int = 10
+
+    email_notifications_enabled: bool = False
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_username: str | None = None
+    email_smtp_password: SecretStr | None = None
+    email_from_address: str | None = None
+    email_use_tls: bool = True
+    email_use_ssl: bool = False
+    email_timeout_seconds: int = 10
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
@@ -219,6 +237,44 @@ class Settings(BaseSettings):
     def enforce_llm_provider(cls, _value: str | None) -> str:
         """Force Gemini as the only supported planning provider."""
         return "gemini"
+
+    @field_validator("zalo_oa_recipient_phone_number", mode="before")
+    @classmethod
+    def normalize_zalo_recipient_phone_number(cls, value: object) -> str | None:
+        """Treat empty recipient phone numbers as disabled configuration."""
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("zalo_delivery_mode", mode="before")
+    @classmethod
+    def normalize_zalo_delivery_mode(cls, value: object) -> str:
+        """Normalize the notification delivery mode."""
+        normalized = str(value or "template").strip().lower()
+        if normalized in {"text", "template"}:
+            return normalized
+        return "template"
+
+    @field_validator("email_smtp_host", "email_smtp_username", "email_from_address", mode="before")
+    @classmethod
+    def normalize_email_text_settings(cls, value: object) -> str | None:
+        """Treat empty email delivery settings as disabled configuration."""
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("email_smtp_password", mode="before")
+    @classmethod
+    def normalize_email_password(cls, value: object) -> SecretStr | None:
+        """Treat empty email passwords as disabled configuration."""
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        return SecretStr(text)
 
     @field_validator("llm_use_vertex", mode="before")
     @classmethod

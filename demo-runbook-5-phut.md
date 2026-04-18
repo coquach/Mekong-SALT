@@ -12,10 +12,11 @@ Tài liệu này mô tả đường chạy demo chuẩn cho backend Mekong-SALT,
 
 ## 0) Bộ Lệnh Cần Thiết
 
-Nếu cần chạy nhanh theo thứ tự chuẩn, dùng đúng các lệnh sau:
+Nếu cần chạy nhanh theo thứ tự chuẩn, dùng đúng các lệnh sau từ thư mục gốc của repo:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
+cd backend
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe scripts/seed.py
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
@@ -30,6 +31,24 @@ Nếu muốn chạy kịch bản timeout auto-reject thay vì fast approve:
 
 ```bash
 ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
+Nếu muốn bắn thử thông báo qua Zalo cho demo:
+
+```bash
+set ZALO_NOTIFICATIONS_ENABLED=true
+set ZALO_OA_ACCESS_TOKEN=your-access-token
+set ZALO_OA_RECIPIENT_USER_ID=your-zalo-user-id
+./.venv/Scripts/python.exe scripts/send_demo_zalo_notification.py --subject "Mekong-SALT demo" --message "Tin nhắn demo qua Zalo từ backend."
+```
+
+Nếu dùng PowerShell:
+
+```powershell
+$env:ZALO_NOTIFICATIONS_ENABLED = "true"
+$env:ZALO_OA_ACCESS_TOKEN = "your-access-token"
+$env:ZALO_OA_RECIPIENT_USER_ID = "your-zalo-user-id"
+./.venv/Scripts/python.exe scripts/send_demo_zalo_notification.py --subject "Mekong-SALT demo" --message "Tin nhắn demo qua Zalo từ backend."
 ```
 
 Nếu chỉ muốn xem catalog scenario trước khi chạy:
@@ -57,10 +76,10 @@ Các service trong `docker compose`:
 
 ## 2) Khởi động hệ thống
 
-Từ thư mục `backend`:
+Từ thư mục gốc:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 Kiểm tra các URL chính:
@@ -76,6 +95,7 @@ Kiểm tra các URL chính:
 Migrate tạo schema và đồng bộ model với database.
 
 ```bash
+cd backend
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ```
 
@@ -279,7 +299,8 @@ curl http://localhost:8000/api/v1/agent/runs?limit=10
 Nếu bạn muốn chạy nhanh nhất từ đầu đến cuối:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
+cd backend
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe scripts/seed.py
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
