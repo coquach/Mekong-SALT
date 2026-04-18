@@ -424,7 +424,7 @@ async def test_create_notification_skips_duplicate_dedupe_key(
 
 
 @pytest.mark.asyncio
-async def test_create_operational_notifications_triggers_email_without_persisting(
+async def test_create_operational_notifications_persists_email_delivery(
     db_session,
     monkeypatch,
 ):
@@ -473,8 +473,14 @@ async def test_create_operational_notifications_triggers_email_without_persistin
 
     notifications_on_disk = await list_notifications(db_session, limit=20)
 
-    assert len(notifications) == 1
-    assert notifications[0].channel is NotificationChannel.DASHBOARD
+    assert len(notifications) == 2
+    assert {notification.channel for notification in notifications} == {
+        NotificationChannel.DASHBOARD,
+        NotificationChannel.EMAIL_MOCK,
+    }
     assert len(sent_messages) == 1
     assert sent_messages[0]["recipient_email"] == "ops@example.test"
-    assert all(notification.channel is not NotificationChannel.EMAIL_MOCK for notification in notifications_on_disk)
+    assert {notification.channel for notification in notifications_on_disk} == {
+        NotificationChannel.DASHBOARD,
+        NotificationChannel.EMAIL_MOCK,
+    }

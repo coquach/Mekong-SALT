@@ -11,6 +11,7 @@ from app.core.salinity_units import dsm_to_gl
 from app.models.enums import ActionPlanStatus, ActionType, ExecutionStatus
 from app.schemas.decision import DecisionLogRead
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
+from app.schemas.graph import ExecutionGraphRead, build_execution_graph_from_batch
 
 
 class ActionPlanBase(ORMBaseSchema):
@@ -119,6 +120,16 @@ class ExecutionBatchDetail(ORMBaseSchema):
     batch: ExecutionBatchRead
     executions: list[ActionExecutionRead]
     count: int
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "ExecutionBatchDetail":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_batch(
+                self.batch.model_dump(mode="json"),
+                [execution.model_dump(mode="json") for execution in self.executions],
+            )
+        return self
 
 
 class ExecutionJobDetail(ORMBaseSchema):
@@ -127,6 +138,16 @@ class ExecutionJobDetail(ORMBaseSchema):
     execution_job: ExecutionJobRead
     executions: list[ActionExecutionRead]
     count: int
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "ExecutionJobDetail":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_batch(
+                self.execution_job.model_dump(mode="json"),
+                [execution.model_dump(mode="json") for execution in self.executions],
+            )
+        return self
 
 
 class SimulatedExecutionRequest(ORMBaseSchema):
@@ -183,6 +204,29 @@ class SimulatedExecutionResponse(ORMBaseSchema):
     feedback: FeedbackEvaluation
     decision_logs: list[DecisionLogRead]
     idempotent_replay: bool = False
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "SimulatedExecutionResponse":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_batch(
+                {
+                    "id": str(self.plan.id),
+                    "plan_id": str(self.plan.id),
+                    "region_id": str(self.plan.region_id),
+                    "status": self.plan.status.value,
+                    "simulated": True,
+                    "requested_by": None,
+                    "idempotency_key": None,
+                    "started_at": None,
+                    "completed_at": None,
+                    "step_count": len(self.executions),
+                },
+                [execution.model_dump(mode="json") for execution in self.executions],
+                feedback=self.feedback.model_dump(mode="json"),
+                metadata={"plan_id": str(self.plan.id), "region_id": str(self.plan.region_id)},
+            )
+        return self
 
 
 class SimulatedExecutionBatchResponse(ORMBaseSchema):
@@ -193,6 +237,17 @@ class SimulatedExecutionBatchResponse(ORMBaseSchema):
     feedback: FeedbackEvaluation
     decision_logs: list[DecisionLogRead]
     idempotent_replay: bool = False
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "SimulatedExecutionBatchResponse":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_batch(
+                self.batch.model_dump(mode="json"),
+                [execution.model_dump(mode="json") for execution in self.executions],
+                feedback=self.feedback.model_dump(mode="json"),
+            )
+        return self
 
 
 class ActionLogEntry(ORMBaseSchema):

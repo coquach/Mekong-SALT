@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -75,30 +76,91 @@ class AgentPlanningWorkflow:
 
     async def _observe(self, state: PlanningState) -> PlanningState:
         updates = await observe_request_node(state)
-        updates["transition_log"] = self._append_transition(state, "observe")
+        updates["transition_log"] = self._append_transition(
+            state,
+            "observe",
+            details={"objective": updates.get("objective")},
+        )
         return updates
 
     async def _assess_risk(self, state: PlanningState) -> PlanningState:
         updates = await assess_risk_node(state, services=self._services)
-        updates["transition_log"] = self._append_transition(state, "assess_risk")
+        risk_bundle = updates.get("risk_bundle") or state.get("risk_bundle")
+        updates["transition_log"] = self._append_transition(
+            state,
+            "assess_risk",
+            details={
+                "risk_level": (
+                    risk_bundle.assessment.risk_level.value
+                    if risk_bundle is not None
+                    else None
+                ),
+                "summary": (
+                    risk_bundle.assessment.summary
+                    if risk_bundle is not None
+                    else None
+                ),
+            },
+        )
         return updates
 
     async def _retrieve_context(self, state: PlanningState) -> PlanningState:
         updates = await retrieve_context_node(state, services=self._services)
-        updates["transition_log"] = self._append_transition(state, "retrieve_context")
+        retrieved_context = updates.get("retrieved_context") or {}
+        updates["transition_log"] = self._append_transition(
+            state,
+            "retrieve_context",
+            details={
+                "retrieved_context_keys": sorted(retrieved_context.keys()),
+                "gate_targets": len(retrieved_context.get("gate_targets") or []),
+                "evidence_count": (
+                    retrieved_context.get("retrieval_trace", {}).get("total_evidence")
+                    if isinstance(retrieved_context.get("retrieval_trace"), dict)
+                    else None
+                ),
+            },
+        )
         return updates
 
     async def _draft_plan(self, state: PlanningState) -> PlanningState:
         updates = await draft_plan_node(state, services=self._services)
-        updates["transition_log"] = self._append_transition(state, "draft_plan")
+        draft_plan = updates.get("draft_plan")
+        updates["transition_log"] = self._append_transition(
+            state,
+            "draft_plan",
+            details={
+                "step_count": len(getattr(draft_plan, "steps", []) or []),
+                "confidence_score": getattr(draft_plan, "confidence_score", None),
+            },
+        )
         return updates
 
     async def _validate_plan(self, state: PlanningState) -> PlanningState:
         updates = await validate_plan_node(state)
-        updates["transition_log"] = self._append_transition(state, "validate_plan")
+        validation_result = updates.get("validation_result")
+        updates["transition_log"] = self._append_transition(
+            state,
+            "validate_plan",
+            details={
+                "is_valid": getattr(validation_result, "is_valid", None),
+                "error_count": len(getattr(validation_result, "errors", []) or []),
+                "warning_count": len(getattr(validation_result, "warnings", []) or []),
+            },
+        )
         return updates
 
-    def _append_transition(self, state: PlanningState, node: str) -> list[dict[str, Any]]:
+    def _append_transition(
+        self,
+        state: PlanningState,
+        node: str,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         transitions = list(state.get("transition_log") or [])
-        transitions.append({"node": node, "status": "completed"})
+        transitions.append({
+            "node": node,
+            "status": "completed",
+            "at": datetime.now(UTC).isoformat(),
+            "details": details or {},
+        })
         return transitions

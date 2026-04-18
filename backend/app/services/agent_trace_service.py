@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_run import AgentRun, ObservationSnapshot
 from app.repositories.agent_run import AgentRunRepository, ObservationSnapshotRepository
+from app.schemas.graph import build_execution_graph_from_trace
 
 
 def _json_safe(value: Any) -> Any:
@@ -56,6 +57,22 @@ def _as_numeric_mapping(value: Any) -> dict[str, int | float]:
     return normalized
 
 
+def _as_number(value: Any) -> int | float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped) if "." in stripped else int(stripped)
+        except ValueError:
+            return None
+    return None
+
+
 def _normalize_transition_log(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -64,12 +81,16 @@ def _normalize_transition_log(value: Any) -> list[dict[str, Any]]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        transitions.append(
-            {
-                "node": _as_string(item.get("node")),
-                "status": _as_string(item.get("status")),
-            }
-        )
+        transition: dict[str, Any] = {
+            "node": _as_string(item.get("node")),
+            "status": _as_string(item.get("status")),
+        }
+        at_value = _as_string(item.get("at"))
+        if at_value is not None:
+            transition["at"] = at_value
+        if isinstance(item.get("details"), dict):
+            transition["details"] = item.get("details")
+        transitions.append(transition)
     return transitions
 
 
@@ -151,13 +172,21 @@ def normalize_agent_run_trace(trace: dict[str, Any] | None) -> dict[str, Any]:
     retrieval_trace = result.get("retrieval_trace") if isinstance(result.get("retrieval_trace"), dict) else {}
     total_evidence = retrieval_trace.get("total_evidence")
     result["retrieval_trace"] = {
-        "total_evidence": int(total_evidence) if isinstance(total_evidence, (int, float)) else 0,
+        "total_evidence": int(number) if (number := _as_number(total_evidence)) is not None else 0,
         "source_counts": _as_numeric_mapping(retrieval_trace.get("source_counts")),
         "top_citations": _normalize_top_citations(retrieval_trace.get("top_citations")),
     }
 
     result["planning_transition_log"] = _normalize_transition_log(result.get("planning_transition_log"))
     result["operator_summary"] = _build_operator_summary(result)
+    graph_metadata: dict[str, Any] = {}
+    for key in ("run_type", "trigger_source", "action_plan_id", "region_id", "incident_id", "risk_assessment_id"):
+        value = result.get(key)
+        if value is not None:
+            graph_metadata[key] = value
+    execution_graph = build_execution_graph_from_trace(result, metadata=graph_metadata)
+    if execution_graph is not None:
+        result["execution_graph"] = execution_graph.model_dump(mode="json")
     return _json_safe(result)
 
 

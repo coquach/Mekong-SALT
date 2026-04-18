@@ -104,6 +104,8 @@ async def test_lifecycle_graph_high_risk_requires_human_approval(
     assert result.execution_bundle is None
     assert result.memory_log is not None
     assert result.memory_log.details["approval_status"] == "awaiting_human_approval"
+    assert result.memory_log.details["execution_graph"]["graph_type"] == "lifecycle"
+    assert result.memory_log.details["execution_graph"]["status"] == "blocked"
 
     node_names = [entry["node"] for entry in (result.transition_log or [])]
     assert node_names == [
@@ -138,6 +140,8 @@ async def test_lifecycle_graph_low_risk_auto_executes(
     assert result.plan.status == ActionPlanStatus.SIMULATED
     assert result.memory_log is not None
     assert result.memory_log.details["execution_status"] == "executed"
+    assert result.memory_log.details["execution_graph"]["graph_type"] == "lifecycle"
+    assert result.memory_log.details["execution_graph"]["status"] == "completed"
 
 
 @pytest.mark.asyncio

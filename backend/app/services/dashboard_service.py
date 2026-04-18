@@ -40,7 +40,6 @@ async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
     active_notifications = await session.scalar(
         select(func.count()).select_from(Notification).where(
             Notification.status.in_([NotificationStatus.PENDING, NotificationStatus.SENT]),
-            Notification.channel != NotificationChannel.EMAIL_MOCK,
         )
     )
     today_start = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)

@@ -204,22 +204,22 @@ async def create_operational_notifications(
     actor_name: str = "notification-service",
     channel_recipients: tuple[tuple[NotificationChannel, str], ...] | None = None,
 ) -> list[Notification]:
-    """Create operational notifications and trigger delivery-only email sends."""
+    """Create operational notifications and persist all delivery channels."""
     notifications: list[Notification] = []
     for channel, recipient in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS):
-        if channel is NotificationChannel.EMAIL_MOCK:
-            await _deliver_email_notification(
-                settings=get_settings(),
-                session=session,
-                subject=subject,
-                message=message,
-                payload=payload or {},
-                recipient_email=recipient,
+        payload_body = dict(payload or {})
+        payload_body.setdefault(
+            "dedupe_key",
+            _build_operational_notification_dedupe_key(
+                channel=channel,
+                recipient=recipient,
                 incident_id=incident_id,
                 execution_id=execution_id,
-                actor_name=actor_name,
-            )
-            continue
+                subject=subject,
+                message=message,
+                payload=payload_body,
+            ),
+        )
         notification = await create_notification(
             session,
             NotificationCreate(
@@ -228,7 +228,7 @@ async def create_operational_notifications(
                 recipient=recipient,
                 subject=subject,
                 message=message,
-                payload=payload or {},
+                payload=payload_body,
             ),
             execution_id=execution_id,
             actor_name=actor_name,
@@ -479,6 +479,30 @@ def _build_notification_dedupe_key(
     )
 
 
+def _build_operational_notification_dedupe_key(
+    *,
+    channel: NotificationChannel,
+    recipient: str,
+    incident_id: UUID | None,
+    execution_id: UUID | None,
+    subject: str | None,
+    message: str,
+    payload: dict[str, Any] | None = None,
+) -> str:
+    """Build a stable fallback dedupe key for operational fanout."""
+    explicit_key = (payload or {}).get("dedupe_key")
+    if explicit_key is not None:
+        return str(explicit_key)
+    normalized_subject = (subject or "").strip()
+    normalized_message = " ".join(str(message).split())
+    return (
+        f"operational:{channel.value}:{recipient}:"
+        f"{incident_id if incident_id is not None else '-'}:"
+        f"{execution_id if execution_id is not None else '-'}:"
+        f"{normalized_subject}:{normalized_message}"
+    )
+
+
 async def _find_recent_duplicate_notification(
     session: AsyncSession,
     *,
@@ -548,12 +572,7 @@ def _localize_delivery_mode_label(value: str) -> str:
 
 async def list_notifications(session: AsyncSession, *, limit: int = 100) -> list[Notification]:
     """List recent notifications."""
-    notifications = await NotificationRepository(session).list_recent(limit=limit)
-    return [
-        notification
-        for notification in notifications
-        if notification.channel is not NotificationChannel.EMAIL_MOCK
-    ]
+    return await NotificationRepository(session).list_recent(limit=limit)
 
 
 async def mark_notification_read(

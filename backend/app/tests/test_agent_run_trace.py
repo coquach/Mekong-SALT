@@ -66,6 +66,10 @@ def test_normalize_agent_run_trace_produces_stable_shape():
     assert normalized["retrieval_trace"]["top_citations"][0]["citation"] == "Doc A"
     assert normalized["planning_transition_log"][0]["node"] == "observe"
     assert normalized["operator_summary"] is not None
+    assert normalized["execution_graph"]["graph_type"] == "planning"
+    assert normalized["execution_graph"]["status"] == "pending"
+    assert normalized["execution_graph"]["current_node"] == "assess_risk"
+    assert normalized["execution_graph"]["nodes"][0]["id"] == "observe"
 
 
 async def _persist_stub_weather_snapshot(
@@ -146,7 +150,7 @@ async def test_risk_run_trace_records_snapshot_and_incident_skip_reason(
     assert run_body["status"] == "succeeded"
     assert run_body["trigger_source"] == "monitoring.worker.observe_risk"
     assert run_body["trace"]["incident_decision"]["decision"] == "skipped"
-    assert "below incident threshold" in run_body["trace"]["incident_decision"]["reason"]
+    assert "ngưỡng tạo sự cố" in run_body["trace"]["incident_decision"]["reason"]
     assert run_body["trace"]["plan_decision"]["decision"] == "not_applicable"
     assert run_body["observation_snapshot"] is not None
     assert run_body["observation_snapshot"]["reading_id"] == str(safe_reading.id)

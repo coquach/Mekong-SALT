@@ -89,7 +89,7 @@ async def test_dashboard_earth_engine_latest_returns_empty_payload_without_snaps
 
 
 @pytest.mark.asyncio
-async def test_dashboard_summary_ignores_email_delivery_records(
+async def test_dashboard_summary_counts_email_delivery_records(
     client,
     db_session,
 ):
@@ -126,4 +126,4 @@ async def test_dashboard_summary_ignores_email_delivery_records(
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    assert body["data"]["active_notifications"] == baseline_count + 1
+    assert body["data"]["active_notifications"] == baseline_count + 2

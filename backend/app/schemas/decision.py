@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.models.enums import DecisionActorType
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
+from app.schemas.graph import ExecutionGraphRead, build_execution_graph_from_details
 
 
 class DecisionLogBase(ORMBaseSchema):
@@ -32,4 +33,12 @@ class DecisionLogCreate(DecisionLogBase):
 
 class DecisionLogRead(EntityReadSchema, DecisionLogBase):
     """Schema for returning a decision log."""
+
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "DecisionLogRead":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_details(self.details)
+        return self
 

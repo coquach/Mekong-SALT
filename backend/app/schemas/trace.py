@@ -3,7 +3,10 @@
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import model_validator
+
 from app.schemas.base import EntityReadSchema, ORMBaseSchema
+from app.schemas.graph import ExecutionGraphRead, build_execution_graph_from_trace
 
 
 class ObservationSnapshotRead(EntityReadSchema):
@@ -36,6 +39,13 @@ class AgentRunRead(EntityReadSchema):
     incident_id: UUID | None = None
     action_plan_id: UUID | None = None
     observation_snapshot: ObservationSnapshotRead | None = None
+    execution_graph: ExecutionGraphRead | None = None
+
+    @model_validator(mode="after")
+    def _sync_execution_graph(self) -> "AgentRunRead":
+        if self.execution_graph is None:
+            self.execution_graph = build_execution_graph_from_trace(self.trace)
+        return self
 
 
 class AgentRunCollection(ORMBaseSchema):

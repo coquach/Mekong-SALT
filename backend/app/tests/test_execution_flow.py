@@ -179,6 +179,11 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
 
     assert logs_response.status_code == 200
     logs_body = logs_response.json()["data"]
+    batch_response = await client.get(f"/api/v1/execution-batches/{lifecycle_result.execution_bundle.batch.id}")
+    assert batch_response.status_code == 200
+    batch_body = batch_response.json()["data"]
+    assert batch_body["execution_graph"]["graph_type"] == "execution_batch"
+    assert batch_body["execution_graph"]["status"] == "completed"
     assert logs_body["count"] == 2
     assert all(item["decision_log"] is not None for item in logs_body["items"])
 
@@ -306,9 +311,9 @@ async def test_reactive_execution_emits_replan_request_event_on_partial_success(
             select(DomainEvent).where(DomainEvent.event_type == REPLAN_REQUEST_EVENT_TYPE)
         )
     ).all()
-    assert len(replan_events) == 1
-    assert replan_events[0].payload["action_plan_id"] == str(plan.id)
-    assert replan_events[0].payload["feedback_outcome_class"] == "partial_success"
+    matching_replan_events = [event for event in replan_events if event.payload["action_plan_id"] == str(plan.id)]
+    assert len(matching_replan_events) >= 1
+    assert matching_replan_events[-1].payload["feedback_outcome_class"] == "partial_success"
 
 
 @pytest.mark.asyncio

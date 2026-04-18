@@ -17,6 +17,7 @@ from app.models.enums import ActionPlanStatus, ApprovalDecision, DecisionActorTy
 from app.repositories.decision import DecisionLogRepository
 from app.schemas.action import SimulatedExecutionRequest
 from app.schemas.approval import ApprovalRequest
+from app.schemas.graph import build_execution_graph_from_trace
 from app.services.approval import resolve_approval_gate_policy
 from app.services.execution import SimulatedExecutionBundle, execute_simulated_plan
 from app.services.approval import decide_plan
@@ -269,6 +270,16 @@ async def memory_write_node(
     if execution_bundle is not None and execution_bundle.executions:
         latest_execution_id = execution_bundle.executions[-1].id
 
+    final_transition_log = _append_transition(
+        state,
+        node="memory_write",
+        status="written",
+        details={
+            "decision_log_id": None,
+            "store_as_memory": feedback_status == "success",
+        },
+    )
+
     memory_log = DecisionLog(
         region_id=plan.region_id,
         risk_assessment_id=plan.risk_assessment_id,
@@ -287,22 +298,34 @@ async def memory_write_node(
             "feedback_summary": state.get("feedback_summary"),
             "feedback_replan_recommended": state.get("feedback_replan_recommended"),
             "feedback_replan_reason": state.get("feedback_replan_reason"),
-            "transition_log": transitions,
+            "transition_log": final_transition_log,
         },
         store_as_memory=feedback_status == "success",
     )
+    execution_graph = build_execution_graph_from_trace(
+        {
+            "approval_status": state.get("approval_status"),
+            "execution_status": state.get("execution_status"),
+            "feedback_status": feedback_status,
+            "feedback_summary": state.get("feedback_summary"),
+            "memory_write_status": "written",
+            "reason": state.get("reason"),
+            "transition_log": final_transition_log,
+        },
+        metadata={
+            "action_plan_id": str(plan.id),
+            "region_id": str(plan.region_id),
+            "risk_assessment_id": str(plan.risk_assessment_id),
+        },
+    )
+    if execution_graph is not None:
+        memory_log.details["execution_graph"] = execution_graph.model_dump(mode="json")
     await DecisionLogRepository(services.session).add(memory_log)
+
+    final_transition_log[-1]["details"]["decision_log_id"] = str(memory_log.id)
 
     return {
         "memory_log": memory_log,
         "memory_write_status": "written",
-        "transition_log": _append_transition(
-            state,
-            node="memory_write",
-            status="written",
-            details={
-                "decision_log_id": str(memory_log.id),
-                "store_as_memory": memory_log.store_as_memory,
-            },
-        ),
+        "transition_log": final_transition_log,
     }
