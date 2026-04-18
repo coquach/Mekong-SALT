@@ -1,10 +1,9 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
   BrainCircuit,
   CheckCircle2,
   ClipboardList,
-  Download,
   Filter,
   RefreshCcw,
   Search,
@@ -16,15 +15,16 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { ACTION_LOGS_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { ApiError } from "../lib/api/types";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 import {
   evaluateFeedback,
   getActionLogs,
   getActionOutcomes,
   getExecutionBatches,
   getLatestFeedback,
-  simulateExecutionBatch,
   type ActionOutcomeRead,
   type ExecutionBatchRead,
   type FeedbackLifecycleRead,
@@ -49,7 +49,6 @@ type ActionLogsCache = {
   state: Pick<ActionLogsState, "plans" | "actionLogs" | "batches" | "outcomes" | "feedback" | "lastRefreshAt">;
 };
 
-const ACTION_LOGS_CACHE_KEY = "mekong.cache.action-logs";
 const ACTION_LOGS_CACHE_MAX_AGE_MS = 30_000;
 
 export function ActionLogs() {
@@ -82,7 +81,6 @@ export function ActionLogs() {
       lastRefreshAt: cachedState.lastRefreshAt,
     };
   });
-  const [simulateBusy, setSimulateBusy] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
 
   const refreshData = async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
@@ -146,32 +144,13 @@ export function ActionLogs() {
     }
   };
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const shouldSkipInitialRefresh =
-      cachedActionLogs !== null && isPageCacheFresh(cachedActionLogs, ACTION_LOGS_CACHE_MAX_AGE_MS);
-
-    if (shouldSkipInitialRefresh) {
-      return () => abortController.abort();
-    }
-
-    void refreshData({ signal: abortController.signal, showLoading: true });
-    return () => abortController.abort();
-  }, [cachedActionLogs]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void refreshData({ showLoading: false });
-    }, 20_000);
-    return () => window.clearInterval(intervalId);
-  }, []);
+  usePageCacheRefresh({
+    cacheEntry: cachedActionLogs,
+    maxAgeMs: ACTION_LOGS_CACHE_MAX_AGE_MS,
+    refresh: refreshData,
+  });
 
   const latestBatch = state.batches[0] ?? null;
-  const approvedPlan = useMemo(
-    () => state.plans.find((plan) => plan.status === "approved") ?? null,
-    [state.plans],
-  );
-
   const successfulActions = useMemo(
     () => state.actionLogs.filter((item) => item.execution.status === "succeeded").length,
     [state.actionLogs],
@@ -187,25 +166,6 @@ export function ActionLogs() {
       return text.includes(keyword);
     });
   }, [state.actionLogs, state.searchText]);
-
-  const handleSimulate = async () => {
-    if (!approvedPlan) {
-      setState((previous) => ({
-        ...previous,
-        error: "Không có plan APPROVED để chạy simulate.",
-      }));
-      return;
-    }
-    setSimulateBusy(true);
-    try {
-      await simulateExecutionBatch(approvedPlan.id);
-      await refreshData();
-    } catch (error) {
-      setState((previous) => ({ ...previous, error: getApiErrorMessage(error, "Không tải được dữ liệu nhật ký hành động.") }));
-    } finally {
-      setSimulateBusy(false);
-    }
-  };
 
   const handleEvaluateFeedback = async () => {
     if (!latestBatch) {
@@ -269,23 +229,25 @@ export function ActionLogs() {
             Xem hệ thống đã làm gì sau khi một kế hoạch được duyệt, kết quả ra sao và phản hồi nào được ghi nhận.
           </p>
         </div>
-          <div className="flex gap-4 w-full lg:w-auto">
+        <div className="flex gap-4 w-full lg:w-auto">
           <Button variant="outline" className="flex-1 lg:flex-none h-14 px-8 border-slate-200 bg-white">
             <Share2 size={18} className="mr-2" /> Chia sẻ
           </Button>
           <Button
             variant="navy"
             className="flex-1 lg:flex-none h-14 px-8 shadow-xl shadow-mekong-navy/20"
-            onClick={() => void handleSimulate()}
-            disabled={simulateBusy}
+            onClick={() => void refreshData({ showLoading: true })}
           >
-            <Download size={18} className="mr-2" />
-            {simulateBusy ? "Đang chạy..." : "Chạy kế hoạch đã duyệt"}
+            <RefreshCcw size={18} className="mr-2" />
+            Làm mới
           </Button>
+          <div className="flex-1 lg:flex-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-slate-600">
+            Chạy mô phỏng hiện được backend worker xử lý tự động sau khi plan được duyệt.
+          </div>
         </div>
       </div>
 
-      <Card variant="white" className={`rounded-[32px] border border-slate-200 p-5 shadow-soft ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
+      <Card variant="white" className={`rounded-4xl border border-slate-200 p-5 shadow-soft ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
           <div className="space-y-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cách đọc nhanh</p>
@@ -307,7 +269,7 @@ export function ActionLogs() {
 
       <div className={`grid grid-cols-12 gap-8 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="col-span-12 lg:col-span-4 space-y-8">
-          <Card variant="white" className="border-l-4 border-l-mekong-navy shadow-soft rounded-[32px] p-8">
+          <Card variant="white" className="border-l-4 border-l-mekong-navy shadow-soft rounded-4xl p-8">
             <div className="flex gap-5 items-start">
               <div className="p-3 bg-slate-50 rounded-2xl text-mekong-navy">
                 <BrainCircuit size={24} />
@@ -340,7 +302,7 @@ export function ActionLogs() {
             </div>
           </Card>
 
-          <Card variant="navy" padding="none" className="bg-mekong-navy text-white rounded-[40px] overflow-hidden min-h-[220px] flex flex-col p-10 shadow-2xl relative border border-white/5">
+          <Card variant="navy" padding="none" className="bg-mekong-navy text-white rounded-4xl overflow-hidden min-h-55 flex flex-col p-10 shadow-2xl relative border border-white/5">
             <div className="relative z-10 space-y-2 flex-1">
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">
                 Tóm tắt nhanh
@@ -364,7 +326,7 @@ export function ActionLogs() {
         </div>
 
         <div className="col-span-12 lg:col-span-8">
-          <Card variant="white" padding="lg" className="h-full rounded-[40px] shadow-soft border border-slate-100 flex flex-col">
+          <Card variant="white" padding="lg" className="h-full rounded-4xl shadow-soft border border-slate-100 flex flex-col">
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-mekong-teal/10 rounded-2xl text-mekong-teal border border-mekong-teal/20">
@@ -389,7 +351,7 @@ export function ActionLogs() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
               {state.batches.slice(0, 4).map((batch) => (
-                <div key={batch.id} className="p-6 rounded-[30px] bg-slate-50/50 border border-slate-100 flex flex-col justify-between">
+                <div key={batch.id} className="p-6 rounded-3xl bg-slate-50/50 border border-slate-100 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start mb-5">
                       <h5 className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em]">
@@ -413,7 +375,7 @@ export function ActionLogs() {
         </div>
       </div>
 
-      <section className={`bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
+      <section className={`bg-white rounded-4xl border border-slate-200 shadow-soft overflow-hidden ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="bg-mekong-navy px-10 py-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">

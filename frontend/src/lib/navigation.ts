@@ -14,7 +14,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Trung tâm thông tin",
     subtitle: "Bản tóm lược vận hành tổng quan theo thời gian thực",
     keyQuestion: "Đang xảy ra điều gì trên toàn hệ thống?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
   {
     path: "/dashboard",
@@ -30,7 +30,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Bản đồ tương tác",
     subtitle: "Bản đồ trạm, risk, incident và metadata hiện hành",
     keyQuestion: "Rủi ro đang ở đâu và trạm nào cần ưu tiên?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
   {
     path: "/strategy",
@@ -38,7 +38,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Kế hoạch cần duyệt",
     subtitle: "Xem hệ thống đề xuất gì, có an toàn không và nên duyệt hay từ chối",
     keyQuestion: "Kế hoạch nào đang chờ bạn quyết định?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
   {
     path: "/logs",
@@ -46,7 +46,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Nhật ký thực thi",
     subtitle: "Xem hệ thống đã làm gì, kết quả ra sao và phản hồi sau chạy",
     keyQuestion: "Lần chạy gần nhất đã diễn ra như thế nào?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
   {
     path: "/notifications",
@@ -54,7 +54,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Thông báo vận hành",
     subtitle: "Danh sách thông báo, trạng thái gửi và các mục cần xử lý",
     keyQuestion: "Có thông báo nào đang chờ đọc hoặc cần xử lý không?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
   {
     path: "/history",
@@ -62,7 +62,7 @@ export const APP_ROUTES: AppRouteMeta[] = [
     title: "Điều tra lịch sử dữ liệu",
     subtitle: "Điều tra dữ liệu theo thời gian, station và audit trail",
     keyQuestion: "Vì sao sự kiện đã xảy ra và xu hướng đang đi đâu?",
-    realtimeMode: "polling",
+    realtimeMode: "static",
   },
 ];
 

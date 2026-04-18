@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     active_monitoring_batch_size: int = 50
     active_monitoring_approval_timeout_minutes: int = 60
     active_monitoring_approval_timeout_action: Literal["none", "auto_reject"] = "auto_reject"
-    active_monitoring_feedback_replan_max_attempts: int = 1
+    active_monitoring_feedback_replan_max_attempts: int = 0
     reactive_auto_execute_enabled: bool = True
     zalo_notifications_enabled: bool = False
     zalo_delivery_mode: Literal["text", "template"] = "template"

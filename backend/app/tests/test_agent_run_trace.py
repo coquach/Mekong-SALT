@@ -201,7 +201,7 @@ async def test_monitoring_plan_run_trace_records_plan_decision_and_snapshot(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: StubProvider(),
+        lambda provider_name=None, planner=None: StubProvider(),
     )
 
     goal = MonitoringGoal(
@@ -213,7 +213,6 @@ async def test_monitoring_plan_run_trace_records_plan_decision_and_snapshot(
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)

@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.models.enums import NotificationChannel
 from app.models.agent_run import AgentRun, ObservationSnapshot
+from app.schemas.notification import NotificationCreate
+from app.services.notification_service import create_notification
 
 
 @pytest.mark.asyncio
@@ -83,3 +86,44 @@ async def test_dashboard_earth_engine_latest_returns_empty_payload_without_snaps
     assert body["success"] is True
     assert body["data"]["run_id"] is None
     assert body["data"]["earth_engine_context"] is None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_summary_ignores_email_delivery_records(
+    client,
+    db_session,
+):
+    baseline_response = await client.get("/api/v1/dashboard/summary")
+    assert baseline_response.status_code == 200
+    baseline_body = baseline_response.json()
+    assert baseline_body["success"] is True
+    baseline_count = baseline_body["data"]["active_notifications"]
+
+    await create_notification(
+        db_session,
+        NotificationCreate(
+            channel=NotificationChannel.DASHBOARD,
+            recipient="dashboard",
+            subject="Thông báo nội bộ",
+            message="Thông báo hiển thị trên dashboard.",
+            payload={"event": "incident_created"},
+        ),
+    )
+    await create_notification(
+        db_session,
+        NotificationCreate(
+            channel=NotificationChannel.EMAIL_MOCK,
+            recipient="ops@example.test",
+            subject="Thông báo email",
+            message="Thông báo gửi qua email.",
+            payload={"event": "incident_created"},
+        ),
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/dashboard/summary")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["active_notifications"] == baseline_count + 1

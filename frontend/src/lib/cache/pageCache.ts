@@ -70,6 +70,23 @@ export function writePageCache<T>(key: string, value: T): CacheEntry<T> {
   return entry;
 }
 
+export function invalidatePageCache(key: string): void {
+  memoryCache.delete(key);
+
+  const storage = getSessionStorage();
+  if (storage) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Ignore storage failures when clearing cache.
+    }
+  }
+}
+
+export function invalidatePageCaches(keys: readonly string[]): void {
+  keys.forEach((key) => invalidatePageCache(key));
+}
+
 export function isPageCacheFresh<T>(entry: CacheEntry<T> | null, maxAgeMs: number): boolean {
   if (!entry) {
     return false;

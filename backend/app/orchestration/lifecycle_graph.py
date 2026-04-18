@@ -159,12 +159,12 @@ def _resolve_lifecycle_status(state: LifecycleState) -> LifecycleAdvanceStatus:
     approval_status = state.get("approval_status")
     execution_status = state.get("execution_status")
 
+    if execution_status == "executed":
+        return "executed"
     if approval_status == "awaiting_human_approval":
         return "awaiting_human_approval"
     if approval_status == "skipped_not_pending":
         return "skipped_not_pending"
-    if execution_status == "executed":
-        return "executed"
     if approval_status == "approved" and execution_status:
         return "approved_not_executed"
     return "approved"

@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   History as HistoryIcon,
+  RefreshCcw,
   ShieldCheck,
   ListChecks,
   MapPinned,
@@ -18,16 +19,20 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { STRATEGY_CACHE_KEY, invalidateOperationalPageCaches } from "../lib/cache/pageCacheKeys";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 import {
   decidePlan,
   getAgentRuns,
   getGoals,
+  getPlanApprovalHistory,
   getPlans,
   updateGoal,
   type ActionPlanRead,
   type AgentRunRead,
+  type ApprovalRead,
   type MonitoringGoalRead,
 } from "../lib/api/strategy";
 
@@ -38,15 +43,21 @@ type StrategyState = {
   plans: ActionPlanRead[];
   runs: AgentRunRead[];
   selectedPlanId: string | null;
+  approvals: ApprovalRead[];
+  approvalsLoading: boolean;
+  approvalsError: string | null;
+  approvalsLastRefreshAt: string | null;
   lastRefreshAt: string | null;
 };
 
 type StrategyCache = {
-  state: Pick<StrategyState, "goals" | "plans" | "runs" | "selectedPlanId" | "lastRefreshAt">;
+  state: Pick<
+    StrategyState,
+    "goals" | "plans" | "runs" | "selectedPlanId" | "approvals" | "approvalsLastRefreshAt" | "lastRefreshAt"
+  >;
 };
 
-const STRATEGY_CACHE_KEY = "mekong.cache.strategy";
-const STRATEGY_CACHE_MAX_AGE_MS = 30_000;
+const STRATEGY_CACHE_MAX_AGE_MS = 0;
 
 function parseApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -193,6 +204,10 @@ export function StrategyOrchestration() {
         plans: [],
         runs: [],
         selectedPlanId: null,
+        approvals: [],
+        approvalsLoading: false,
+        approvalsError: null,
+        approvalsLastRefreshAt: null,
         lastRefreshAt: null,
       };
     }
@@ -204,16 +219,84 @@ export function StrategyOrchestration() {
       plans: cachedState.plans,
       runs: cachedState.runs,
       selectedPlanId: cachedState.selectedPlanId,
+      approvals: cachedState.approvals ?? [],
+      approvalsLoading: false,
+      approvalsError: null,
+      approvalsLastRefreshAt: cachedState.approvalsLastRefreshAt ?? null,
       lastRefreshAt: cachedState.lastRefreshAt,
     };
   });
   const [decisionBusy, setDecisionBusy] = useState<"approved" | "rejected" | null>(null);
   const [goalBusyId, setGoalBusyId] = useState<string | null>(null);
   const selectedPlanIdRef = useRef<string | null>(state.selectedPlanId);
+  const approvalRequestIdRef = useRef(0);
 
   useEffect(() => {
     selectedPlanIdRef.current = state.selectedPlanId;
   }, [state.selectedPlanId]);
+
+  const refreshApprovalHistory = useCallback(
+    async (planId: string | null, options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+      const signal = options?.signal;
+      const showLoading = options?.showLoading ?? false;
+      const requestId = ++approvalRequestIdRef.current;
+
+      if (!planId) {
+        setState((previous) => ({
+          ...previous,
+          approvals: [],
+          approvalsLoading: false,
+          approvalsError: null,
+          approvalsLastRefreshAt: null,
+        }));
+        return;
+      }
+
+      if (showLoading) {
+        setState((previous) => ({ ...previous, approvalsLoading: true, approvalsError: null }));
+      }
+
+      try {
+        const response = await getPlanApprovalHistory(planId, signal);
+        if (signal?.aborted || requestId !== approvalRequestIdRef.current) {
+          return;
+        }
+
+        const refreshedAt = new Date().toISOString();
+        setState((previous) => {
+          const nextState = {
+            ...previous,
+            approvals: response.items,
+            approvalsLoading: false,
+            approvalsError: null,
+            approvalsLastRefreshAt: refreshedAt,
+          };
+          writePageCache<StrategyCache>(STRATEGY_CACHE_KEY, {
+            state: {
+              goals: nextState.goals,
+              plans: nextState.plans,
+              runs: nextState.runs,
+              selectedPlanId: nextState.selectedPlanId,
+              approvals: nextState.approvals,
+              approvalsLastRefreshAt: nextState.approvalsLastRefreshAt,
+              lastRefreshAt: nextState.lastRefreshAt,
+            },
+          });
+          return nextState;
+        });
+      } catch (error) {
+        if (signal?.aborted || requestId !== approvalRequestIdRef.current) {
+          return;
+        }
+        setState((previous) => ({
+          ...previous,
+          approvalsLoading: false,
+          approvalsError: parseApiError(error),
+        }));
+      }
+    },
+    [],
+  );
 
   const refreshData = useCallback(async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
     const signal = options?.signal;
@@ -243,6 +326,10 @@ export function StrategyOrchestration() {
           plans,
           runs: runs.items,
           selectedPlanId: selectedPlan?.id ?? null,
+          approvals: [],
+          approvalsLoading: false,
+          approvalsError: null,
+          approvalsLastRefreshAt: null,
           lastRefreshAt: new Date().toISOString(),
         };
       });
@@ -257,8 +344,15 @@ export function StrategyOrchestration() {
           plans,
           runs: runs.items,
           selectedPlanId: nextSelectedPlan?.id ?? null,
+          approvals: [],
+          approvalsLastRefreshAt: null,
           lastRefreshAt: nextLastRefreshAt,
         },
+      });
+
+      void refreshApprovalHistory(nextSelectedPlan?.id ?? null, {
+        signal,
+        showLoading: false,
       });
     } catch (error) {
       if (signal?.aborted) {
@@ -270,27 +364,13 @@ export function StrategyOrchestration() {
         error: parseApiError(error),
       }));
     }
-  }, []);
+  }, [refreshApprovalHistory]);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const shouldSkipInitialRefresh =
-      cachedStrategy !== null && isPageCacheFresh(cachedStrategy, STRATEGY_CACHE_MAX_AGE_MS);
-
-    if (shouldSkipInitialRefresh) {
-      return () => abortController.abort();
-    }
-
-    void refreshData({ signal: abortController.signal, showLoading: true });
-    return () => abortController.abort();
-  }, [cachedStrategy, refreshData]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void refreshData({ showLoading: false });
-    }, 20_000);
-    return () => window.clearInterval(intervalId);
-  }, [refreshData]);
+  usePageCacheRefresh({
+    cacheEntry: cachedStrategy,
+    maxAgeMs: STRATEGY_CACHE_MAX_AGE_MS,
+    refresh: refreshData,
+  });
 
   const reviewablePlans = useMemo(
     () => state.plans.filter((plan) => plan.status === "pending_approval"),
@@ -397,6 +477,7 @@ export function StrategyOrchestration() {
         decision,
         comment: decision === "approved" ? "Approved from FE strategy page." : "Rejected from FE strategy page.",
       });
+      invalidateOperationalPageCaches();
       await refreshData();
     } catch (error) {
       setState((previous) => ({ ...previous, error: parseApiError(error) }));
@@ -409,6 +490,7 @@ export function StrategyOrchestration() {
     setGoalBusyId(goal.id);
     try {
       const updatedGoal = await updateGoal(goal.id, { is_active: !goal.is_active });
+      invalidateOperationalPageCaches();
       setState((previous) => ({
         ...previous,
         goals: previous.goals.map((item) => (item.id === goal.id ? updatedGoal : item)),
@@ -425,9 +507,19 @@ export function StrategyOrchestration() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <PageHeading
         trailing={
-          <Badge variant="neutral" className="text-[9px]">
-            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className="h-9 rounded-xl border-slate-200 bg-white px-3 text-[10px]"
+              onClick={() => void refreshData({ showLoading: true })}
+            >
+              <RefreshCcw size={14} className="mr-2" />
+              Làm mới
+            </Button>
+            <Badge variant="neutral" className="text-[9px]">
+              Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+            </Badge>
+          </div>
         }
       />
 
@@ -546,7 +638,10 @@ export function StrategyOrchestration() {
                   {reviewablePlans.map((plan) => (
                     <button
                       key={plan.id}
-                      onClick={() => setState((previous) => ({ ...previous, selectedPlanId: plan.id }))}
+                      onClick={() => {
+                        setState((previous) => ({ ...previous, selectedPlanId: plan.id }));
+                        void refreshApprovalHistory(plan.id, { showLoading: true });
+                      }}
                       className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
                         state.selectedPlanId === plan.id
                           ? "border-mekong-navy bg-mekong-navy text-white shadow-lg"
@@ -688,6 +783,62 @@ export function StrategyOrchestration() {
                             </p>
                           )}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-mekong-navy">
+                          <CheckCircle2 size={14} />
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em]">Lịch sử duyệt</p>
+                        </div>
+                        <Badge variant="neutral" className="text-[9px] uppercase">
+                          {state.approvals.length} lần
+                        </Badge>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {state.approvalsLoading ? (
+                          <div className="space-y-2">
+                            <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                            <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                          </div>
+                        ) : state.approvalsError ? (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-[12px] font-semibold text-red-800">
+                            {state.approvalsError}
+                          </div>
+                        ) : state.approvals.length > 0 ? (
+                          state.approvals.map((approval) => (
+                            <div key={approval.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant={approval.decision === "approved" ? "optimal" : "critical"}
+                                    className="text-[8px] uppercase"
+                                  >
+                                    {approval.decision === "approved" ? "Đã duyệt" : "Đã từ chối"}
+                                  </Badge>
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-mekong-navy">
+                                    {approval.decided_by_name}
+                                  </p>
+                                </div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                  {formatDatetime(approval.decided_at)}
+                                </p>
+                              </div>
+                              {approval.comment ? (
+                                <p className="mt-2 text-[12px] font-semibold leading-relaxed text-slate-600">
+                                  {approval.comment}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))
+                        ) : (
+                          <EmptyState
+                            title="Chưa có lịch sử duyệt"
+                            description="Khi plan này được duyệt hoặc từ chối, lịch sử sẽ hiển thị tại đây."
+                          />
+                        )}
                       </div>
                     </div>
 

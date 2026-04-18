@@ -5,14 +5,21 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
+from app.core.config import Settings
 from app.models.action import ActionPlan
-from app.models.enums import ActionPlanStatus, ActionType, RiskLevel, TrendDirection
+from app.models.enums import ActionPlanStatus, ActionType, IncidentStatus, RiskLevel, TrendDirection
+from app.models.domain_event import DomainEvent
+from app.models.incident import Incident
 from app.models.goal import MonitoringGoal
 from app.models.risk import RiskAssessment
+from app.models.sensor import SensorReading
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
+from app.orchestration.lifecycle_graph import advance_plan_with_lifecycle_graph
 from app.services.active_monitoring_service import run_monitoring_goal_cycle
+from app.services.replan_service import REPLAN_REQUEST_EVENT_TYPE
 
 
 async def _persist_stub_weather_snapshot(
@@ -89,61 +96,80 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     client,
     db_session,
     seeded_sensor_data,
-    monkeypatch,
 ):
-    async def fake_weather_snapshot(session, *, region, station, redis_manager):
-        return await _persist_stub_weather_snapshot(
-            session,
-            region_id=region.id,
-            wind_speed_mps="4.20",
-            tide_level_m="1.10",
-        )
+    reading = seeded_sensor_data["reading_a_latest"]
+    station = seeded_sensor_data["station_b"]
+    region = seeded_sensor_data["region"]
 
-    monkeypatch.setattr(
-        "app.services.risk_service.get_or_fetch_weather_snapshot",
-        fake_weather_snapshot,
+    assessment = RiskAssessment(
+        region_id=region.id,
+        station_id=station.id,
+        based_on_reading_id=reading.id,
+        based_on_weather_id=None,
+        assessed_at=datetime.now(UTC),
+        risk_level=RiskLevel.DANGER,
+        salinity_dsm=reading.salinity_dsm,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.60"),
+        rule_version="v1",
+        summary="Danger risk requires simulated execution.",
+        rationale={"source": "test"},
     )
-    monkeypatch.setattr(
-        "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None, planner=None: _ValidatedPlanProvider(),
-    )
-
-    goal = MonitoringGoal(
-        name="Reactive-Execution-Goal",
-        region_id=seeded_sensor_data["region"].id,
-        station_id=seeded_sensor_data["station_b"].id,
-        objective="Protect irrigation water quality",
-        provider="mock",
-        warning_threshold_dsm=Decimal("2.50"),
-        critical_threshold_dsm=Decimal("4.00"),
-        evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
-        is_active=True,
-    )
-    db_session.add(goal)
+    db_session.add(assessment)
     await db_session.commit()
-    await db_session.refresh(goal)
+    await db_session.refresh(assessment)
 
-    result = await run_monitoring_goal_cycle(
+    plan = ActionPlan(
+        region_id=region.id,
+        risk_assessment_id=assessment.id,
+        incident_id=None,
+        status=ActionPlanStatus.APPROVED,
+        objective="Protect irrigation water quality",
+        generated_by="test-suite",
+        model_provider="mock",
+        summary="Approved simulated execution plan.",
+        assumptions={"items": ["Operators are available"]},
+        plan_steps=[
+            {
+                "step_index": 1,
+                "action_type": ActionType.NOTIFY_FARMERS.value,
+                "priority": 1,
+                "title": "Notify farmers",
+                "instructions": "Send advisory to avoid intake.",
+                "rationale": "Communication reduces exposure.",
+                "simulated": True,
+            },
+            {
+                "step_index": 2,
+                "action_type": ActionType.WAIT_SAFE_WINDOW.value,
+                "priority": 2,
+                "title": "Wait for safe intake window",
+                "instructions": "Delay intake until conditions are safer.",
+                "rationale": "Low-risk auto-execution only allows informational/safe-window actions.",
+                "simulated": True,
+            },
+        ],
+        validation_result={"is_valid": True, "errors": [], "warnings": []},
+    )
+    db_session.add(plan)
+    await db_session.commit()
+    await db_session.refresh(plan)
+
+    lifecycle_result = await advance_plan_with_lifecycle_graph(
         db_session,
-        goal=goal,
-        mode="active",
-        redis_manager=None,
+        plan=plan,
+        settings=Settings(),
     )
 
-    assert result.status == "succeeded_plan_executed"
-    assert result.lifecycle_result is not None
-    assert result.lifecycle_result.execution_bundle is not None
-
-    plan = await db_session.get(ActionPlan, result.plan_bundle.plan.id)
-    assert plan is not None
+    assert lifecycle_result.status == "executed"
+    assert lifecycle_result.execution_bundle is not None
     assert plan.status == ActionPlanStatus.SIMULATED
 
-    execution_bundle = result.lifecycle_result.execution_bundle
+    execution_bundle = lifecycle_result.execution_bundle
     assert len(execution_bundle.executions) == 2
-    assert execution_bundle.feedback.outcome_class == "inconclusive"
-    assert execution_bundle.feedback.status == "insufficient_new_observation"
-    assert execution_bundle.feedback.replan_recommended is True
+    assert execution_bundle.feedback.outcome_class == "success"
+    assert execution_bundle.feedback.status == "improved"
+    assert execution_bundle.feedback.replan_recommended is False
     assert len(execution_bundle.decision_logs) == 3
 
     logs_response = await client.get(
@@ -155,6 +181,134 @@ async def test_reactive_monitoring_persists_executions_feedback_and_logs(
     logs_body = logs_response.json()["data"]
     assert logs_body["count"] == 2
     assert all(item["decision_log"] is not None for item in logs_body["items"])
+
+
+@pytest.mark.asyncio
+async def test_reactive_execution_emits_replan_request_event_on_partial_success(
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
+):
+    reading = seeded_sensor_data["reading_a_latest"]
+    station = seeded_sensor_data["station_b"]
+    region = seeded_sensor_data["region"]
+
+    assessment = RiskAssessment(
+        region_id=region.id,
+        station_id=station.id,
+        based_on_reading_id=reading.id,
+        based_on_weather_id=None,
+        assessed_at=datetime.now(UTC),
+        risk_level=RiskLevel.DANGER,
+        salinity_dsm=reading.salinity_dsm,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.60"),
+        rule_version="v1",
+        summary="Danger risk requires simulated execution.",
+        rationale={"source": "test"},
+    )
+    db_session.add(assessment)
+    await db_session.commit()
+    await db_session.refresh(assessment)
+
+    incident = Incident(
+        region_id=region.id,
+        station_id=station.id,
+        risk_assessment_id=assessment.id,
+        title="Execution replan incident",
+        description="Incident used to verify replan request emission.",
+        severity=RiskLevel.DANGER,
+        status=IncidentStatus.OPEN,
+        source="test",
+        evidence={"source": "test"},
+        opened_at=datetime.now(UTC),
+        created_by="test-suite",
+    )
+    db_session.add(incident)
+    await db_session.commit()
+    await db_session.refresh(incident)
+
+    plan = ActionPlan(
+        region_id=region.id,
+        risk_assessment_id=assessment.id,
+        incident_id=incident.id,
+        status=ActionPlanStatus.APPROVED,
+        objective="Protect irrigation water quality",
+        generated_by="test-suite",
+        model_provider="mock",
+        summary="Approved simulated execution plan.",
+        assumptions={"items": ["Operators are available"]},
+        plan_steps=[
+            {
+                "step_index": 1,
+                "action_type": ActionType.NOTIFY_FARMERS.value,
+                "priority": 1,
+                "title": "Notify farmers",
+                "instructions": "Send advisory to avoid intake.",
+                "rationale": "Communication reduces exposure.",
+                "simulated": True,
+            },
+            {
+                "step_index": 2,
+                "action_type": ActionType.WAIT_SAFE_WINDOW.value,
+                "priority": 2,
+                "title": "Wait for safe intake window",
+                "instructions": "Delay intake until conditions are safer.",
+                "rationale": "Low-risk auto-execution only allows informational/safe-window actions.",
+                "simulated": True,
+            },
+        ],
+        validation_result={"is_valid": True, "errors": [], "warnings": []},
+    )
+    db_session.add(plan)
+    await db_session.commit()
+    await db_session.refresh(plan)
+
+    db_session.add(
+        SensorReading(
+            station_id=station.id,
+            recorded_at=datetime.now(UTC),
+            salinity_dsm=reading.salinity_dsm,
+            water_level_m=Decimal("1.55"),
+            temperature_c=Decimal("29.40"),
+            source="worker-test",
+        )
+    )
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.replan_service.get_settings",
+        lambda: Settings(active_monitoring_feedback_replan_max_attempts=1),
+    )
+    class _NoopRedisManager:
+        async def publish_signal(self, channel, payload=None):
+            _ = (channel, payload)
+            return None
+
+    monkeypatch.setattr(
+        "app.services.domain_event_service._get_signal_redis_manager",
+        lambda: _NoopRedisManager(),
+    )
+
+    result = await advance_plan_with_lifecycle_graph(
+        db_session,
+        plan=plan,
+        settings=Settings(reactive_auto_execute_enabled=True),
+    )
+
+    assert result.status == "executed"
+    assert result.execution_bundle is not None
+    assert result.execution_bundle.feedback.outcome_class == "partial_success"
+    assert result.execution_bundle.feedback.replan_recommended is True
+
+    replan_events = (
+        await db_session.scalars(
+            select(DomainEvent).where(DomainEvent.event_type == REPLAN_REQUEST_EVENT_TYPE)
+        )
+    ).all()
+    assert len(replan_events) == 1
+    assert replan_events[0].payload["action_plan_id"] == str(plan.id)
+    assert replan_events[0].payload["feedback_outcome_class"] == "partial_success"
 
 
 @pytest.mark.asyncio

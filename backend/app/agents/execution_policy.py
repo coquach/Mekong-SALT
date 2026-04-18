@@ -7,15 +7,8 @@ from http import HTTPStatus
 from app.agents.policy_guard import validate_generated_plan
 from app.core.exceptions import AppException
 from app.models.action import ActionPlan
-from app.models.enums import ActionPlanStatus, ActionType, RiskLevel
+from app.models.enums import ActionPlanStatus, RiskLevel
 from app.schemas.agent import GeneratedActionPlan, PlanStep
-
-LOW_RISK_AUTO_EXECUTION_LEVELS = {RiskLevel.SAFE, RiskLevel.WARNING}
-LOW_RISK_AUTO_EXECUTION_ACTIONS = {
-    ActionType.SEND_ALERT,
-    ActionType.NOTIFY_FARMERS,
-    ActionType.WAIT_SAFE_WINDOW,
-}
 
 
 def validate_execution_plan(plan: ActionPlan) -> list[PlanStep]:
@@ -65,35 +58,20 @@ def validate_execution_plan(plan: ActionPlan) -> list[PlanStep]:
 def is_auto_execution_eligible(
     plan: ActionPlan,
     *,
-    risk_level: RiskLevel,
+    risk_level: RiskLevel | None,
 ) -> tuple[bool, str]:
-    """Return whether reactive auto-execution is allowed for this approved plan."""
-    if risk_level not in LOW_RISK_AUTO_EXECUTION_LEVELS:
+    """Return whether an approved plan can proceed to simulated execution."""
+    if risk_level is None:
         return (
             False,
-            f"Risk level '{risk_level.value}' requires explicit human approval before execution.",
+            "Risk level is missing; execution requires an approved plan with risk context.",
         )
 
     try:
-        steps = [PlanStep.model_validate(step) for step in plan.plan_steps]
+        _ = [PlanStep.model_validate(step) for step in plan.plan_steps]
     except Exception:
         return (
             False,
             "Plan steps are not structurally valid for auto-execution eligibility checks.",
         )
-
-    disallowed_actions = sorted(
-        {
-            step.action_type.value
-            for step in steps
-            if step.action_type not in LOW_RISK_AUTO_EXECUTION_ACTIONS
-        }
-    )
-    if disallowed_actions:
-        return (
-            False,
-            "Plan contains actions outside low-risk auto-execution allowlist: "
-            + ", ".join(disallowed_actions),
-        )
-
-    return True, "Plan is eligible for low-risk auto-execution."
+    return True, "Plan is eligible for simulated execution after approval."

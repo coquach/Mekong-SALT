@@ -51,6 +51,7 @@ from app.schemas.knowledge import (
 )
 from app.schemas.notification import NotificationCollection, NotificationCreate, NotificationRead
 from app.schemas.region import RegionCreate, RegionRead
+from app.schemas.replan import ReplanRequestedEventPayload
 from app.schemas.retrieval import (
     RetrievalContext,
     RetrievalEvidence,
@@ -140,6 +141,7 @@ __all__ = [
     "MonitoringGoalUpdate",
     "RegionCreate",
     "RegionRead",
+    "ReplanRequestedEventPayload",
     "RetrievalContext",
     "RetrievalEvidence",
     "RetrievalPolicyFlags",

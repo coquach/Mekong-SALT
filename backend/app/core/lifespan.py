@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.db.redis import RedisManager
 from app.db.session import close_database_engine
 from app.workers.active_monitoring_worker import start_active_monitoring_worker
+from app.workers.replan_worker import start_replan_worker
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ async def lifespan(application: FastAPI):
     application.state.active_monitoring_task = None
     application.state.mqtt_ingest_task = None
     application.state.pubsub_ingest_task = None
+    application.state.replan_task = None
 
     logger.info(
         "Starting Mekong-SALT backend",
@@ -31,6 +33,10 @@ async def lifespan(application: FastAPI):
 
     if settings.active_monitoring_enabled:
         application.state.active_monitoring_task = start_active_monitoring_worker(
+            redis_manager=application.state.redis,
+            settings=settings,
+        )
+        application.state.replan_task = start_replan_worker(
             redis_manager=application.state.redis,
             settings=settings,
         )
@@ -56,6 +62,11 @@ async def lifespan(application: FastAPI):
             pubsub_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await pubsub_task
+        replan_task = application.state.replan_task
+        if replan_task is not None:
+            replan_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await replan_task
         task = application.state.active_monitoring_task
         if task is not None:
             task.cancel()

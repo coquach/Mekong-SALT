@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http import HTTPStatus
 import logging
 from typing import Any
 from uuid import UUID
@@ -11,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.planning_graph import AgentPlanningWorkflow
 from app.agents.providers import get_plan_provider
+from app.core.exceptions import AppException
 from app.core.salinity_units import dsm_to_gl
 from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.agent_run import AgentRun
-from app.models.enums import ActionPlanStatus, AuditEventType, IncidentStatus
+from app.models.enums import ActionPlanStatus, AuditEventType, IncidentStatus, RiskLevel
 from app.models.incident import Incident
 from app.orchestration.planning_nodes import PlanningNodeServices
 from app.repositories.action import ActionPlanRepository
@@ -32,6 +34,7 @@ from app.services.risk_service import RiskEvaluationBundle
 
 
 logger = logging.getLogger(__name__)
+PLANABLE_RISK_LEVELS = {RiskLevel.DANGER, RiskLevel.CRITICAL}
 
 
 @dataclass(slots=True)
@@ -44,6 +47,10 @@ class AgentPlanBundle:
     run_id: UUID | None = None
 
 
+def _is_planable_risk_level(risk_level: RiskLevel | None) -> bool:
+    return risk_level in PLANABLE_RISK_LEVELS
+
+
 async def generate_agent_plan(
     session: AsyncSession,
     *,
@@ -54,6 +61,15 @@ async def generate_agent_plan(
     trigger_payload: dict[str, Any] | None = None,
 ) -> AgentPlanBundle:
     """Run the LangGraph planning workflow and persist the resulting plan draft."""
+    if risk_bundle is not None and not _is_planable_risk_level(risk_bundle.assessment.risk_level):
+        raise AppException(
+            status_code=HTTPStatus.CONFLICT,
+            code="risk_below_plan_gate",
+            message=(
+                "Plan generation requires risk level danger or critical."
+            ),
+        )
+
     logger.info(
         "Starting agent plan generation",
         extra={
@@ -92,6 +108,39 @@ async def generate_agent_plan(
         )
 
         resolved_risk_bundle = state["risk_bundle"]
+        if not _is_planable_risk_level(resolved_risk_bundle.assessment.risk_level):
+            finish_agent_run(
+                run,
+                status="failed",
+                trace={
+                    "incident_decision": {
+                        "decision": "skipped",
+                        "reason": (
+                            f"Risk level '{resolved_risk_bundle.assessment.risk_level.value}' "
+                            "is below the plan gate."
+                        ),
+                        "incident_id": None,
+                    },
+                    "plan_decision": {
+                        "decision": "not_created",
+                        "reason": "Plan generation is gated to danger and critical risk only.",
+                    },
+                    "assessment": {
+                        "risk_assessment_id": str(resolved_risk_bundle.assessment.id),
+                        "risk_level": resolved_risk_bundle.assessment.risk_level.value,
+                    },
+                },
+                risk_assessment_id=resolved_risk_bundle.assessment.id,
+            )
+            await session.commit()
+            raise AppException(
+                status_code=HTTPStatus.CONFLICT,
+                code="risk_below_plan_gate",
+                message=(
+                    "Plan generation requires risk level danger or critical."
+                ),
+            )
+
         retrieved_context = state["retrieved_context"]
         generated_plan = state["draft_plan"]
         validation_result = state["validation_result"]
@@ -173,6 +222,27 @@ async def generate_agent_plan(
             provider_name=provider.name,
             run_id=run.id,
         )
+    except AppException as exc:
+        if exc.code == "risk_below_plan_gate":
+            raise
+        logger.exception(
+            "Agent plan generation failed",
+            extra={
+                "station_id": str(payload.station_id) if payload.station_id is not None else None,
+                "region_id": str(payload.region_id) if payload.region_id is not None else None,
+                "incident_id": str(payload.incident_id) if payload.incident_id is not None else None,
+                "provider": payload.provider,
+                "trigger_source": trigger_source,
+            },
+        )
+        finish_agent_run(
+            run,
+            status="failed",
+            trace=_failure_trace(exc),
+            error_message=str(exc),
+        )
+        await session.commit()
+        raise
     except Exception as exc:
         logger.exception(
             "Agent plan generation failed",

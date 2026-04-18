@@ -60,6 +60,8 @@ and `frontend`. For the hackathon demo, keep these defaults in place:
 
 ## Run locally
 
+Use this path when you want to test the backend directly on the host with `uvicorn`. If you want the full stack with Postgres, Redis, MQTT, backend, and frontend together, use Docker Compose in the previous section.
+
 ```bash
 ./.venv/Scripts/python.exe -m uvicorn main:app --reload
 
@@ -70,10 +72,22 @@ The active monitoring worker is the default runtime path. When
 process continuously runs due monitoring goals and advances valid plans through
 reactive approval and simulated execution.
 
+Feedback-driven replan is handled by a separate background worker that consumes
+durable domain events. The monitoring/execution path emits
+`monitoring.replan_requested` when feedback says a follow-up plan is worth
+trying, and `app.workers.replan_worker` consumes that event stream to decide
+whether a new plan should actually be generated.
+
 Standalone worker:
 
 ```bash
 ./.venv/Scripts/python.exe -m app.workers.active_monitoring_worker
+```
+
+Standalone replan worker:
+
+```bash
+./.venv/Scripts/python.exe -m app.workers.replan_worker
 ```
 
 Device-first MQTT demo mode (subscriber runs inside API process):
@@ -100,12 +114,11 @@ Run device-first MQTT scenario stream:
 ```bash
 ./.venv/Scripts/python.exe scripts/run_demo_simulation.py \
   --scenario fast-approve-execute \
-  --transport mqtt \
   --mqtt-broker-url localhost \
   --mqtt-broker-port 1883
 ```
 
-For hackathon demo, prefer MQTT as the primary device path and keep HTTP only as a fallback for local debugging:
+For hackathon demo, run the MQTT publisher directly:
 
 ```bash
 ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute
@@ -131,7 +144,7 @@ From the repository root:
 docker compose up -d --build
 ```
 
-If you run `alembic`, `seed.py`, or `run_demo_simulation.py` from the host against this compose stack, override `DATABASE_URL` to `postgresql://postgres:postgres@localhost:5432/mekong_salt` first. The checked-in `backend/.env` points to Neon, so without the override the host scripts will write to a different database than the docker backend.
+If you run `alembic`, `seed.py`, or `run_demo_simulation.py` from the host against this compose stack, you can use the checked-in `backend/.env` directly. That file points host tools at `postgresql://postgres:postgres@localhost:5432/mekong_salt`, while Docker Compose injects the backend container with the internal `postgres` service hostname. Both paths reach the same local database container, so no manual override is needed for the standard demo flow.
 
 ## Apply migrations
 
@@ -229,7 +242,7 @@ Approval and feedback boundaries:
 - Goal thresholds now accept either:
 	- `warning_threshold_dsm` + `critical_threshold_dsm` (canonical)
 	- `warning_threshold_gl` + `critical_threshold_gl` (auto-converted to dS/m)
-- `auto_plan_enabled`: lets the worker create a plan automatically in active mode.
+- Plan generation is based on risk gate only: `WARNING` stays incident-only, `DANGER` and `CRITICAL` can generate plans.
 - `GET /api/v1/goals` and `GET /api/v1/goals/{goal_id}`: read goals.
 - `PATCH /api/v1/goals/{goal_id}`: update thresholds, interval, active flag, objective, target.
 - `DELETE /api/v1/goals/{goal_id}`: remove goal.
@@ -263,9 +276,10 @@ Worker loop:
 3. Acquire `mekong-salt:monitoring-goal:{goal_id}:lock` in Redis.
 4. Run `observe -> risk -> incident`.
 5. In `dry_run`, stop before plan creation.
-6. In `active`, create a plan only when `auto_plan_enabled=true` and no active plan exists for the incident.
+6. In `active`, create a plan only when the risk level reaches the plan gate and no active plan exists for the incident.
 7. If enabled, auto-approve and execute the plan using the simulated action engine.
-8. If feedback outcome is failed/partial, optionally auto-replan for limited attempts.
+8. If feedback outcome is failed/partial, emit a durable `monitoring.replan_requested` event when replan is enabled.
+9. `app.workers.replan_worker` consumes the event stream, re-evaluates current risk, and only then decides whether to draft a follow-up plan.
 
 Approval timeout controls:
 
@@ -275,9 +289,10 @@ Approval timeout controls:
 
 Feedback replan controls:
 
-- `ACTIVE_MONITORING_FEEDBACK_REPLAN_MAX_ATTEMPTS`: maximum follow-up replans in the same goal cycle after failed feedback outcomes.
-- Failed outcomes eligible for auto-replan: `failed_execution`, `failed_plan`, `partial_success`.
-- `inconclusive` feedback does not auto-replan to avoid loops when no new reading is available.
+- `ACTIVE_MONITORING_FEEDBACK_REPLAN_MAX_ATTEMPTS`: maximum number of replan requests emitted from execution feedback. Default is `0`, so the queue stays off unless you opt in.
+- Eligible feedback outcomes: `failed_execution`, `failed_plan`, `partial_success`.
+- `inconclusive` feedback does not enqueue a replan request to avoid loops when no new reading is available.
+- Replan processing is event-driven and idempotent at the worker boundary; the worker always re-checks current risk before creating a follow-up plan.
 
 Useful commands:
 
@@ -376,4 +391,6 @@ Trace fields:
 
 - `monitoring.worker.observe_risk`: risk observation run.
 - `monitoring.worker.auto_plan`: plan generation run.
+- `monitoring.replan_requested`: feedback asked for a background replan.
+- `monitoring.replan_completed`: background worker finished or skipped the replan request.
 - `reactive-monitoring`: approval/execution actor for automated plan advancement.

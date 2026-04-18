@@ -91,7 +91,7 @@ export const Sidebar = () => {
 
   return (
     <aside className="fixed left-0 top-0 z-50 hidden h-screen w-72 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:flex">
-      <div className="mb-4 flex items-center gap-3 p-8">
+      <div className="group mb-4 flex items-center gap-3 p-8">
         <div className="rounded-xl bg-mekong-navy p-2.5 text-white shadow-lg shadow-mekong-navy/20 transition-transform group-hover:rotate-6">
           <MapIcon size={24} strokeWidth={2.5} />
         </div>
@@ -126,17 +126,17 @@ export const Sidebar = () => {
               Hệ thống: Hoạt động
             </span>
           </div>
-          <p className="pl-[18px] text-[10px] font-bold leading-tight text-mekong-slate opacity-80">
+          <p className="pl-4.5 text-[10px] font-bold leading-tight text-mekong-slate opacity-80">
             Các nút cảm biến phản hồi <br /> với độ chính xác 99.4%
           </p>
         </div>
 
         <div className="flex flex-col gap-1.5 px-2">
-          <button className="flex items-center gap-3 py-2 text-[11px] font-black uppercase tracking-widest text-mekong-slate transition-colors hover:text-mekong-teal">
+          <button type="button" className="flex items-center gap-3 py-2 text-[11px] font-black uppercase tracking-widest text-mekong-slate transition-colors hover:text-mekong-teal">
             <HelpCircle size={16} className="transition-transform group-hover:scale-110" />
             Trợ giúp
           </button>
-          <button className="flex items-center gap-3 py-2 text-[11px] font-black uppercase tracking-widest text-mekong-slate transition-colors hover:text-mekong-teal">
+          <button type="button" className="flex items-center gap-3 py-2 text-[11px] font-black uppercase tracking-widest text-mekong-slate transition-colors hover:text-mekong-teal">
             <FileText size={16} className="transition-transform group-hover:scale-110" />
             Tài liệu hướng dẫn
           </button>

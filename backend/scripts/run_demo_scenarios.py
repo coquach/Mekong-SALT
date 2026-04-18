@@ -39,16 +39,6 @@ SCENARIOS = {
                 "expect": "Backend ingests device frames and active monitoring worker x? l? lifecycle theo policy hi?n c?.",
             },
             {
-                "step": "Optional fallback: publish same stream through HTTP for local debug.",
-                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport http",
-                "expect": "HTTP path should publish the same sensor payload if broker is unavailable.",
-            },
-            {
-                "step": "Optional: re-run the same stream through MQTT edge transport.",
-                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
-                "expect": "MQTT consumer ingests the same frames and backend worker x? l? ti?p.",
-            },
-            {
                 "step": "Inspect plan lifecycle after timeout.",
                 "command": "curl http://localhost:8000/api/v1/plans?limit=10",
                 "expect": "Old plan is rejected and a fresh pending_approval plan appears.",
@@ -64,9 +54,9 @@ SCENARIOS = {
         "highlights": [
             "Sensor scenario is the trigger point (not manual plan API).",
             "Risk is sensor-first: salinity is the base band, while trend and fresh context can only nudge it upward.",
-            "MQTT is the primary device path; HTTP is a fallback for demo/debug only.",
+            "MQTT is the only device path in the current simulator.",
             "Approval-timeout policy recovers automatically.",
-            "Same scenario can run with HTTP or MQTT transport for parity checks.",
+            "The simulator now publishes only MQTT sensor frames.",
         ],
     },
     "fast-approve-execute": {
@@ -159,13 +149,8 @@ SCENARIOS = {
         "steps": [
             {
                 "step": "Publish warning-to-recovery sensor stream via MQTT device path with an extra warning frame.",
-                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883",
                 "expect": "Backend ingests the warning stream and transitions into a cautious recovery posture.",
-            },
-            {
-                "step": "Optional fallback: publish the same stream through HTTP for local debug.",
-                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport http",
-                "expect": "HTTP path should mirror the same sensor frames when broker is unavailable.",
             },
         ],
         "after_commands": [
@@ -179,7 +164,7 @@ SCENARIOS = {
             "This scenario shows a conservative operational posture rather than only critical escalation.",
             "Trend and freshness matter, but the engine still keeps salinity as the anchor band.",
             "The demo now includes both escalation and recovery patterns.",
-            "MQTT remains the primary path; HTTP is a fallback for parity checks.",
+            "The simulator now publishes only MQTT sensor frames.",
         ],
     },
 }

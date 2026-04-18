@@ -4,8 +4,9 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete
 
+from app.db.base import Base
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import AsyncSessionFactory, close_database_engine
@@ -53,41 +54,11 @@ from app.repositories.sensor import SensorStationRepository
 logger = logging.getLogger(__name__)
 
 
-async def _reset_demo_region_data(
-    session,
-    *,
-    region_repo: RegionRepository,
-) -> bool:
-    """Delete existing demo rows so each seed starts from a clean slate."""
-    existing_region = await region_repo.get_by_code("TIEN-GIANG-GO-CONG")
-    if existing_region is None:
-        return False
-
-    region_id = existing_region.id
-    incident_ids = select(Incident.id).where(Incident.region_id == region_id)
-    execution_ids = select(ActionExecution.id).where(ActionExecution.region_id == region_id)
-
-    await session.execute(
-        delete(Notification).where(
-            or_(
-                Notification.incident_id.in_(incident_ids),
-                Notification.execution_id.in_(execution_ids),
-            )
-        )
-    )
-    await session.execute(delete(DecisionLog).where(DecisionLog.region_id == region_id))
-    await session.execute(delete(AuditLog).where(AuditLog.region_id == region_id))
-    await session.execute(delete(MemoryCase).where(MemoryCase.region_id == region_id))
-    await session.execute(delete(AgentRun).where(AgentRun.region_id == region_id))
-    await session.execute(delete(ObservationSnapshot).where(ObservationSnapshot.region_id == region_id))
-    await session.execute(
-        delete(KnowledgeDocument).where(
-            KnowledgeDocument.source_uri.like("mekong-salt://knowledge/%")
-        )
-    )
-    await session.execute(delete(Region).where(Region.id == region_id))
+async def _reset_all_demo_data(session) -> None:
+    """Delete existing application rows so each seed starts from a clean slate."""
+    for table in reversed(Base.metadata.sorted_tables):
+        await session.execute(delete(table))
     await session.flush()
-    return True
 
 
 def _build_station_metadata(
@@ -299,9 +270,8 @@ async def run_seed() -> None:
     async with AsyncSessionFactory() as session:
         region_repo = RegionRepository(session)
         station_repo = SensorStationRepository(session)
-        reset_done = await _reset_demo_region_data(session, region_repo=region_repo)
-        if reset_done:
-            logger.info("Đã reset dữ liệu demo cũ cho region TIEN-GIANG-GO-CONG")
+        await _reset_all_demo_data(session)
+        logger.info("Đã xóa toàn bộ dữ liệu demo cũ trước khi seed mới")
         region, _ = await _upsert_region_profile(session, region_repo=region_repo)
 
         station_a = await _upsert_station_profile(
@@ -394,9 +364,9 @@ async def run_seed() -> None:
             code="GATE-HOA-DINH",
             name="Cống Hòa Định",
             gate_type="sluice",
-            status=GateStatus.CLOSED,
-            latitude=Decimal("10.324850"),
-            longitude=Decimal("106.449120"),
+            status=GateStatus.OPEN,
+            latitude=Decimal("10.317250"),
+            longitude=Decimal("106.463346"),
             location_description=(
                 "Cống chính gần trạm lấy nước Gò Công Đông. Đây là điểm điều khiển đầu vào cho luồng response."
             ),
@@ -423,9 +393,9 @@ async def run_seed() -> None:
             code="GATE-XUAN-HOA",
             name="Cống Xuân Hòa",
             gate_type="sluice",
-            status=GateStatus.CLOSED,
-            latitude=Decimal("10.307680"),
-            longitude=Decimal("106.440880"),
+            status=GateStatus.OPEN,
+            latitude=Decimal("10.336566"),
+            longitude=Decimal("106.411532"),
             location_description="Cống phụ nằm trên tuyến nội đồng, hỗ trợ kiểm soát gradient salinity.",
             station_id=station_b.id,
             gate_metadata=_build_gate_metadata(
@@ -451,8 +421,8 @@ async def run_seed() -> None:
             name="Cống Thới Tân",
             gate_type="sluice",
             status=GateStatus.OPEN,
-            latitude=Decimal("10.338420"),
-            longitude=Decimal("106.427890"),
+            latitude=Decimal("10.336632"),
+            longitude=Decimal("106.427931"),
             location_description="Cống vận hành ở phía tây bắc để làm mốc cố định trên bản đồ demo.",
             station_id=station_a.id,
             gate_metadata=_build_gate_metadata(
@@ -478,8 +448,8 @@ async def run_seed() -> None:
             name="Cống Phú Đông",
             gate_type="sluice",
             status=GateStatus.CLOSED,
-            latitude=Decimal("10.296120"),
-            longitude=Decimal("106.437840"),
+            latitude=Decimal("10.244237"),
+            longitude=Decimal("106.700512"),
             location_description="Cống biên phía nam dùng để khóa ranh giới của hành lang demo.",
             station_id=station_b.id,
             gate_metadata=_build_gate_metadata(
@@ -501,7 +471,7 @@ async def run_seed() -> None:
         reading_a = SensorReading(
             station_id=station_a.id,
             recorded_at=now - timedelta(minutes=30),
-            salinity_dsm=Decimal("4.80"),
+            salinity_dsm=Decimal("0.82"),
             water_level_m=Decimal("1.62"),
             temperature_c=Decimal("29.40"),
             battery_level_pct=Decimal("88.00"),
@@ -517,7 +487,7 @@ async def run_seed() -> None:
         reading_b = SensorReading(
             station_id=station_b.id,
             recorded_at=now - timedelta(minutes=20),
-            salinity_dsm=Decimal("3.10"),
+            salinity_dsm=Decimal("0.78"),
             water_level_m=Decimal("1.25"),
             temperature_c=Decimal("29.10"),
             battery_level_pct=Decimal("91.50"),
@@ -536,7 +506,7 @@ async def run_seed() -> None:
         reading_b_history_1 = SensorReading(
             station_id=station_b.id,
             recorded_at=now - timedelta(minutes=75),
-            salinity_dsm=Decimal("1.95"),
+            salinity_dsm=Decimal("0.66"),
             water_level_m=Decimal("1.28"),
             temperature_c=Decimal("28.70"),
             battery_level_pct=Decimal("92.10"),
@@ -553,7 +523,7 @@ async def run_seed() -> None:
         reading_b_history_2 = SensorReading(
             station_id=station_b.id,
             recorded_at=now - timedelta(minutes=65),
-            salinity_dsm=Decimal("2.42"),
+            salinity_dsm=Decimal("0.91"),
             water_level_m=Decimal("1.24"),
             temperature_c=Decimal("28.90"),
             battery_level_pct=Decimal("91.80"),
@@ -590,7 +560,7 @@ async def run_seed() -> None:
             based_on_weather_id=recovery_weather.id,
             assessed_at=now - timedelta(minutes=60),
             risk_level=RiskLevel.WARNING,
-            salinity_dsm=Decimal("2.42"),
+            salinity_dsm=Decimal("0.91"),
             trend_direction=TrendDirection.RISING,
             trend_delta_dsm=Decimal("0.47"),
             rule_version="v1",
@@ -771,7 +741,7 @@ async def run_seed() -> None:
             based_on_weather_id=weather.id,
             assessed_at=now - timedelta(minutes=15),
             risk_level=RiskLevel.CRITICAL,
-            salinity_dsm=Decimal("4.80"),
+            salinity_dsm=Decimal("0.82"),
             trend_direction=TrendDirection.RISING,
             trend_delta_dsm=Decimal("0.90"),
             rule_version="v1",

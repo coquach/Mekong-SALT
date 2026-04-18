@@ -16,7 +16,7 @@ function getRealtimeLabel(mode: RealtimeMode): string {
   if (mode === "polling") {
     return "Cập nhật định kỳ";
   }
-  return "Tĩnh";
+  return "Làm mới thủ công";
 }
 
 function getRealtimeVariant(mode: RealtimeMode): "optimal" | "info" | "neutral" {

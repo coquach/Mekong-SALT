@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Bell, CheckCheck, Mail, MessageSquare, RefreshCcw } from "lucide-react";
 
 import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
@@ -6,9 +6,12 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { NOTIFICATIONS_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { getApiErrorMessage } from "../lib/api/error";
 import { getNotifications, markNotificationRead, type NotificationRead } from "../lib/api/notifications";
 import { formatDateTime, formatTime } from "../lib/format";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 
 type NotificationsState = {
   loading: boolean;
@@ -16,6 +19,12 @@ type NotificationsState = {
   items: NotificationRead[];
   lastRefreshAt: string | null;
 };
+
+type NotificationsCache = {
+  state: Pick<NotificationsState, "items" | "lastRefreshAt">;
+};
+
+const NOTIFICATIONS_CACHE_MAX_AGE_MS = 30_000;
 
 function isNotificationRead(notification: NotificationRead): boolean {
   return Boolean(notification.payload && typeof notification.payload.read === "boolean" && notification.payload.read);
@@ -64,11 +73,24 @@ function statusBadgeVariant(status: string): "optimal" | "warning" | "critical" 
 }
 
 export function Notifications() {
-  const [state, setState] = useState<NotificationsState>({
-    loading: true,
-    error: null,
-    items: [],
-    lastRefreshAt: null,
+  const cachedNotifications = useMemo(() => readPageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY), []);
+  const [state, setState] = useState<NotificationsState>(() => {
+    const cachedState = cachedNotifications?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        error: null,
+        items: [],
+        lastRefreshAt: null,
+      };
+    }
+
+    return {
+      loading: false,
+      error: null,
+      items: cachedState.items,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
   });
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -82,11 +104,18 @@ export function Notifications() {
 
     try {
       const response = await getNotifications({ limit: 200 }, signal);
+      const nextLastRefreshAt = new Date().toISOString();
       setState({
         loading: false,
         error: null,
         items: response.items,
-        lastRefreshAt: new Date().toISOString(),
+        lastRefreshAt: nextLastRefreshAt,
+      });
+      writePageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY, {
+        state: {
+          items: response.items,
+          lastRefreshAt: nextLastRefreshAt,
+        },
       });
     } catch (error) {
       if (signal?.aborted) {
@@ -100,18 +129,11 @@ export function Notifications() {
     }
   };
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    void refreshData({ signal: abortController.signal, showLoading: true });
-    return () => abortController.abort();
-  }, []);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void refreshData({ showLoading: false });
-    }, 20_000);
-    return () => window.clearInterval(intervalId);
-  }, []);
+  usePageCacheRefresh({
+    cacheEntry: cachedNotifications,
+    maxAgeMs: NOTIFICATIONS_CACHE_MAX_AGE_MS,
+    refresh: refreshData,
+  });
 
   const totalCount = state.items.length;
   const unreadCount = useMemo(
@@ -131,11 +153,21 @@ export function Notifications() {
     setBusyId(notificationId);
     try {
       const updatedNotification = await markNotificationRead(notificationId);
-      setState((previous) => ({
-        ...previous,
-        items: previous.items.map((item) => (item.id === updatedNotification.id ? updatedNotification : item)),
-        lastRefreshAt: new Date().toISOString(),
-      }));
+      const nextLastRefreshAt = new Date().toISOString();
+      setState((previous) => {
+        const nextItems = previous.items.map((item) => (item.id === updatedNotification.id ? updatedNotification : item));
+        writePageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY, {
+          state: {
+            items: nextItems,
+            lastRefreshAt: nextLastRefreshAt,
+          },
+        });
+        return {
+          ...previous,
+          items: nextItems,
+          lastRefreshAt: nextLastRefreshAt,
+        };
+      });
     } catch (error) {
       setState((previous) => ({
         ...previous,
@@ -167,7 +199,7 @@ export function Notifications() {
       {state.loading && state.items.length === 0 ? <SkeletonCards count={3} /> : null}
 
       <div className={`grid grid-cols-1 gap-6 lg:grid-cols-4 ${state.loading && state.items.length === 0 ? "hidden" : ""}`}>
-        <Card variant="white" className="rounded-[32px] border border-slate-100 p-6 shadow-soft">
+        <Card variant="white" className="rounded-4xl border border-slate-100 p-6 shadow-soft">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-mekong-navy/10 p-3 text-mekong-navy">
               <Bell size={20} />
@@ -179,17 +211,17 @@ export function Notifications() {
           </div>
         </Card>
 
-        <Card variant="white" className="rounded-[32px] border border-slate-100 p-6 shadow-soft">
+        <Card variant="white" className="rounded-4xl border border-slate-100 p-6 shadow-soft">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Chưa đọc</p>
           <p className="mt-2 text-2xl font-black text-mekong-critical">{unreadCount}</p>
         </Card>
 
-        <Card variant="white" className="rounded-[32px] border border-slate-100 p-6 shadow-soft">
+        <Card variant="white" className="rounded-4xl border border-slate-100 p-6 shadow-soft">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Đã gửi</p>
           <p className="mt-2 text-2xl font-black text-mekong-mint">{sentCount}</p>
         </Card>
 
-        <Card variant="white" className="rounded-[32px] border border-slate-100 p-6 shadow-soft">
+        <Card variant="white" className="rounded-4xl border border-slate-100 p-6 shadow-soft">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Lỗi gửi</p>
           <p className="mt-2 text-2xl font-black text-amber-500">{failedCount}</p>
         </Card>
@@ -197,7 +229,7 @@ export function Notifications() {
 
       <Card
         variant="white"
-        className={`rounded-[40px] border border-slate-100 p-6 shadow-soft ${
+        className={`rounded-4xl border border-slate-100 p-6 shadow-soft ${
           state.loading && state.items.length === 0 ? "hidden" : ""
         }`}
       >

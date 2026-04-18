@@ -50,7 +50,6 @@ class MonitoringGoal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     warning_threshold_dsm: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     critical_threshold_dsm: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     evaluation_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
-    auto_plan_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_status: Mapped[str | None] = mapped_column(String(30), nullable=True)

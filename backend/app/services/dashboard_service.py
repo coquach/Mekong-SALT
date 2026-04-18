@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.core.salinity_units import dsm_to_gl
 from app.models.agent_run import AgentRun
 from app.models.action import ActionExecution, ActionPlan
-from app.models.enums import ActionPlanStatus, IncidentStatus, NotificationStatus
+from app.models.enums import ActionPlanStatus, IncidentStatus, NotificationChannel, NotificationStatus
 from app.models.incident import Incident
 from app.models.notification import Notification
 from app.models.risk import RiskAssessment
@@ -39,7 +39,8 @@ async def get_dashboard_summary(session: AsyncSession) -> DashboardSummary:
     )
     active_notifications = await session.scalar(
         select(func.count()).select_from(Notification).where(
-            Notification.status.in_([NotificationStatus.PENDING, NotificationStatus.SENT])
+            Notification.status.in_([NotificationStatus.PENDING, NotificationStatus.SENT]),
+            Notification.channel != NotificationChannel.EMAIL_MOCK,
         )
     )
     today_start = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)

@@ -19,7 +19,6 @@ export interface MonitoringGoalRead {
   provider: "mock" | "gemini" | null;
   thresholds: GoalThresholds;
   evaluation_interval_minutes: number;
-  auto_plan_enabled: boolean;
   is_active: boolean;
   last_run_at: string | null;
   last_run_status: string | null;
@@ -120,7 +119,6 @@ export interface AgentRunCollection {
 export interface UpdateGoalPayload {
   objective?: string;
   evaluation_interval_minutes?: number;
-  auto_plan_enabled?: boolean;
   is_active?: boolean;
 }
 

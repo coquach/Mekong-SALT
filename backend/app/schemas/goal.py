@@ -77,7 +77,6 @@ class MonitoringGoalBase(ORMBaseSchema):
     provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds
     evaluation_interval_minutes: int = Field(ge=1, le=10080)
-    auto_plan_enabled: bool = True
     is_active: bool = True
 
 
@@ -96,7 +95,6 @@ class MonitoringGoalUpdate(ORMBaseSchema):
     provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds | None = None
     evaluation_interval_minutes: int | None = Field(default=None, ge=1, le=10080)
-    auto_plan_enabled: bool | None = None
     is_active: bool | None = None
 
 
@@ -111,7 +109,6 @@ class MonitoringGoalRead(EntityReadSchema):
     provider: Literal["mock", "gemini"] | None = None
     thresholds: GoalThresholds
     evaluation_interval_minutes: int
-    auto_plan_enabled: bool
     is_active: bool
     last_run_at: datetime | None = None
     last_run_status: str | None = None

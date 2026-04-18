@@ -7,7 +7,7 @@ from pydantic import SecretStr
 
 from app.models.enums import NotificationChannel, NotificationStatus
 from app.schemas.notification import NotificationCreate
-from app.services.notification_service import create_notification, create_operational_notifications
+from app.services.notification_service import create_notification, create_operational_notifications, list_notifications
 from app.services.agent_execution_service import _build_execution_summary_notification_message
 from app.services.notify.email import build_email_text, send_email_message
 from app.services.notify.zalo import ZaloDeliveryResult, build_zalo_template_data, build_zalo_text
@@ -239,10 +239,19 @@ async def test_send_email_message_builds_and_sends_plain_text_email(monkeypatch)
     assert smtp.login_args == ("ops@example.test", "smtp-secret")
     assert smtp.sent_message["To"] == "farmer@example.test"
     assert smtp.sent_message["From"] == "ops@example.test"
-    assert "Tiêu đề: Cảnh báo mặn" in smtp.sent_message.get_content()
-    assert "Nội dung: Độ mặn đã vượt ngưỡng." in smtp.sent_message.get_content()
-    assert "Sự kiện: cảnh báo rủi ro" in smtp.sent_message.get_content()
-    assert "Chi tiết:" in smtp.sent_message.get_content()
+    assert smtp.sent_message.is_multipart() is True
+
+    plain_part = smtp.sent_message.get_body(preferencelist=("plain",))
+    html_part = smtp.sent_message.get_body(preferencelist=("html",))
+
+    assert plain_part is not None
+    assert html_part is not None
+    assert "Tiêu đề: Cảnh báo mặn" in plain_part.get_content()
+    assert "Nội dung: Độ mặn đã vượt ngưỡng." in plain_part.get_content()
+    assert "Sự kiện: cảnh báo rủi ro" in plain_part.get_content()
+    assert "Chi tiết:" in plain_part.get_content()
+    assert "<html" in html_part.get_content().lower()
+    assert "Cảnh báo mặn" in html_part.get_content()
 
 
 def test_build_zalo_template_data_localizes_common_labels():
@@ -283,11 +292,34 @@ def test_build_email_text_humanizes_execution_summary():
         },
     )
 
-    assert "Diễn giải ngắn: Kết quả mô phỏng: thành công." in text
-    assert "Các bước chính: Đã đóng cống mô phỏng và dừng bơm." in text
-    assert "Điều này cho thấy hệ thống đã phản ứng đúng trình tự" in text
+    assert "Tóm tắt:" in text
+    assert "Mô phỏng đã hoàn tất." in text
+    assert "Kết quả: thành công" in text
+    assert "Hành động chính: Đã đóng cống mô phỏng và dừng bơm" in text
+    assert "Diễn giải: Luồng phản ứng đã đi đúng thứ tự" in text
+    assert "Diễn giải ngắn:" not in text
     assert "plan-123" not in text
     assert "batch-456" not in text
+
+
+def test_build_email_text_keeps_execution_summary_concise_when_inconclusive():
+    text = build_email_text(
+        "Tổng kết thực thi",
+        "Tổng kết thực thi: inconclusive",
+        payload={
+            "event": "execution_summary",
+            "outcome_class": "inconclusive",
+            "action_summary": "Đã gửi cảnh báo mô phỏng tới các bên liên quan -> Đóng cống mô phỏng",
+            "replan_recommended": True,
+        },
+    )
+
+    assert "Kết quả: chưa đủ dữ liệu để kết luận" in text
+    assert "Diễn giải: Quy trình đã chạy xong, nhưng cần thêm dữ liệu để xác nhận hiệu quả cuối cùng." in text
+    assert "Khuyến nghị: xem xét lập lại kế hoạch để an toàn hơn" in text
+    assert "Hành động chính: Đã gửi cảnh báo mô phỏng tới các bên liên quan; Đóng cống mô phỏng" in text
+    assert "Điều này chứng minh" not in text
+    assert "Các bước chính" not in text
 
 
 def test_build_zalo_text_humanizes_execution_summary():
@@ -305,6 +337,8 @@ def test_build_zalo_text_humanizes_execution_summary():
     assert "Diễn giải ngắn: Kết quả mô phỏng: thành công." in text
     assert "Các bước chính: Đã đóng cống mô phỏng và dừng bơm." in text
     assert "Điều này cho thấy hệ thống đã phản ứng đúng trình tự" in text
+    assert "giảm nguy cơ lan rộng của salinity" in text
+    assert "tạo ra một phản ứng có tổ chức" in text
 
 
 def test_execution_summary_message_is_plain_language():
@@ -387,3 +421,60 @@ async def test_create_notification_skips_duplicate_dedupe_key(
 
     assert send_count == 1
     assert first.id == second.id
+
+
+@pytest.mark.asyncio
+async def test_create_operational_notifications_triggers_email_without_persisting(
+    db_session,
+    monkeypatch,
+):
+    sent_messages: list[dict[str, object]] = []
+
+    async def fake_send_email_message(**kwargs):
+        sent_messages.append(kwargs)
+        return SimpleNamespace(
+            ok=True,
+            message_id="<msg-operational>",
+            smtp_response="sent",
+            error_message=None,
+        )
+
+    fake_settings = SimpleNamespace(
+        email_notifications_enabled=True,
+        email_smtp_host="smtp.example.test",
+        email_smtp_port=587,
+        email_smtp_username="ops@example.test",
+        email_smtp_password=SecretStr("smtp-secret"),
+        email_from_address="ops@example.test",
+        email_use_tls=True,
+        email_use_ssl=False,
+        email_timeout_seconds=7,
+        zalo_notifications_enabled=False,
+    )
+
+    monkeypatch.setattr("app.services.notification_service.get_settings", lambda: fake_settings)
+    monkeypatch.setattr(
+        "app.services.notification_service.send_email_message",
+        fake_send_email_message,
+    )
+
+    notifications = await create_operational_notifications(
+        db_session,
+        incident_id=None,
+        subject="Thông báo điều hành",
+        message="Đây là thông báo điều hành.",
+        payload={"event": "incident_created", "dedupe_key": "operational-001"},
+        channel_recipients=(
+            (NotificationChannel.DASHBOARD, "dashboard"),
+            (NotificationChannel.EMAIL_MOCK, "ops@example.test"),
+        ),
+    )
+    await db_session.commit()
+
+    notifications_on_disk = await list_notifications(db_session, limit=20)
+
+    assert len(notifications) == 1
+    assert notifications[0].channel is NotificationChannel.DASHBOARD
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["recipient_email"] == "ops@example.test"
+    assert all(notification.channel is not NotificationChannel.EMAIL_MOCK for notification in notifications_on_disk)

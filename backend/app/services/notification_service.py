@@ -204,9 +204,22 @@ async def create_operational_notifications(
     actor_name: str = "notification-service",
     channel_recipients: tuple[tuple[NotificationChannel, str], ...] | None = None,
 ) -> list[Notification]:
-    """Create notifications across configured operational channels."""
+    """Create operational notifications and trigger delivery-only email sends."""
     notifications: list[Notification] = []
     for channel, recipient in (channel_recipients or _DEFAULT_CHANNEL_RECIPIENTS):
+        if channel is NotificationChannel.EMAIL_MOCK:
+            await _deliver_email_notification(
+                settings=get_settings(),
+                session=session,
+                subject=subject,
+                message=message,
+                payload=payload or {},
+                recipient_email=recipient,
+                incident_id=incident_id,
+                execution_id=execution_id,
+                actor_name=actor_name,
+            )
+            continue
         notification = await create_notification(
             session,
             NotificationCreate(
@@ -384,6 +397,47 @@ async def _attempt_email_delivery(
     return _EmailDeliveryOutcome(ok=True, mode="smtp", message_id=result.message_id)
 
 
+async def _deliver_email_notification(
+    *,
+    settings: Any,
+    session: AsyncSession,
+    subject: str | None,
+    message: str,
+    payload: dict[str, Any],
+    recipient_email: str,
+    incident_id: UUID | None,
+    execution_id: UUID | None,
+    actor_name: str,
+) -> _EmailDeliveryOutcome:
+    delivery = await _attempt_email_delivery(
+        settings=settings,
+        subject=subject,
+        message=message,
+        payload=payload,
+        recipient_email=recipient_email,
+    )
+    await write_audit_log(
+        session,
+        event_type=AuditEventType.NOTIFICATION,
+        actor_name=actor_name,
+        incident_id=incident_id,
+        action_execution_id=execution_id,
+        summary=(
+            f"Không gửi được thông báo email ({_localize_delivery_mode_label(delivery.mode)})."
+            if not delivery.ok
+            else f"Đã gửi thông báo email ({_localize_delivery_mode_label(delivery.mode)})."
+        ),
+        payload={
+            "recipient": recipient_email,
+            "subject": subject,
+            "delivery_mode": delivery.mode,
+            "delivery_message_id": delivery.message_id,
+            "delivery_error": delivery.error_message,
+        },
+    )
+    return delivery
+
+
 def _merge_delivery_payload(
     *,
     payload: dict[str, Any] | None,
@@ -494,7 +548,12 @@ def _localize_delivery_mode_label(value: str) -> str:
 
 async def list_notifications(session: AsyncSession, *, limit: int = 100) -> list[Notification]:
     """List recent notifications."""
-    return await NotificationRepository(session).list_recent(limit=limit)
+    notifications = await NotificationRepository(session).list_recent(limit=limit)
+    return [
+        notification
+        for notification in notifications
+        if notification.channel is not NotificationChannel.EMAIL_MOCK
+    ]
 
 
 async def mark_notification_read(

@@ -21,7 +21,6 @@ def goal_to_read(goal: MonitoringGoal) -> MonitoringGoalRead:
             critical_threshold_dsm=goal.critical_threshold_dsm,
         ),
         evaluation_interval_minutes=goal.evaluation_interval_minutes,
-        auto_plan_enabled=goal.auto_plan_enabled,
         is_active=goal.is_active,
         last_run_at=goal.last_run_at,
         last_run_status=goal.last_run_status,

@@ -138,3 +138,30 @@ async def test_lifecycle_graph_low_risk_auto_executes(
     assert result.plan.status == ActionPlanStatus.SIMULATED
     assert result.memory_log is not None
     assert result.memory_log.details["execution_status"] == "executed"
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_graph_approved_high_risk_executes_after_human_approval(
+    db_session,
+    seeded_sensor_data,
+):
+    plan = await _persist_plan_with_assessment(
+        db_session,
+        seeded_sensor_data=seeded_sensor_data,
+        risk_level=RiskLevel.DANGER,
+    )
+    plan.status = ActionPlanStatus.APPROVED
+    await db_session.commit()
+
+    result = await advance_plan_with_lifecycle_graph(
+        db_session,
+        plan=plan,
+        settings=Settings(),
+    )
+
+    assert result.status == "executed"
+    assert result.approval is None
+    assert result.execution_bundle is not None
+    assert result.plan.status == ActionPlanStatus.SIMULATED
+    assert result.memory_log is not None
+    assert result.memory_log.details["execution_status"] == "executed"

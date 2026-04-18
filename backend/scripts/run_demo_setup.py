@@ -140,11 +140,13 @@ def main() -> None:
         "[NEXT] Nhắm một trạm: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py "
         "--scenario fast-approve-execute --station-code GOCONG-01 --frame-pause-seconds 10"
     )
+    print("        Kịch bản này dừng ở pending approval, không tự duyệt plan.")
     print(
         "[NEXT] Mô phỏng MQTT: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py "
-        "--scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost "
+        "--scenario fast-approve-execute --mqtt-broker-url localhost "
         "--mqtt-broker-port 1883 --frame-pause-seconds 10"
     )
+    print("        Chỉ publish sensor frames; approval vẫn do người dùng thực hiện.")
     print("[NEXT] Mở demo Gradio: ./.venv/Scripts/python.exe gradio_app/demo_app.py")
     print("[NEXT] Theo dõi trạng thái: GET /api/v1/dashboard/summary và GET /api/v1/plans")
     print("[NEXT] Ghi chú policy: backend/document/proposal_unit_alignment.md")

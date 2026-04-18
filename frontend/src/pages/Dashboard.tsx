@@ -21,8 +21,11 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { DASHBOARD_CACHE_KEY } from "../lib/cache/pageCacheKeys";
+import { invalidateOperationalPageCaches } from "../lib/cache/pageCacheKeys";
 import { getApiBaseUrl } from "../lib/api/http";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 import {
   getActionLogs,
   getDashboardSummary,
@@ -129,7 +132,6 @@ type DashboardCache = {
 
 const DASHBOARD_STREAM_CURSOR_KEY = "mekong.dashboard.stream.cursor";
 const DASHBOARD_ACTIVITY_FILTER_KEY = "mekong.dashboard.activity-filter";
-const DASHBOARD_CACHE_KEY = "mekong.cache.dashboard";
 const DASHBOARD_CACHE_MAX_AGE_MS = 30_000;
 
 const LazySatelliteMap = lazy(() =>
@@ -693,21 +695,20 @@ export function Dashboard() {
     });
   }, [activityFilter, selectedStationId, state, weatherSnapshot]);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const shouldSkipInitialRefresh =
-      reloadVersion === 0 &&
-      cachedDashboard !== null &&
-      isPageCacheFresh(cachedDashboard, DASHBOARD_CACHE_MAX_AGE_MS);
+  usePageCacheRefresh({
+    cacheEntry: cachedDashboard,
+    maxAgeMs: DASHBOARD_CACHE_MAX_AGE_MS,
+    refreshToken: reloadVersion,
+    refresh: async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+      const signal = options?.signal;
+      const showLoading = options?.showLoading ?? false;
 
-    if (shouldSkipInitialRefresh) {
-      return () => abortController.abort();
-    }
+      if (showLoading) {
+        setState((previous) => ({ ...previous, loading: true, error: null }));
+      }
 
-    const loadDashboard = async () => {
-      setState((previous) => ({ ...previous, loading: true, error: null }));
       try {
-        const snapshot = await fetchDashboardSnapshot(abortController.signal);
+        const snapshot = await fetchDashboardSnapshot(signal);
         setState((previous) => ({
           ...previous,
           ...snapshot,
@@ -716,7 +717,7 @@ export function Dashboard() {
           error: null,
         }));
       } catch (error) {
-        if (abortController.signal.aborted) {
+        if (signal?.aborted) {
           return;
         }
         setState((previous) => ({
@@ -725,11 +726,8 @@ export function Dashboard() {
           error: parseApiErrorMessage(error),
         }));
       }
-    };
-
-    void loadDashboard();
-    return () => abortController.abort();
-  }, [cachedDashboard, reloadVersion]);
+    },
+  });
 
   useEffect(() => {
     let stream: EventSource | null = null;
@@ -1076,11 +1074,14 @@ export function Dashboard() {
           },
           { actorName: "dashboard-operator" },
         );
+        invalidateOperationalPageCaches();
       }
 
       await simulateExecutionBatch(controlPlan.id, {
         idempotency_key: `dashboard-plc:${controlPlan.id}:${Date.now()}`,
       });
+
+      invalidateOperationalPageCaches();
 
       setPlcStatusMessage(`Đã mô phỏng PLC cho plan ${formatCompactId(controlPlan.id)}.`);
       setReloadVersion((previous) => previous + 1);

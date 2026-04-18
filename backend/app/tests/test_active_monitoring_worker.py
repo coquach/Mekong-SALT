@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-
 import pytest
 from sqlalchemy import select
 
@@ -14,8 +13,9 @@ from app.models.risk import RiskAssessment
 from app.models.sensor import SensorReading
 from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
-from app.models.enums import ActionPlanStatus, ActionType
+from app.models.enums import ActionPlanStatus, ActionType, RiskLevel
 from app.services.active_monitoring_service import run_monitoring_goal_cycle
+from app.services.active_monitoring_service import should_auto_plan
 
 
 async def _persist_stub_weather_snapshot(session, *, region_id) -> WeatherSnapshot:
@@ -50,7 +50,6 @@ async def test_active_monitoring_skips_duplicate_open_plan(
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)
@@ -153,7 +152,7 @@ async def test_active_monitoring_skips_duplicate_open_plan(
 
 
 @pytest.mark.asyncio
-async def test_active_monitoring_creates_plan_when_auto_plan_enabled(
+async def test_active_monitoring_creates_plan_when_risk_is_danger(
     db_session,
     seeded_sensor_data,
     monkeypatch,
@@ -167,7 +166,6 @@ async def test_active_monitoring_creates_plan_when_auto_plan_enabled(
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)
@@ -219,7 +217,6 @@ async def test_active_monitoring_skips_cycle_when_latest_reading_already_process
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)
@@ -300,6 +297,75 @@ async def test_active_monitoring_skips_cycle_when_latest_reading_already_process
     assert goal.last_processed_reading_id == third.risk_bundle.reading.id
 
 
+def test_should_auto_plan_respects_risk_gate():
+
+    assert should_auto_plan(RiskLevel.WARNING) is False
+    assert should_auto_plan(RiskLevel.DANGER) is True
+    assert should_auto_plan(RiskLevel.CRITICAL) is True
+    assert should_auto_plan(RiskLevel.SAFE) is False
+    assert should_auto_plan(None) is False
+
+
+@pytest.mark.asyncio
+async def test_active_monitoring_stops_at_incident_when_risk_is_warning(
+    db_session,
+    seeded_sensor_data,
+    monkeypatch,
+):
+    goal = MonitoringGoal(
+        name="Phase4-Warning-Gate-Goal",
+        region_id=seeded_sensor_data["region"].id,
+        station_id=seeded_sensor_data["station_a"].id,
+        objective="Warn operators but do not create a plan yet",
+        provider="mock",
+        warning_threshold_dsm=Decimal("2.50"),
+        critical_threshold_dsm=Decimal("4.00"),
+        evaluation_interval_minutes=1,
+        is_active=True,
+    )
+    db_session.add(goal)
+    await db_session.commit()
+    await db_session.refresh(goal)
+
+    async def fake_weather_snapshot(session, *, region, station, redis_manager):
+        return await _persist_stub_weather_snapshot(session, region_id=region.id)
+
+    monkeypatch.setattr(
+        "app.services.risk_service.get_or_fetch_weather_snapshot",
+        fake_weather_snapshot,
+    )
+
+    db_session.add(
+        SensorReading(
+            station_id=goal.station_id,
+            recorded_at=datetime.now(UTC),
+            salinity_dsm=Decimal("2.80"),
+            water_level_m=Decimal("1.40"),
+            temperature_c=Decimal("29.00"),
+            source="worker-test",
+        )
+    )
+    await db_session.commit()
+
+    result = await run_monitoring_goal_cycle(
+        db_session,
+        goal=goal,
+        mode="active",
+        redis_manager=None,
+    )
+
+    assert result.status == "succeeded_incident_only"
+    assert result.incident is not None
+    assert result.plan_bundle is None
+
+    plans = (
+        await db_session.scalars(
+            select(ActionPlan).where(ActionPlan.incident_id == result.incident.id)
+        )
+    ).all()
+    assert plans == []
+
+
 @pytest.mark.asyncio
 async def test_active_monitoring_uses_lifecycle_graph(
     db_session,
@@ -315,7 +381,6 @@ async def test_active_monitoring_uses_lifecycle_graph(
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)
@@ -403,7 +468,6 @@ async def test_active_monitoring_auto_rejects_stale_pending_approval_for_demo(
         warning_threshold_dsm=Decimal("2.50"),
         critical_threshold_dsm=Decimal("4.00"),
         evaluation_interval_minutes=1,
-        auto_plan_enabled=True,
         is_active=True,
     )
     db_session.add(goal)

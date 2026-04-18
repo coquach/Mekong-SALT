@@ -111,7 +111,7 @@ async def test_agent_planning_service_persists_validated_plan(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: StubProvider(),
+        lambda provider_name=None, planner=None: StubProvider(),
     )
 
     bundle = await generate_agent_plan(
@@ -176,7 +176,7 @@ async def test_agent_planning_service_persists_invalid_plan_as_draft(
     )
     monkeypatch.setattr(
         "app.services.agent_planning_service.get_plan_provider",
-        lambda provider_name=None: StubProvider(),
+        lambda provider_name=None, planner=None: StubProvider(),
     )
 
     bundle = await generate_agent_plan(

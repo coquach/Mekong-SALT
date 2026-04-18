@@ -17,29 +17,28 @@ Nếu cần chạy nhanh theo thứ tự chuẩn, dùng đúng các lệnh sau t
 ```bash
 docker compose up -d --build
 cd backend
-set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mekong_salt
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe scripts/seed.py
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 curl http://localhost:8000/api/v1/plans?limit=10
 curl http://localhost:8000/api/v1/execution-batches?limit=10
 curl http://localhost:8000/api/v1/action-outcomes?limit=10
 curl http://localhost:8000/api/v1/agent/runs?limit=10
 ```
 
-Lưu ý quan trọng: trong cấu hình local Docker Compose, backend container dùng Postgres nội bộ của compose, còn `backend/.env` trên host đang trỏ sang Neon. Vì vậy, nếu bạn chạy migrate/seed/ingest bằng `backend/.venv`, hãy override `DATABASE_URL` sang `postgresql://postgres:postgres@localhost:5432/mekong_salt` trước khi chạy các lệnh demo. Nếu không, host script sẽ ghi vào DB khác và backend/API trong compose sẽ không thấy dữ liệu.
+Lưu ý quan trọng: trong cấu hình local Docker Compose, backend container dùng Postgres nội bộ của compose, còn `backend/.env` trên host đã được đặt để trỏ về Postgres được publish ở `localhost:5432`. Vì vậy, nếu bạn chạy migrate/seed/ingest bằng `backend/.venv`, hãy dùng trực tiếp bộ `.env` hiện tại, không cần override thủ công `DATABASE_URL`. Backend container và host scripts đều đang đọc cùng một database local.
 
 Nếu muốn chạy kịch bản timeout auto-reject thay vì fast approve:
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 Nếu muốn demo nhánh cảnh giác rồi hồi phục dần thay vì leo thang tới critical:
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 Nếu muốn bắn thử thông báo qua Zalo cho demo:
@@ -120,7 +119,7 @@ python -m alembic upgrade head
 
 Seed hiện tại có cơ chế reset demo region trước khi nạp lại, nên mỗi lần chạy sẽ đưa dữ liệu demo về trạng thái sạch.
 
-Nếu bạn đang chạy demo local bằng Docker Compose, nhớ set `DATABASE_URL` sang Postgres của compose trước khi seed.
+Nếu bạn đang chạy demo local bằng Docker Compose, chỉ cần dùng `backend/.env` hiện tại rồi seed trực tiếp.
 
 ```bash
 ./.venv/Scripts/python.exe scripts/seed.py
@@ -161,7 +160,7 @@ Script này sẽ:
 - seed lại dữ liệu demo,
 - ingest RAG sample corpus.
 
-Script này cũng cần `DATABASE_URL` trỏ về Postgres của compose nếu bạn chạy từ host.
+Script này sẽ tự dùng cấu hình trong `backend/.env`, nên không cần set `DATABASE_URL` bằng tay cho đường chạy chuẩn.
 
 Các flag hữu ích:
 
@@ -196,9 +195,9 @@ Mỗi scenario hiện được chia thành 3 phần:
 
 | Scenario | Khi nào dùng | Lệnh chính | Điểm nhấn demo |
 |---|---|---|---|
-| `fast-approve-execute` | Muốn thể hiện luồng chuẩn end-to-end trong thời gian ngắn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Salinity nền, trend tăng, approval, execution mô phỏng, feedback |
-| `critical-timeout-replan` | Muốn thể hiện cơ chế auto-reject và lập plan mới | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Escalation lên critical theo sensor-first engine, nhiều nhịp trend hơn, timeout, replan |
-| `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, trend ổn định qua nhiều nhịp, recovery window |
+| `fast-approve-execute` | Muốn thể hiện luồng chuẩn end-to-end trong thời gian ngắn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Salinity nền, trend tăng, approval, execution mô phỏng, feedback |
+| `critical-timeout-replan` | Muốn thể hiện cơ chế auto-reject và lập plan mới | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Escalation lên critical theo sensor-first engine, nhiều nhịp trend hơn, timeout, replan |
+| `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, trend ổn định qua nhiều nhịp, recovery window |
 | `rag-provenance-drilldown` | Muốn soi trace truy hồi và nguồn tri thức | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json` | Citations, knowledge context, trace provenance, trend window đầy hơn |
 
 ## 8) Chạy simulate
@@ -208,7 +207,7 @@ Mỗi scenario hiện được chia thành 3 phần:
 Scenario dễ demo nhất là `fast-approve-execute`:
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 Ý nghĩa:
@@ -224,7 +223,7 @@ Scenario dễ demo nhất là `fast-approve-execute`:
 ### 8.2 Scenario timeout auto-reject
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 Scenario này dùng để demo:
@@ -250,7 +249,7 @@ Scenario này dùng để xem:
 ### 8.4 Scenario warning observe / recovery
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 Scenario này dùng để demo:
@@ -259,7 +258,7 @@ Scenario này dùng để demo:
 - thêm một frame warning nữa để window trend rõ hơn,
 - posture quan sát thận trọng trước khi phục hồi,
 - luồng recovery window và rule quyết định bảo thủ,
-- hành vi fallback HTTP khi MQTT broker không sẵn sàng.
+- MQTT publisher chỉ cần broker sẵn sàng để bắn sensor frames.
 
 ### 8.5 Kịch bản full demo đề xuất
 
@@ -268,19 +267,19 @@ Nếu bạn muốn demo đầy đủ trong một buổi trình bày, nên chạy
 1. **Fast approve execute** để mở màn bằng luồng chuẩn.
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 2. **Critical timeout replan** để cho thấy hệ thống biết tự xử lý khi plan bị kẹt approval.
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 3. **Warning observe recover** để nhấn mạnh posture bảo thủ và recovery an toàn.
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 4. **RAG provenance drilldown** để kết bằng phần giải thích bằng chứng và nguồn tri thức.
@@ -298,7 +297,6 @@ Trình tự này giúp câu chuyện demo đi theo logic:
 ## 9) Ý nghĩa các flag của simulate
 
 - `--scenario`: chọn kịch bản.
-- `--transport mqtt|http`: chọn đường gửi dữ liệu sensor.
 - `--mqtt-broker-url`: host MQTT broker.
 - `--mqtt-broker-port`: port MQTT broker.
 - `--frame-pause-seconds`: khoảng nghỉ giữa các frame, mặc định 10 giây.
@@ -348,7 +346,7 @@ Trình tự này giúp câu chuyện demo đi theo logic:
 ### Bước 4: simulate
 
 ```bash
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883
 ```
 
 Đầu ra mong đợi:
@@ -380,7 +378,7 @@ cd backend
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe scripts/seed.py
 ./.venv/Scripts/python.exe scripts/ingest_rag_samples.py
-./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
 ## 12) Lưu ý vận hành

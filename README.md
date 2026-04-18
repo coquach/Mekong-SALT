@@ -140,7 +140,7 @@ Kiến trúc được thiết kế theo hướng **modular monolith + worker**. 
 |---|---|---|
 | Frontend | React + Vite + TypeScript + Leaflet | Dashboard, map, approval, timeline |
 | Backend API | FastAPI | REST API, orchestration, validation |
-| Worker | Python background worker | Active monitoring, MQTT ingest, execution flow |
+| Worker | Python background worker | Active monitoring, replan, MQTT ingest, execution flow |
 | Database | PostgreSQL + pgvector | Dữ liệu nghiệp vụ, vector retrieval |
 | Cache / lock | Redis | Locking, caching, retry coordination |
 | Broker | MQTT | Kênh ingest từ device / gateway |
@@ -193,7 +193,8 @@ Luồng demo trung tâm:
 8. Operator duyệt hoặc từ chối.
 9. Execution worker mô phỏng hành động.
 10. Feedback evaluator ghi nhận kết quả sau execution.
-11. Dashboard cập nhật timeline và trace.
+11. Nếu feedback đủ điều kiện và replan được bật, hệ thống phát `monitoring.replan_requested` để worker riêng xử lý follow-up plan.
+12. Dashboard cập nhật timeline và trace.
 
 ### Workflow chính
 
@@ -214,7 +215,12 @@ flowchart TD
     L --> M
     M --> N[Store outcomes]
     N --> O[Feedback evaluation]
-    O --> P[Update UI + trace]
+    O --> P{Replan enabled and needed?}
+    P -- Không --> Q[Update UI + trace]
+    P -- Có --> R[Emit replan_requested event]
+    R --> S[Replan worker re-checks risk]
+    S --> T[Draft follow-up plan]
+    T --> Q
 ```
 
 ### Quyết định quan trọng: cách đánh giá risk
@@ -324,7 +330,7 @@ Schema được thiết kế theo nguyên tắc: **mỗi bước nghiệp vụ q
 - `sensor_stations`: `code`, `name`, `latitude`, `longitude`, `station_metadata`, `risk_level`
 - `control_gates`: `code`, `name`, `gate_type`, `status`, `latitude`, `longitude`, `gate_metadata`
 - `sensor_readings`: `station_id`, `recorded_at`, `salinity_dsm`, `water_level_m`, `source`, `context_payload`
-- `monitoring_goals`: `region_id`, `station_id`, `warning_threshold_dsm`, `critical_threshold_dsm`, `auto_plan_enabled`, `is_active`
+- `monitoring_goals`: `region_id`, `station_id`, `warning_threshold_dsm`, `critical_threshold_dsm`, `is_active`
 - `risk_assessments`: `reading_id`, `risk_level`, `trend_direction`, `rationale`
 - `action_plans`: `incident_id`, `objective`, `summary`, `plan_steps`, `validation_result`
 - `execution_batches`: `plan_id`, `status`, `simulated`, `started_at`, `completed_at`

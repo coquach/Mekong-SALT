@@ -40,6 +40,12 @@ def build_human_summary(payload: dict[str, Any] | None, message: str) -> str | N
             parts.append(
                 "Điều này cho thấy hệ thống đã phản ứng đúng trình tự, xử lý tình huống sớm và giữ nhịp vận hành ổn định hơn."
             )
+            parts.append(
+                "Quan trọng hơn, chuỗi hành động này cho thấy phương án mô phỏng không chỉ hoàn thành bước kỹ thuật mà còn tạo ra một phản ứng có tổ chức, giúp giảm nguy cơ lan rộng của salinity và tăng độ tin cậy cho quyết định vận hành tiếp theo."
+            )
+            parts.append(
+                "Khi các bước được thực hiện theo thứ tự rõ ràng và kết quả đầu ra vẫn nhất quán, đó là dấu hiệu cho thấy mô hình đang tạo ra giá trị thực tế thay vì chỉ sinh ra một kế hoạch trên giấy."
+            )
         elif outcome == "inconclusive":
             parts.append(
                 "Điều này cho thấy luồng phản ứng đã chạy xong, nhưng cần thêm dữ liệu để chứng minh hiệu quả cuối cùng một cách chắc chắn hơn."

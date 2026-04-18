@@ -17,7 +17,8 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { INTERACTIVE_MAP_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { getLatestReadings, type SensorReading } from "../lib/api/dashboard";
 import {
   getIncidents,
@@ -30,6 +31,7 @@ import {
 } from "../lib/api/telemetry";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 import { formatNumber as formatNumberUtil, formatTime as formatTimeUtil, toNumber as toNumberUtil } from "../lib/format";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 
 type RiskFilter = "all" | "critical" | "warning" | "safe";
 
@@ -56,7 +58,6 @@ type InteractiveMapCache = {
   riskFilter: RiskFilter;
 };
 
-const INTERACTIVE_MAP_CACHE_KEY = "mekong.cache.interactive-map";
 const INTERACTIVE_MAP_CACHE_MAX_AGE_MS = 30_000;
 
 function parseApiError(error: unknown): string {
@@ -311,32 +312,11 @@ export function InteractiveMap() {
     }
   }, [requestSelectedRisk]);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const shouldSkipInitialRefresh =
-      cachedInteractiveMap !== null &&
-      isPageCacheFresh(cachedInteractiveMap, INTERACTIVE_MAP_CACHE_MAX_AGE_MS);
-
-    if (shouldSkipInitialRefresh) {
-      return () => {
-        abortController.abort();
-        riskAbortControllerRef.current?.abort();
-      };
-    }
-
-    void refreshData({ signal: abortController.signal, showLoading: true });
-    return () => {
-      abortController.abort();
-      riskAbortControllerRef.current?.abort();
-    };
-  }, [cachedInteractiveMap, refreshData]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void refreshData({ showLoading: false });
-    }, 20_000);
-    return () => window.clearInterval(intervalId);
-  }, [refreshData]);
+  usePageCacheRefresh({
+    cacheEntry: cachedInteractiveMap,
+    maxAgeMs: INTERACTIVE_MAP_CACHE_MAX_AGE_MS,
+    refresh: refreshData,
+  });
 
   const mapStations = useMemo<MapStation[]>(
     () =>
@@ -548,7 +528,8 @@ export function InteractiveMap() {
                   void refreshData({ showLoading: false });
                 }}
               >
-                <RefreshCcw size={12} />
+                <RefreshCcw size={12} className="mr-1" />
+                Làm mới
               </Button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">

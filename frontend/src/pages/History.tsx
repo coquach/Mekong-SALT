@@ -14,9 +14,11 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { HISTORY_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { type RiskLatestResponse, type SensorReading } from "../lib/api/dashboard";
 import { getApiErrorMessage } from "../lib/api/error";
+import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 import {
   getAuditLogs,
   getIncidents,
@@ -47,7 +49,6 @@ type HistoryCache = {
   state: Pick<HistoryState, "stations" | "selectedStationId" | "readings" | "risk" | "incidents" | "auditLogs" | "lastRefreshAt">;
 };
 
-const HISTORY_CACHE_KEY = "mekong.cache.history";
 const HISTORY_CACHE_MAX_AGE_MS = 30_000;
 
 async function loadStationContext(
@@ -192,31 +193,11 @@ export function History() {
     }
   };
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const shouldSkipInitialRefresh =
-      cachedHistory !== null && isPageCacheFresh(cachedHistory, HISTORY_CACHE_MAX_AGE_MS);
-
-    if (shouldSkipInitialRefresh) {
-      return () => {
-        abortController.abort();
-        stationContextAbortControllerRef.current?.abort();
-      };
-    }
-
-    void loadPageData({ signal: abortController.signal, showLoading: true });
-    return () => {
-      abortController.abort();
-      stationContextAbortControllerRef.current?.abort();
-    };
-  }, [cachedHistory]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void loadPageData({ selectedStationId: state.selectedStationId, showLoading: false });
-    }, 30_000);
-    return () => window.clearInterval(intervalId);
-  }, [state.selectedStationId]);
+  usePageCacheRefresh({
+    cacheEntry: cachedHistory,
+    maxAgeMs: HISTORY_CACHE_MAX_AGE_MS,
+    refresh: loadPageData,
+  });
 
   const selectedStation = useMemo(
     () => state.stations.find((station) => station.id === state.selectedStationId) ?? null,
@@ -372,7 +353,7 @@ export function History() {
 
       <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-200 pb-8 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
         <div className="flex items-center gap-5">
-          <div className="w-14 h-14 bg-mekong-navy rounded-[20px] flex items-center justify-center text-white shadow-xl ring-4 ring-slate-100">
+          <div className="w-14 h-14 bg-mekong-navy rounded-shell flex items-center justify-center text-white shadow-xl ring-4 ring-slate-100">
             <HistoryIcon size={28} strokeWidth={2.5} />
           </div>
           <div className="space-y-1">
@@ -398,7 +379,9 @@ export function History() {
               onChange={(event) => {
                 void handleStationChange(event.target.value);
               }}
-              className="pl-10 pr-9 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-bold text-mekong-navy focus:ring-2 ring-mekong-teal/20 min-w-[260px]"
+              aria-label="Chọn trạm quan sát"
+              title="Chọn trạm quan sát"
+              className="pl-10 pr-9 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-bold text-mekong-navy focus:ring-2 ring-mekong-teal/20 min-w-65"
               disabled={state.loading || state.stations.length === 0}
             >
               {state.stations.map((station) => (
@@ -411,12 +394,13 @@ export function History() {
 
           <Button
             variant="outline"
-            className="h-11 rounded-xl border-slate-200 bg-white"
+            className="h-11 rounded-xl border-slate-200 bg-white px-4"
             onClick={() => {
               void loadPageData({ selectedStationId: state.selectedStationId });
             }}
           >
-            <RefreshCcw size={16} />
+            <RefreshCcw size={16} className="mr-2" />
+            Làm mới
           </Button>
 
           <Button variant="outline" className="h-11 rounded-xl border-slate-200 bg-white">
@@ -426,7 +410,7 @@ export function History() {
       </div>
 
       <div className={`grid grid-cols-12 gap-6 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
-        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
+        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-4xl p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2.5 bg-mekong-teal/10 rounded-xl text-mekong-teal border border-mekong-teal/20">
               <Waves size={18} />
@@ -443,13 +427,13 @@ export function History() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
               Ghi nhận: {formatDateTimeUtil(latestReading?.recorded_at ?? null)}
             </p>
-            <Badge variant="warning" className="uppercase text-[10px]">
+            {/* <Badge variant="warning" className="uppercase text-[10px]">
               Rủi ro: {state.risk?.assessment.risk_level ?? "unknown"}
-            </Badge>
+            </Badge> */}
           </div>
         </Card>
 
-        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
+        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-4xl p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <Target size={18} className="text-mekong-navy" />
             <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Thống kê lịch sử</h3>
@@ -474,7 +458,7 @@ export function History() {
           </div>
         </Card>
 
-        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
+        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-4xl p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <AlertCircle size={18} className="text-mekong-critical" />
             <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Ngữ cảnh sự cố</h3>
@@ -501,7 +485,7 @@ export function History() {
       </div>
 
       <div className={`grid grid-cols-12 gap-8 items-start ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
-        <Card variant="white" className="col-span-12 lg:col-span-8 rounded-[32px] p-8 shadow-soft border border-slate-100">
+        <Card variant="white" className="col-span-12 lg:col-span-8 rounded-4xl p-8 shadow-soft border border-slate-100">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tight">Lịch sử số liệu</h3>
@@ -558,9 +542,9 @@ export function History() {
           </div>
         </Card>
 
-        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
+        <Card variant="white" className="col-span-12 lg:col-span-4 rounded-4xl p-6 shadow-soft border border-slate-100">
           <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest mb-4">Dòng thời gian audit</h3>
-          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-130 overflow-y-auto pr-1">
             {state.auditLogs.slice(0, 15).map((log) => (
               <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between gap-3">

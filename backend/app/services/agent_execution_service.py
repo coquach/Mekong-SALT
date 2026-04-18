@@ -42,6 +42,7 @@ from app.services.internal_memory_service import (
 from app.services.audit_service import write_audit_log
 from app.services.db import append_domain_event_and_dispatch
 from app.services.notify import get_domain_event_notification_dispatcher
+from app.services.replan_service import queue_replan_request_from_feedback
 
 
 logger = logging.getLogger(__name__)
@@ -301,6 +302,24 @@ async def execute_simulated_plan(
     )
     await decision_repo.add(feedback_log)
     decision_logs.append(feedback_log)
+
+    try:
+        await queue_replan_request_from_feedback(
+            session,
+            plan=plan,
+            feedback=feedback,
+            execution_batch_id=batch.id,
+            trigger_source="execution-service.feedback",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to queue background replan request",
+            extra={
+                "action_plan_id": str(plan.id),
+                "execution_batch_id": str(batch.id),
+                "outcome_class": feedback.outcome_class,
+            },
+        )
 
     await append_domain_event_and_dispatch(
         session,

@@ -15,7 +15,7 @@ from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.goal import MonitoringGoal
 from app.models.incident import Incident
-from app.models.enums import ActionPlanStatus, ApprovalDecision
+from app.models.enums import ActionPlanStatus, ApprovalDecision, RiskLevel
 from app.orchestration.lifecycle_graph import (
     LifecycleAdvanceResult,
     advance_plan_with_lifecycle_graph,
@@ -36,11 +36,7 @@ from app.services.risk_service import (
 
 MonitoringMode = Literal["active"]
 logger = logging.getLogger(__name__)
-AUTO_REPLAN_FEEDBACK_OUTCOMES = {
-    "failed_execution",
-    "failed_plan",
-    "partial_success",
-}
+PLANABLE_RISK_LEVELS = {RiskLevel.DANGER, RiskLevel.CRITICAL}
 
 
 @dataclass(slots=True)
@@ -72,15 +68,11 @@ class WorkerTickResult:
     results: list[MonitoringCycleResult]
 
 
-@dataclass(slots=True)
-class FeedbackReplanLoopResult:
-    """Result of one optional feedback-driven replan loop."""
-
-    attempts: int
-    risk_bundle: RiskEvaluationBundle
-    plan_bundle: AgentPlanBundle
-    lifecycle_result: LifecycleAdvanceResult
-    history: list[dict[str, Any]]
+def should_auto_plan(risk_level: RiskLevel | None) -> bool:
+    """Return whether active monitoring should generate a plan for this risk."""
+    if risk_level is None:
+        return False
+    return risk_level in PLANABLE_RISK_LEVELS
 
 
 async def run_monitoring_goal_cycle(
@@ -93,12 +85,10 @@ async def run_monitoring_goal_cycle(
 ) -> MonitoringCycleResult:
     """Run observe -> risk -> incident -> lifecycle graph advancement for one goal.
 
-    The monitoring cycle always performs autonomous planning when the goal is
-    eligible: it records deterministic risk evidence, resolves or creates an
-    incident, generates a plan when auto-plan is enabled, and advances that plan
-    through approval, execution, feedback, and memory persistence. If feedback
-    indicates failed outcomes, an optional capped auto-replan loop can generate
-    follow-up plans.
+    The monitoring cycle records deterministic risk evidence, resolves or
+    creates an incident, generates a plan only when the risk level reaches
+    the plan gate, and advances that plan
+    through approval, execution, feedback, and memory persistence.
     """
     resolved_settings = settings or get_settings()
     filters = RiskEvaluationFilters(
@@ -178,21 +168,23 @@ async def run_monitoring_goal_cycle(
             reason=incident_result.reason,
         )
 
-    if not goal.auto_plan_enabled:
+    if not should_auto_plan(risk_bundle.assessment.risk_level):
         await _mark_goal_cycle(
             session,
             goal,
-            status="succeeded_auto_plan_disabled",
+            status="succeeded_incident_only",
             plan_id=None,
             processed_reading_id=risk_bundle.reading.id,
         )
         return MonitoringCycleResult(
             goal_id=goal.id,
             mode=mode,
-            status="succeeded_auto_plan_disabled",
+            status="succeeded_incident_only",
             risk_bundle=risk_bundle,
             incident=incident,
-            reason="Goal auto_plan_enabled is false.",
+            reason=(
+                f"Risk level '{risk_bundle.assessment.risk_level.value}' is below the plan gate."
+            ),
         )
 
     existing_plan = await ActionPlanRepository(session).get_open_for_incident(incident.id)
@@ -265,33 +257,12 @@ async def run_monitoring_goal_cycle(
             "reason": lifecycle_result.reason,
         },
     )
-    replan_result = await _maybe_auto_replan_after_feedback(
-        session,
-        goal=goal,
-        filters=filters,
-        base_risk_bundle=risk_bundle,
-        base_plan_bundle=plan_bundle,
-        base_lifecycle_result=lifecycle_result,
-        redis_manager=redis_manager,
-        settings=resolved_settings,
-    )
-    replan_attempts = replan_result.attempts
-    replan_history = replan_result.history
-    risk_bundle = replan_result.risk_bundle
-    plan_bundle = replan_result.plan_bundle
-    lifecycle_result = replan_result.lifecycle_result
     orchestration_path: Literal["lifecycle_graph"] = "lifecycle_graph"
 
-    if lifecycle_result.status == "executed" and replan_attempts > 0:
-        status = "succeeded_plan_replanned_executed"
-    elif lifecycle_result.status == "executed":
+    if lifecycle_result.status == "executed":
         status = "succeeded_plan_executed"
-    elif lifecycle_result.status == "awaiting_human_approval" and replan_attempts > 0:
-        status = "succeeded_replan_pending_human"
     elif lifecycle_result.status == "awaiting_human_approval":
         status = "succeeded_pending_human"
-    elif replan_attempts > 0:
-        status = "succeeded_plan_replanned"
     else:
         status = "succeeded_plan_created"
     logger.info(
@@ -301,7 +272,6 @@ async def run_monitoring_goal_cycle(
             "goal_name": goal.name,
             "status": status,
             "plan_id": str(lifecycle_result.plan.id),
-            "replan_attempts": replan_attempts,
         },
     )
     await _mark_goal_cycle(
@@ -321,8 +291,8 @@ async def run_monitoring_goal_cycle(
         lifecycle_result=lifecycle_result,
         orchestration_path=orchestration_path,
         transition_log=lifecycle_result.transition_log,
-        replan_attempts=replan_attempts,
-        replan_history=replan_history,
+        replan_attempts=0,
+        replan_history=[],
         reason=lifecycle_result.reason,
     )
 
@@ -497,120 +467,6 @@ async def _mark_goal_cycle(
     goal.last_run_plan_id = plan_id
     goal.last_processed_reading_id = processed_reading_id
     await session.commit()
-
-
-async def _maybe_auto_replan_after_feedback(
-    session: AsyncSession,
-    *,
-    goal: MonitoringGoal,
-    filters: RiskEvaluationFilters,
-    base_risk_bundle: RiskEvaluationBundle,
-    base_plan_bundle: AgentPlanBundle,
-    base_lifecycle_result: LifecycleAdvanceResult,
-    redis_manager: RedisManager | None,
-    settings: Settings,
-) -> FeedbackReplanLoopResult:
-    """Auto-replan when execution feedback indicates a failed outcome."""
-    max_attempts = max(0, int(getattr(settings, "active_monitoring_feedback_replan_max_attempts", 0)))
-    current_risk_bundle = base_risk_bundle
-    current_plan_bundle = base_plan_bundle
-    current_lifecycle_result = base_lifecycle_result
-    history: list[dict[str, Any]] = []
-    attempts = 0
-
-    while attempts < max_attempts:
-        feedback = _extract_feedback(current_lifecycle_result)
-        if feedback is None:
-            break
-        outcome = str(feedback.outcome_class or "").strip().lower()
-        if outcome not in AUTO_REPLAN_FEEDBACK_OUTCOMES:
-            break
-
-        incident_id = current_plan_bundle.plan.incident_id
-        if incident_id is None:
-            history.append(
-                {
-                    "attempt": attempts + 1,
-                    "status": "skipped",
-                    "reason": "auto-replan requires incident_id on previous plan.",
-                    "feedback_outcome": outcome,
-                }
-            )
-            break
-
-        attempts += 1
-        latest_reading = await resolve_target_reading(session, filters)
-        if latest_reading.id != current_risk_bundle.reading.id:
-            current_risk_bundle = await evaluate_current_risk(
-                session,
-                filters=filters,
-                redis_manager=redis_manager,
-                target_reading=latest_reading,
-                trigger_source="monitoring.worker.auto_replan.observe_risk",
-                trigger_payload={
-                    "goal_id": str(goal.id),
-                    "goal_name": goal.name,
-                    "attempt": attempts,
-                    "previous_plan_id": str(current_plan_bundle.plan.id),
-                    "previous_feedback_outcome": outcome,
-                },
-            )
-
-        next_plan_bundle = await generate_agent_plan(
-            session,
-            payload=AgentPlanRequest(
-                station_id=goal.station_id,
-                region_id=goal.region_id,
-                incident_id=incident_id,
-                objective=goal.objective,
-                provider=goal.provider,
-            ),
-            redis_manager=redis_manager,
-            risk_bundle=current_risk_bundle,
-            trigger_source="monitoring.worker.auto_replan",
-            trigger_payload={
-                "goal_id": str(goal.id),
-                "goal_name": goal.name,
-                "attempt": attempts,
-                "previous_plan_id": str(current_plan_bundle.plan.id),
-                "previous_feedback_outcome": outcome,
-                "previous_feedback_summary": feedback.summary,
-            },
-        )
-        next_lifecycle_result = await advance_plan_with_lifecycle_graph(
-            session,
-            plan=next_plan_bundle.plan,
-            settings=settings,
-        )
-
-        history.append(
-            {
-                "attempt": attempts,
-                "status": "replanned",
-                "from_plan_id": str(current_plan_bundle.plan.id),
-                "to_plan_id": str(next_plan_bundle.plan.id),
-                "feedback_outcome": outcome,
-                "lifecycle_status": next_lifecycle_result.status,
-                "reason": next_lifecycle_result.reason,
-            }
-        )
-        current_plan_bundle = next_plan_bundle
-        current_lifecycle_result = next_lifecycle_result
-
-    return FeedbackReplanLoopResult(
-        attempts=attempts,
-        risk_bundle=current_risk_bundle,
-        plan_bundle=current_plan_bundle,
-        lifecycle_result=current_lifecycle_result,
-        history=history,
-    )
-
-
-def _extract_feedback(lifecycle_result: LifecycleAdvanceResult):
-    """Extract feedback payload from a lifecycle result when execution happened."""
-    if lifecycle_result.execution_bundle is None:
-        return None
-    return lifecycle_result.execution_bundle.feedback
 
 
 async def _maybe_auto_reject_stale_pending_plan(

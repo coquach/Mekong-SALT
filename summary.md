@@ -35,7 +35,7 @@ Backend đọc cấu hình từ `backend/.env`.
 2. Chỉnh các giá trị API key, DB URL, MQTT, Redis, Gemini, Zalo nếu cần.
 3. Nếu chạy frontend riêng ngoài Docker, bảo đảm `VITE_API_BASE_URL` trỏ tới backend đang chạy, mặc định là `http://localhost:8000/api/v1`.
 
-Docker Compose sẽ dùng `backend/.env` làm nền và override các biến hạ tầng cho container runtime như `DATABASE_URL`, `REDIS_URL`, `MQTT_*`, và các cờ demo cần thiết.
+Docker Compose sẽ dùng `backend/.env` làm nền cho cấu hình host-side, rồi override các biến hạ tầng cần thiết cho container runtime như `DATABASE_URL`, `REDIS_URL`, `MQTT_*`, và các cờ demo. Với bộ `.env` hiện tại, host scripts và backend container đều chạm vào cùng một database local nên không cần set `DATABASE_URL` thủ công khi seed hoặc simulate.
 
 ## Chạy Full Stack Bằng Docker
 
@@ -61,6 +61,8 @@ docker compose down -v
 ```
 
 ## Chạy Local Backend
+
+Đây là chế độ test backend trực tiếp trên host bằng `uvicorn`. Nếu muốn chạy full stack với Postgres, Redis, MQTT và frontend cùng lúc thì dùng Docker Compose ở phần trên.
 
 Từ thư mục `backend/`:
 
