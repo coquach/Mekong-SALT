@@ -17,6 +17,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { getLatestReadings, type SensorReading } from "../lib/api/dashboard";
 import {
   getIncidents,
@@ -43,6 +44,20 @@ type InteractiveMapState = {
   selectedRisk: Awaited<ReturnType<typeof getLatestRisk>> | null;
   lastRefreshAt: string | null;
 };
+
+type InteractiveMapCache = {
+  state: Pick<InteractiveMapState, "stations" | "gates" | "latestReadings" | "incidents" | "selectedStationId" | "selectedRisk" | "lastRefreshAt">;
+  layers: {
+    heatmap: boolean;
+    stations: boolean;
+    gates: boolean;
+    prediction: boolean;
+  };
+  riskFilter: RiskFilter;
+};
+
+const INTERACTIVE_MAP_CACHE_KEY = "mekong.cache.interactive-map";
+const INTERACTIVE_MAP_CACHE_MAX_AGE_MS = 30_000;
 
 function parseApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -97,33 +112,89 @@ function deriveRiskLevel(salinityGl: number | null | undefined): "critical" | "w
 }
 
 export function InteractiveMap() {
-  const [layers, setLayers] = useState({
+  const cachedInteractiveMap = useMemo(() => readPageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY), []);
+  const [layers, setLayers] = useState(() => cachedInteractiveMap?.value.layers ?? {
     heatmap: true,
     stations: true,
     gates: true,
     prediction: true,
   });
-  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
-  const [state, setState] = useState<InteractiveMapState>({
-    loading: true,
-    error: null,
-    stations: [],
-    gates: [],
-    latestReadings: [],
-    incidents: [],
-    selectedStationId: null,
-    selectedRisk: null,
-    lastRefreshAt: null,
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>(
+    () => cachedInteractiveMap?.value.riskFilter ?? "all",
+  );
+  const [state, setState] = useState<InteractiveMapState>(() => {
+    const cachedState = cachedInteractiveMap?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        error: null,
+        stations: [],
+        gates: [],
+        latestReadings: [],
+        incidents: [],
+        selectedStationId: null,
+        selectedRisk: null,
+        lastRefreshAt: null,
+      };
+    }
+
+    return {
+      loading: false,
+      error: null,
+      stations: cachedState.stations,
+      gates: cachedState.gates,
+      latestReadings: cachedState.latestReadings,
+      incidents: cachedState.incidents,
+      selectedStationId: cachedState.selectedStationId,
+      selectedRisk: cachedState.selectedRisk,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
   });
   const navigate = useNavigate();
   const riskRequestIdRef = useRef(0);
   const riskAbortControllerRef = useRef<AbortController | null>(null);
   const selectedStationIdRef = useRef<string | null>(null);
+  const selectedRiskRef = useRef<InteractiveMapState["selectedRisk"]>(null);
   const isBootstrapping = state.loading && state.stations.length === 0 && state.gates.length === 0;
 
   useEffect(() => {
     selectedStationIdRef.current = state.selectedStationId;
   }, [state.selectedStationId]);
+
+  useEffect(() => {
+    selectedRiskRef.current = state.selectedRisk;
+  }, [state.selectedRisk]);
+
+  useEffect(() => {
+    if (state.loading) {
+      return;
+    }
+
+    writePageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY, {
+      state: {
+        stations: state.stations,
+        gates: state.gates,
+        latestReadings: state.latestReadings,
+        incidents: state.incidents,
+        selectedStationId: state.selectedStationId,
+        selectedRisk: state.selectedRisk,
+        lastRefreshAt: state.lastRefreshAt,
+      },
+      layers,
+      riskFilter,
+    });
+  }, [
+    layers,
+    riskFilter,
+    state.gates,
+    state.incidents,
+    state.lastRefreshAt,
+    state.latestReadings,
+    state.loading,
+    state.selectedRisk,
+    state.selectedStationId,
+    state.stations,
+  ]);
 
   const readingsByStationId = useMemo(() => {
     const map = new Map<string, SensorReading>();
@@ -211,6 +282,8 @@ export function InteractiveMap() {
         stations.items[0] ??
         null;
       const selectedStationId = selectedStation?.id ?? null;
+      const selectedRisk =
+        selectedRiskRef.current?.assessment.station_id === selectedStationId ? selectedRiskRef.current : null;
 
       setState((previous) => ({
         ...previous,
@@ -221,8 +294,7 @@ export function InteractiveMap() {
         latestReadings: latestReadings.items,
         incidents: incidents.items,
         selectedStationId,
-        selectedRisk:
-          previous.selectedRisk?.assessment.station_id === selectedStationId ? previous.selectedRisk : null,
+        selectedRisk,
         lastRefreshAt: new Date().toISOString(),
       }));
 
@@ -241,12 +313,23 @@ export function InteractiveMap() {
 
   useEffect(() => {
     const abortController = new AbortController();
+    const shouldSkipInitialRefresh =
+      cachedInteractiveMap !== null &&
+      isPageCacheFresh(cachedInteractiveMap, INTERACTIVE_MAP_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => {
+        abortController.abort();
+        riskAbortControllerRef.current?.abort();
+      };
+    }
+
     void refreshData({ signal: abortController.signal, showLoading: true });
     return () => {
       abortController.abort();
       riskAbortControllerRef.current?.abort();
     };
-  }, [refreshData]);
+  }, [cachedInteractiveMap, refreshData]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {

@@ -49,6 +49,14 @@ export const APP_ROUTES: AppRouteMeta[] = [
     realtimeMode: "polling",
   },
   {
+    path: "/notifications",
+    navLabel: "Thông báo",
+    title: "Thông báo vận hành",
+    subtitle: "Danh sách thông báo, trạng thái gửi và các mục cần xử lý",
+    keyQuestion: "Có thông báo nào đang chờ đọc hoặc cần xử lý không?",
+    realtimeMode: "polling",
+  },
+  {
     path: "/history",
     navLabel: "Lịch sử dữ liệu",
     title: "Điều tra lịch sử dữ liệu",

@@ -139,6 +139,45 @@ SCENARIOS = {
             "Top citations/source mix can be explained to stakeholders.",
         ],
     },
+    "warning-observe-recover": {
+        "title": "Warning Observe -> Recovery Window",
+        "objective": "Publish a warning-level stream that stabilizes into a recovery window so the backend can demonstrate conservative posture.",
+        "preconditions": [
+            "Backend API is running.",
+            "Seed/setup data is available.",
+        ],
+        "before_commands": [
+            {
+                "step": "Chuẩn bị state sạch trước khi chạy recovery demo.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_setup.py --skip-migrations",
+                "expect": "Seed, RAG corpus, và active monitoring worker đều sẵn sàng.",
+            },
+        ],
+        "steps": [
+            {
+                "step": "Publish warning-to-recovery sensor stream via MQTT device path.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883",
+                "expect": "Backend ingests the warning stream and transitions into a cautious recovery posture.",
+            },
+            {
+                "step": "Optional fallback: publish the same stream through HTTP for local debug.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport http",
+                "expect": "HTTP path should mirror the same sensor frames when broker is unavailable.",
+            },
+        ],
+        "after_commands": [
+            {
+                "step": "Kiểm tra risk và plan sau chuỗi warning-recovery.",
+                "command": "curl http://localhost:8000/api/v1/risk/latest && curl http://localhost:8000/api/v1/plans?limit=10",
+                "expect": "Risk latest phản ánh posture cảnh giác/recovery; plan list thể hiện nhánh quan sát nếu worker tạo plan.",
+            },
+        ],
+        "highlights": [
+            "This scenario shows a conservative operational posture rather than only critical escalation.",
+            "The demo now includes both escalation and recovery patterns.",
+            "MQTT remains the primary path; HTTP is a fallback for parity checks.",
+        ],
+    },
 }
 
 

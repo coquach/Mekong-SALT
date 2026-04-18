@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -15,12 +15,13 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { SatelliteMap, type MapGate, type MapStation } from "../components/dashboard/SatelliteMap";
+import type { MapGate, MapStation } from "../components/dashboard/SatelliteMap";
 import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { getApiBaseUrl } from "../lib/api/http";
 import {
   getActionLogs,
@@ -101,7 +102,83 @@ type DashboardStreamDomainEventPayload = {
   cursor?: number;
 };
 
+type DashboardPersistedState = Pick<
+  DashboardState,
+  | "summary"
+  | "risk"
+  | "latestReading"
+  | "latestReadings"
+  | "stations"
+  | "gates"
+  | "plans"
+  | "recentActions"
+  | "agentRuns"
+  | "liveEvents"
+  | "timelineCount"
+  | "streamStatus"
+  | "lastStreamAt"
+> & {
+  weatherSnapshot: OpenMeteoWeatherSnapshot | null;
+};
+
+type DashboardCache = {
+  state: DashboardPersistedState;
+  activityFilter: LiveActivityFilter;
+  selectedStationId: string | null;
+};
+
 const DASHBOARD_STREAM_CURSOR_KEY = "mekong.dashboard.stream.cursor";
+const DASHBOARD_ACTIVITY_FILTER_KEY = "mekong.dashboard.activity-filter";
+const DASHBOARD_CACHE_KEY = "mekong.cache.dashboard";
+const DASHBOARD_CACHE_MAX_AGE_MS = 30_000;
+
+const LazySatelliteMap = lazy(() =>
+  import("../components/dashboard/SatelliteMap").then((module) => ({
+    default: module.SatelliteMap,
+  })),
+);
+
+function createDashboardInitialState(): DashboardState {
+  return {
+    loading: true,
+    error: null,
+    summary: null,
+    risk: null,
+    latestReading: null,
+    latestReadings: [],
+    stations: [],
+    gates: [],
+    plans: [],
+    recentActions: [],
+    agentRuns: [],
+    liveEvents: [],
+    timelineCount: 0,
+    streamStatus: "connecting",
+    lastStreamAt: null,
+  };
+}
+
+function createDashboardPersistedState(
+  state: DashboardState,
+  weatherSnapshot: OpenMeteoWeatherSnapshot | null,
+): DashboardPersistedState {
+  return {
+    summary: state.summary,
+    risk: state.risk,
+    latestReading: state.latestReading,
+    latestReadings: state.latestReadings,
+    stations: state.stations,
+    gates: state.gates,
+    plans: state.plans,
+    recentActions: state.recentActions,
+    agentRuns: state.agentRuns,
+    liveEvents: state.liveEvents,
+    timelineCount: state.timelineCount,
+    streamStatus: state.streamStatus,
+    lastStreamAt: state.lastStreamAt,
+    weatherSnapshot,
+  };
+}
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) {
@@ -484,29 +561,78 @@ function getStreamStatusClass(status: StreamStatus): string {
   return "bg-red-100/10 text-red-300 border-red-200/20";
 }
 
+function DashboardMapFallback() {
+  return (
+    <div className="flex h-full min-h-[24rem] items-center justify-center bg-slate-950/90">
+      <div className="max-w-sm rounded-3xl border border-white/10 bg-white/10 px-6 py-5 text-center text-white/80 backdrop-blur-md">
+        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-mekong-cyan">
+          Đang nạp bản đồ
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-300">
+          Màn bản đồ đang được tải riêng để phần tổng quan và dữ liệu realtime hiển thị sớm hơn.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
-  const [activityFilter, setActivityFilter] = useState<LiveActivityFilter>("all");
+  const cachedDashboard = useMemo(() => readPageCache<DashboardCache>(DASHBOARD_CACHE_KEY), []);
+  const [activityFilter, setActivityFilter] = useState<LiveActivityFilter>(() => {
+    if (cachedDashboard?.value.activityFilter) {
+      return cachedDashboard.value.activityFilter;
+    }
+    if (typeof window === "undefined") {
+      return "all";
+    }
+
+    const persistedFilter = window.localStorage.getItem(DASHBOARD_ACTIVITY_FILTER_KEY);
+    if (
+      persistedFilter === "all" ||
+      persistedFilter === "reading" ||
+      persistedFilter === "risk" ||
+      persistedFilter === "action" ||
+      persistedFilter === "agent" ||
+      persistedFilter === "stream"
+    ) {
+      return persistedFilter;
+    }
+
+    return "all";
+  });
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(
+    () => cachedDashboard?.value.selectedStationId ?? null,
+  );
   const [plcBusy, setPlcBusy] = useState(false);
   const [plcStatusMessage, setPlcStatusMessage] = useState<string | null>(null);
-  const [weatherSnapshot, setWeatherSnapshot] = useState<OpenMeteoWeatherSnapshot | null>(null);
-  const [state, setState] = useState<DashboardState>({
-    loading: true,
-    error: null,
-    summary: null,
-    risk: null,
-    latestReading: null,
-    latestReadings: [],
-    stations: [],
-    gates: [],
-    plans: [],
-    recentActions: [],
-    agentRuns: [],
-    liveEvents: [],
-    timelineCount: 0,
-    streamStatus: "connecting",
-    lastStreamAt: null,
+  const [weatherSnapshot, setWeatherSnapshot] = useState<OpenMeteoWeatherSnapshot | null>(
+    () => cachedDashboard?.value.state.weatherSnapshot ?? null,
+  );
+  const [state, setState] = useState<DashboardState>(() => {
+    const cachedState = cachedDashboard?.value.state;
+    if (!cachedState) {
+      return createDashboardInitialState();
+    }
+
+    return {
+      loading: false,
+      error: null,
+      summary: cachedState.summary,
+      risk: cachedState.risk,
+      latestReading: cachedState.latestReading,
+      latestReadings: cachedState.latestReadings,
+      stations: cachedState.stations,
+      gates: cachedState.gates,
+      plans: cachedState.plans,
+      recentActions: cachedState.recentActions,
+      agentRuns: cachedState.agentRuns,
+      liveEvents: cachedState.liveEvents,
+      timelineCount: cachedState.timelineCount,
+      streamStatus: cachedState.streamStatus,
+      lastStreamAt: cachedState.lastStreamAt,
+    };
   });
   const weatherStationCode = state.latestReading?.station.code ?? state.summary?.latest_station_code ?? null;
   const weatherStation = useMemo(
@@ -552,7 +678,31 @@ export function Dashboard() {
   }, [reloadVersion, weatherStation]);
 
   useEffect(() => {
+    window.localStorage.setItem(DASHBOARD_ACTIVITY_FILTER_KEY, activityFilter);
+  }, [activityFilter]);
+
+  useEffect(() => {
+    if (state.loading) {
+      return;
+    }
+
+    writePageCache<DashboardCache>(DASHBOARD_CACHE_KEY, {
+      state: createDashboardPersistedState(state, weatherSnapshot),
+      activityFilter,
+      selectedStationId,
+    });
+  }, [activityFilter, selectedStationId, state, weatherSnapshot]);
+
+  useEffect(() => {
     const abortController = new AbortController();
+    const shouldSkipInitialRefresh =
+      reloadVersion === 0 &&
+      cachedDashboard !== null &&
+      isPageCacheFresh(cachedDashboard, DASHBOARD_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => abortController.abort();
+    }
 
     const loadDashboard = async () => {
       setState((previous) => ({ ...previous, loading: true, error: null }));
@@ -579,7 +729,7 @@ export function Dashboard() {
 
     void loadDashboard();
     return () => abortController.abort();
-  }, [reloadVersion]);
+  }, [cachedDashboard, reloadVersion]);
 
   useEffect(() => {
     let stream: EventSource | null = null;
@@ -777,6 +927,28 @@ export function Dashboard() {
 
     return mappedStations.filter((station): station is MapStation => station !== null);
   }, [state.latestReadings, state.stations, state.risk]);
+
+  const selectedMapStationId = useMemo(() => {
+    if (selectedStationId && mapStations.some((station) => station.id === selectedStationId)) {
+      return selectedStationId;
+    }
+    return state.latestReading?.station_id ?? null;
+  }, [mapStations, selectedStationId, state.latestReading?.station_id]);
+
+  const selectedMapStation = useMemo(
+    () => mapStations.find((station) => station.id === selectedMapStationId) ?? null,
+    [mapStations, selectedMapStationId],
+  );
+
+  const selectedStationReading = useMemo(() => {
+    if (!selectedMapStationId) {
+      return null;
+    }
+    return (
+      state.latestReadings.find((reading) => reading.station_id === selectedMapStationId) ??
+      (state.latestReading?.station_id === selectedMapStationId ? state.latestReading : null)
+    );
+  }, [selectedMapStationId, state.latestReadings, state.latestReading]);
 
   const mapGates = useMemo<MapGate[]>(() => {
     return state.gates.flatMap((gate) => {
@@ -1123,15 +1295,16 @@ export function Dashboard() {
                 Mốc dòng thời gian: {state.timelineCount}
               </p>
             </div>
-            <div className="w-full h-full">
-              <SatelliteMap
+            <Suspense fallback={<DashboardMapFallback />}>
+              <LazySatelliteMap
                 zoom={12}
                 showControls={false}
                 stations={mapStations}
                 gates={mapGates}
-                selectedStationId={state.latestReading?.station_id ?? null}
+                selectedStationId={selectedMapStationId}
+                onSelectStation={setSelectedStationId}
               />
-            </div>
+            </Suspense>
             <button
               className="absolute bottom-8 left-8 z-10 bg-mekong-navy text-white px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2 shadow-2xl hover:bg-mekong-teal transition-all"
               onClick={() => navigate("/map")}
@@ -1183,6 +1356,72 @@ export function Dashboard() {
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Mô phỏng</p>
                   <p className="mt-2 text-lg font-black text-mekong-mint">{state.summary?.simulated_executions_today ?? 0}</p>
                 </div>
+              </div>
+            </Card>
+
+            <Card variant="white" className="p-6 border-none shadow-soft rounded-4xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.18em]">
+                    Trạm đang xem
+                  </p>
+                  <h3 className="mt-1 text-sm font-black text-mekong-navy uppercase tracking-[0.15em]">
+                    Bấm marker để đổi ngữ cảnh
+                  </h3>
+                </div>
+                <Badge className="bg-slate-100 text-slate-500 border-none text-[9px] py-0.5 px-2 font-bold uppercase">
+                  {selectedMapStation ? selectedMapStation.status ?? "unknown" : "n/a"}
+                </Badge>
+              </div>
+
+              <div className="mt-4 space-y-3 rounded-3xl border border-slate-100 bg-slate-50/70 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="bg-mekong-navy text-white border-none text-[9px] py-0.5 px-2 font-bold uppercase">
+                    {selectedMapStation?.code ?? stationCode}
+                  </Badge>
+                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.15em]">
+                    {selectedMapStation?.name ?? "Trạm gần nhất"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl bg-white px-3 py-2 border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Độ mặn</p>
+                    <p className="mt-1 text-base font-black text-mekong-navy">
+                      {selectedStationReading?.salinity_gl !== undefined && selectedStationReading?.salinity_gl !== null
+                        ? `${formatNumber(toNumber(selectedStationReading.salinity_gl), 2)} g/L`
+                        : "--"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-2 border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Mực nước</p>
+                    <p className="mt-1 text-base font-black text-mekong-navy">
+                      {selectedStationReading?.water_level_m !== undefined && selectedStationReading?.water_level_m !== null
+                        ? `${formatNumber(toNumber(selectedStationReading.water_level_m), 2)} m`
+                        : "--"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-2 border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Loại trạm</p>
+                    <p className="mt-1 text-[11px] font-black text-mekong-navy uppercase tracking-[0.12em]">
+                      {selectedMapStation?.stationType ?? "--"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-2 border border-slate-100">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Cập nhật</p>
+                    <p className="mt-1 text-[11px] font-black text-mekong-navy uppercase tracking-[0.12em]">
+                      {formatTime(selectedStationReading?.recorded_at ?? state.latestReading?.recorded_at ?? null)}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedStationId(null)}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-mekong-navy transition-all hover:border-mekong-teal/30 hover:text-mekong-teal"
+                >
+                  Quay về trạm gần nhất
+                </button>
               </div>
             </Card>
 

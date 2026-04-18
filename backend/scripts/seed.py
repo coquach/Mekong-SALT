@@ -32,6 +32,7 @@ from app.models import (
 )
 from app.models.enums import (
     ApprovalDecision,
+    AlertStatus,
     AuditEventType,
     ActionPlanStatus,
     ActionType,
@@ -81,7 +82,7 @@ async def _reset_demo_region_data(
     await session.execute(delete(ObservationSnapshot).where(ObservationSnapshot.region_id == region_id))
     await session.execute(
         delete(KnowledgeDocument).where(
-            KnowledgeDocument.source_uri == "mekong-salt://knowledge/guideline-001"
+            KnowledgeDocument.source_uri.like("mekong-salt://knowledge/%")
         )
     )
     await session.execute(delete(Region).where(Region.id == region_id))
@@ -311,8 +312,8 @@ async def run_seed() -> None:
             name="Trạm lấy nước Gò Công Đông",
             station_type="salinity-water-level",
             status=StationStatus.ACTIVE,
-            latitude=Decimal("10.365421"),
-            longitude=Decimal("106.742189"),
+            latitude=Decimal("10.323421"),
+            longitude=Decimal("106.452189"),
             location_description=(
                 "Cửa lấy nước chính ở rìa phía đông của hành lang thủy lợi Gò Công. "
                 "Đây là điểm tham chiếu ven biển để đo salinity trước khi nước đi vào mạng kênh."
@@ -352,8 +353,8 @@ async def run_seed() -> None:
             name="Trạm quan trắc nội đồng Gò Công",
             station_type="salinity-water-level",
             status=StationStatus.ACTIVE,
-            latitude=Decimal("10.352114"),
-            longitude=Decimal("106.715403"),
+            latitude=Decimal("10.312114"),
+            longitude=Decimal("106.435403"),
             location_description=(
                 "Điểm so sánh nội đồng nằm trong mạng tưới tiêu. "
                 "Trạm này dùng để đo độ mặn lan truyền sau cống lấy nước và kiểm tra hiệu ứng của quyết định vận hành."
@@ -394,8 +395,8 @@ async def run_seed() -> None:
             name="Cống Hòa Định",
             gate_type="sluice",
             status=GateStatus.CLOSED,
-            latitude=Decimal("10.364850"),
-            longitude=Decimal("106.739120"),
+            latitude=Decimal("10.324850"),
+            longitude=Decimal("106.449120"),
             location_description=(
                 "Cống chính gần trạm lấy nước Gò Công Đông. Đây là điểm điều khiển đầu vào cho luồng response."
             ),
@@ -423,8 +424,8 @@ async def run_seed() -> None:
             name="Cống Xuân Hòa",
             gate_type="sluice",
             status=GateStatus.CLOSED,
-            latitude=Decimal("10.347680"),
-            longitude=Decimal("106.720880"),
+            latitude=Decimal("10.307680"),
+            longitude=Decimal("106.440880"),
             location_description="Cống phụ nằm trên tuyến nội đồng, hỗ trợ kiểm soát gradient salinity.",
             station_id=station_b.id,
             gate_metadata=_build_gate_metadata(
@@ -450,8 +451,8 @@ async def run_seed() -> None:
             name="Cống Thới Tân",
             gate_type="sluice",
             status=GateStatus.OPEN,
-            latitude=Decimal("10.378420"),
-            longitude=Decimal("106.327890"),
+            latitude=Decimal("10.338420"),
+            longitude=Decimal("106.427890"),
             location_description="Cống vận hành ở phía tây bắc để làm mốc cố định trên bản đồ demo.",
             station_id=station_a.id,
             gate_metadata=_build_gate_metadata(
@@ -477,8 +478,8 @@ async def run_seed() -> None:
             name="Cống Phú Đông",
             gate_type="sluice",
             status=GateStatus.CLOSED,
-            latitude=Decimal("10.256120"),
-            longitude=Decimal("106.607840"),
+            latitude=Decimal("10.296120"),
+            longitude=Decimal("106.437840"),
             location_description="Cống biên phía nam dùng để khóa ranh giới của hành lang demo.",
             station_id=station_b.id,
             gate_metadata=_build_gate_metadata(
@@ -530,6 +531,224 @@ async def run_seed() -> None:
             },
         )
         session.add_all([reading_a, reading_b])
+        await session.flush()
+
+        reading_b_history_1 = SensorReading(
+            station_id=station_b.id,
+            recorded_at=now - timedelta(minutes=75),
+            salinity_dsm=Decimal("1.95"),
+            water_level_m=Decimal("1.28"),
+            temperature_c=Decimal("28.70"),
+            battery_level_pct=Decimal("92.10"),
+            source="simulator",
+            context_payload={
+                "source": "historical-sensor",
+                "quality": "good",
+                "station_code": "GOCONG-02",
+                "station_label": "Trạm quan trắc nội đồng Gò Công",
+                "operational_role": "secondary_monitoring",
+                "phase": "advisory_window",
+            },
+        )
+        reading_b_history_2 = SensorReading(
+            station_id=station_b.id,
+            recorded_at=now - timedelta(minutes=65),
+            salinity_dsm=Decimal("2.42"),
+            water_level_m=Decimal("1.24"),
+            temperature_c=Decimal("28.90"),
+            battery_level_pct=Decimal("91.80"),
+            source="simulator",
+            context_payload={
+                "source": "historical-sensor",
+                "quality": "good",
+                "station_code": "GOCONG-02",
+                "station_label": "Trạm quan trắc nội đồng Gò Công",
+                "operational_role": "secondary_monitoring",
+                "phase": "warning_rise",
+            },
+        )
+        session.add_all([reading_b_history_1, reading_b_history_2])
+        await session.flush()
+
+        recovery_weather = WeatherSnapshot(
+            region_id=region.id,
+            observed_at=now - timedelta(minutes=68),
+            wind_speed_mps=Decimal("5.10"),
+            wind_direction_deg=135,
+            tide_level_m=Decimal("1.58"),
+            rainfall_mm=Decimal("0.00"),
+            condition_summary="Triều đang lên nhưng chưa đạt đỉnh; gió biển vẫn đẩy mặn vào nội đồng.",
+            source_payload={"provider": "simulated-weather-feed", "phase": "warning_observation"},
+        )
+        session.add(recovery_weather)
+        await session.flush()
+
+        recovery_risk = RiskAssessment(
+            region_id=region.id,
+            station_id=station_b.id,
+            based_on_reading_id=reading_b_history_2.id,
+            based_on_weather_id=recovery_weather.id,
+            assessed_at=now - timedelta(minutes=60),
+            risk_level=RiskLevel.WARNING,
+            salinity_dsm=Decimal("2.42"),
+            trend_direction=TrendDirection.RISING,
+            trend_delta_dsm=Decimal("0.47"),
+            rule_version="v1",
+            summary="Độ mặn tăng trong cửa sổ cảnh giác nhưng chưa vượt ngưỡng nguy cấp.",
+            rationale={
+                "salinity_threshold_dsm": 2.5,
+                "wind_factor": "onshore_moderate",
+                "tide_factor": "rising_but_not_peak",
+                "sensor_confidence": "medium",
+            },
+        )
+        session.add(recovery_risk)
+        await session.flush()
+
+        recovery_alert = AlertEvent(
+            region_id=region.id,
+            risk_assessment_id=recovery_risk.id,
+            triggered_at=now - timedelta(minutes=59),
+            severity=RiskLevel.WARNING,
+            title="Cảnh báo quan trắc mức cảnh giác",
+            message="Độ mặn tăng nhưng chưa tới ngưỡng nguy cấp; ưu tiên quan sát và tái đánh giá.",
+            status=AlertStatus.ACKNOWLEDGED,
+            acknowledged_by="seed",
+            acknowledged_at=now - timedelta(minutes=58),
+        )
+        session.add(recovery_alert)
+        await session.flush()
+
+        recovery_incident = Incident(
+            region_id=region.id,
+            station_id=station_b.id,
+            risk_assessment_id=recovery_risk.id,
+            title="Tăng độ mặn mức cảnh giác tại trạm nội đồng Gò Công",
+            description="Cần quan sát thêm trước khi quyết định đóng/mở mô phỏng.",
+            severity=RiskLevel.WARNING,
+            status=IncidentStatus.INVESTIGATING,
+            source="seed",
+            evidence={"risk_assessment_id": str(recovery_risk.id), "alert_id": str(recovery_alert.id)},
+            opened_at=now - timedelta(minutes=59),
+            acknowledged_at=now - timedelta(minutes=58),
+            created_by="seed",
+        )
+        session.add(recovery_incident)
+        await session.flush()
+
+        recovery_plan = ActionPlan(
+            region_id=region.id,
+            risk_assessment_id=recovery_risk.id,
+            incident_id=recovery_incident.id,
+            status=ActionPlanStatus.REJECTED,
+            objective="Giữ quan sát và chờ cửa sổ an toàn trước khi thao tác mô phỏng.",
+            generated_by="phase-2-seed",
+            model_provider="mock",
+            summary="Đề xuất theo dõi và chờ safe window thay vì đóng mở sớm khi dữ liệu chưa ổn định.",
+            assumptions={
+                "items": [
+                    "Tín hiệu triều và gió vẫn còn gây áp lực mặn.",
+                    "Operator ưu tiên quan sát thay vì thi hành action ngay.",
+                ]
+            },
+            plan_steps=[
+                {
+                    "step_index": 1,
+                    "action_type": ActionType.NOTIFY_FARMERS.value,
+                    "priority": 1,
+                    "title": "Gửi cảnh báo mức cảnh giác",
+                    "instructions": "Thông báo cho operator và khu vực liên quan rằng hệ thống đang ở trạng thái quan sát.",
+                    "rationale": "Giữ mọi bên trong cùng một nhịp đánh giá trước khi thực thi.",
+                    "simulated": True,
+                },
+                {
+                    "step_index": 2,
+                    "action_type": ActionType.WAIT_SAFE_WINDOW.value,
+                    "priority": 2,
+                    "title": "Chờ safe window",
+                    "instructions": "Không đóng/mở cống cho đến khi có ít nhất một nhịp ổn định.",
+                    "rationale": "Dữ liệu hiện tại chưa đủ chắc để đảo trạng thái vận hành.",
+                    "simulated": True,
+                },
+            ],
+            validation_result={"is_valid": True, "policy": "warning_hold_then_reassess"},
+        )
+        session.add(recovery_plan)
+        await session.flush()
+
+        recovery_approval = Approval(
+            plan_id=recovery_plan.id,
+            decided_by_name="supervisor",
+            decision=ApprovalDecision.REJECTED,
+            comment="Chưa đủ bằng chứng ổn định để chuyển sang đóng/mở mô phỏng.",
+            decided_at=now - timedelta(minutes=57),
+        )
+        session.add(recovery_approval)
+        await session.flush()
+
+        recovery_decision_log = DecisionLog(
+            region_id=region.id,
+            risk_assessment_id=recovery_risk.id,
+            action_plan_id=recovery_plan.id,
+            logged_at=now - timedelta(minutes=56),
+            actor_type=DecisionActorType.OPERATOR,
+            actor_name="operator-demo",
+            summary="Operator giữ trạng thái quan sát thay vì thi hành plan sớm.",
+            outcome="rejected-hold-position",
+            details={
+                "alert_id": str(recovery_alert.id),
+                "reason": "evidence-not-stable-enough",
+                "next_action": "reassess-after-20-minutes",
+            },
+            store_as_memory=False,
+        )
+        session.add(recovery_decision_log)
+        await session.flush()
+
+        recovery_memory_case = MemoryCase(
+            region_id=region.id,
+            station_id=station_b.id,
+            risk_assessment_id=recovery_risk.id,
+            incident_id=recovery_incident.id,
+            action_plan_id=recovery_plan.id,
+            decision_log_id=recovery_decision_log.id,
+            objective="Giữ quan sát, chờ safe window",
+            severity="warning",
+            outcome_class="advisory_hold",
+            outcome_status_legacy="rejected",
+            summary="Khi ngưỡng chưa ổn định, ưu tiên theo dõi thay vì mô phỏng đóng/mở vội.",
+            context_payload={
+                "tide_context": "rising",
+                "wind_context": "onshore_moderate",
+                "scenario": "warning-observe-recover",
+            },
+            action_payload={
+                "recommended_actions": ["notify_farmers", "wait_safe_window"],
+                "approval": "rejected",
+            },
+            outcome_payload={
+                "next_action": "reassess after 20 minutes",
+                "operator_posture": "observe",
+            },
+            keywords=["salinity", "warning", "hold", "safe-window", "recovery"],
+            occurred_at=now - timedelta(minutes=55),
+        )
+        session.add(recovery_memory_case)
+        await session.flush()
+
+        recovery_audit_log = AuditLog(
+            event_type=AuditEventType.APPROVAL,
+            actor_name="operator-demo",
+            actor_role="operator",
+            region_id=region.id,
+            incident_id=recovery_incident.id,
+            action_plan_id=recovery_plan.id,
+            action_execution_id=None,
+            occurred_at=now - timedelta(minutes=56),
+            summary="Operator giữ trạng thái quan sát và từ chối plan mô phỏng sớm.",
+            payload={"approval_id": str(recovery_approval.id), "memory_case_id": str(recovery_memory_case.id)},
+        )
+        session.add(recovery_audit_log)
         await session.flush()
 
         weather = WeatherSnapshot(
@@ -700,6 +919,73 @@ async def run_seed() -> None:
         )
         session.add(chunk)
         await session.flush()
+
+        reference_documents = [
+            {
+                "title": "Bộ tiêu chí ngưỡng salinity Mekong-SALT",
+                "source_uri": "mekong-salt://knowledge/threshold-matrix-002",
+                "document_type": "threshold",
+                "summary": "Tóm tắt ngưỡng band, fast-rise, và ngưỡng approval để dùng trong planning context.",
+                "content_text": (
+                    "Canonical storage and comparison unit is dS/m. Warning band starts at 1.0 dS/m, danger band starts at 2.5 dS/m, "
+                    "critical band starts at 4.0 dS/m, and a fast-rise modifier begins around 0.3 dS/m over the assessment window. "
+                    "For hackathon operations, the recommendation is to recheck every 20 minutes, keep HITL mandatory for danger or critical outcomes, "
+                    "and treat weather or tide as modifiers rather than overrides."
+                ),
+                "tags": ["salinity", "threshold", "policy", "planning"],
+                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "policy-summary"},
+            },
+            {
+                "title": "Ghi chú vận hành gió - triều cho quyết định mặn",
+                "source_uri": "mekong-salt://knowledge/guideline-002",
+                "document_type": "guideline",
+                "summary": "Quy tắc diễn giải gió và triều để hỗ trợ quan sát mặn.",
+                "content_text": (
+                    "Onshore wind and rising tide generally increase saline intrusion pressure near intake points. When tide is falling and salinity trend is stable or declining, "
+                    "the system may enter a candidate recovery window, but a one-cycle dip should not be treated as confirmed recovery. Every advisory should include a next review timestamp, "
+                    "and any outbound message must state whether the action is simulation-only. Local station anomalies always need sensor confidence checks."
+                ),
+                "tags": ["weather", "tide", "salinity", "operations"],
+                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "operational-guidance"},
+            },
+            {
+                "title": "Checklist đóng mở và phục hồi an toàn",
+                "source_uri": "mekong-salt://knowledge/sop-002",
+                "document_type": "sop",
+                "summary": "Checklist rút gọn cho đóng/mở mô phỏng và recovery window.",
+                "content_text": (
+                    "Before reopening intake, require three consecutive below-warning readings, no fast-rise signal in the latest window, and no adverse tide or wind trigger. "
+                    "Reopening should be staged: partial then full. After closure or reopening, continue stakeholder notifications until the trend stabilizes and capture a memory case for later retrieval. "
+                    "If provenance confidence is insufficient, reject execution and hold position for another reassessment cycle."
+                ),
+                "tags": ["sop", "closure", "recovery", "approval"],
+                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "closure-checklist"},
+            },
+        ]
+
+        for index, item in enumerate(reference_documents, start=1):
+            reference_document = KnowledgeDocument(
+                title=item["title"],
+                source_uri=item["source_uri"],
+                document_type=item["document_type"],
+                summary=item["summary"],
+                content_text=item["content_text"],
+                tags=item["tags"],
+                metadata_payload=item["metadata_payload"],
+            )
+            session.add(reference_document)
+            await session.flush()
+
+            reference_chunk = EmbeddedChunk(
+                document_id=reference_document.id,
+                chunk_index=0,
+                content_text=reference_document.content_text,
+                token_count=len(reference_document.content_text.split()),
+                embedding=[0.002 + (index * 0.001)] * 768,
+                metadata_payload={"section": "reference", "seed_source": "internal-seed"},
+            )
+            session.add(reference_chunk)
+            await session.flush()
 
         decision_log = DecisionLog(
             region_id=region.id,

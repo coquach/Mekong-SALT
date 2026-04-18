@@ -40,6 +40,10 @@ export function PageHeading({ className = "", trailing }: PageHeadingProps) {
             <p className="max-w-3xl text-sm font-medium text-slate-600 md:text-base">
               {route.subtitle}
             </p>
+            <div className="inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-mekong-cyan/20 bg-mekong-cyan/10 px-4 py-3 text-sm text-mekong-navy shadow-soft">
+              <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-mekong-teal" />
+              <p className="font-semibold leading-relaxed">{route.keyQuestion}</p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

@@ -14,6 +14,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { type RiskLatestResponse, type SensorReading } from "../lib/api/dashboard";
 import { getApiErrorMessage } from "../lib/api/error";
 import {
@@ -42,6 +43,13 @@ type HistoryState = {
   lastRefreshAt: string | null;
 };
 
+type HistoryCache = {
+  state: Pick<HistoryState, "stations" | "selectedStationId" | "readings" | "risk" | "incidents" | "auditLogs" | "lastRefreshAt">;
+};
+
+const HISTORY_CACHE_KEY = "mekong.cache.history";
+const HISTORY_CACHE_MAX_AGE_MS = 30_000;
+
 async function loadStationContext(
   stationCode: string,
   signal?: AbortSignal,
@@ -68,17 +76,36 @@ async function loadStationContext(
 }
 
 export function History() {
-  const [state, setState] = useState<HistoryState>({
-    loading: true,
-    stationLoading: false,
-    error: null,
-    stations: [],
-    selectedStationId: null,
-    readings: [],
-    risk: null,
-    incidents: [],
-    auditLogs: [],
-    lastRefreshAt: null,
+  const cachedHistory = useMemo(() => readPageCache<HistoryCache>(HISTORY_CACHE_KEY), []);
+  const [state, setState] = useState<HistoryState>(() => {
+    const cachedState = cachedHistory?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        stationLoading: false,
+        error: null,
+        stations: [],
+        selectedStationId: null,
+        readings: [],
+        risk: null,
+        incidents: [],
+        auditLogs: [],
+        lastRefreshAt: null,
+      };
+    }
+
+    return {
+      loading: false,
+      stationLoading: false,
+      error: null,
+      stations: cachedState.stations,
+      selectedStationId: cachedState.selectedStationId,
+      readings: cachedState.readings,
+      risk: cachedState.risk,
+      incidents: cachedState.incidents,
+      auditLogs: cachedState.auditLogs,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
   });
   const stationContextRequestIdRef = useRef(0);
   const stationContextAbortControllerRef = useRef<AbortController | null>(null);
@@ -88,15 +115,19 @@ export function History() {
     params?: {
       selectedStationId?: string | null;
       signal?: AbortSignal;
+      showLoading?: boolean;
     },
   ) => {
     const selectedStationId = params?.selectedStationId ?? null;
     const signal = params?.signal;
+    const showLoading = params?.showLoading ?? false;
     const requestId = ++pageLoadRequestIdRef.current;
 
     stationContextAbortControllerRef.current?.abort();
     stationContextRequestIdRef.current += 1;
-    setState((previous) => ({ ...previous, loading: true, error: null }));
+    if (showLoading) {
+      setState((previous) => ({ ...previous, loading: true, error: null }));
+    }
 
     try {
       const [stationsResponse, incidentsResponse, auditResponse] = await Promise.all([
@@ -136,6 +167,18 @@ export function History() {
         auditLogs: auditResponse.items,
         lastRefreshAt: new Date().toISOString(),
       }));
+
+      writePageCache<HistoryCache>(HISTORY_CACHE_KEY, {
+        state: {
+          stations,
+          selectedStationId: selectedStation?.id ?? null,
+          readings,
+          risk,
+          incidents: incidentsResponse.items,
+          auditLogs: auditResponse.items,
+          lastRefreshAt: new Date().toISOString(),
+        },
+      });
     } catch (error) {
       if (signal?.aborted || requestId !== pageLoadRequestIdRef.current) {
         return;
@@ -144,23 +187,33 @@ export function History() {
         ...previous,
         loading: false,
         stationLoading: false,
-        error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u history."),
+        error: getApiErrorMessage(error, "Không tải được dữ liệu lịch sử."),
       }));
     }
   };
 
   useEffect(() => {
     const abortController = new AbortController();
-    void loadPageData({ signal: abortController.signal });
+    const shouldSkipInitialRefresh =
+      cachedHistory !== null && isPageCacheFresh(cachedHistory, HISTORY_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => {
+        abortController.abort();
+        stationContextAbortControllerRef.current?.abort();
+      };
+    }
+
+    void loadPageData({ signal: abortController.signal, showLoading: true });
     return () => {
       abortController.abort();
       stationContextAbortControllerRef.current?.abort();
     };
-  }, []);
+  }, [cachedHistory]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      void loadPageData({ selectedStationId: state.selectedStationId });
+      void loadPageData({ selectedStationId: state.selectedStationId, showLoading: false });
     }, 30_000);
     return () => window.clearInterval(intervalId);
   }, [state.selectedStationId]);
@@ -213,6 +266,34 @@ export function History() {
     [state.incidents],
   );
 
+  useEffect(() => {
+    if (state.loading || state.stationLoading) {
+      return;
+    }
+
+    writePageCache<HistoryCache>(HISTORY_CACHE_KEY, {
+      state: {
+        stations: state.stations,
+        selectedStationId: state.selectedStationId,
+        readings: state.readings,
+        risk: state.risk,
+        incidents: state.incidents,
+        auditLogs: state.auditLogs,
+        lastRefreshAt: state.lastRefreshAt,
+      },
+    });
+  }, [
+    state.auditLogs,
+    state.incidents,
+    state.lastRefreshAt,
+    state.loading,
+    state.readings,
+    state.risk,
+    state.selectedStationId,
+    state.stationLoading,
+    state.stations,
+  ]);
+
   const handleStationChange = async (stationId: string) => {
     if (stationId === state.selectedStationId) {
       return;
@@ -262,7 +343,7 @@ export function History() {
       setState((previous) => ({
         ...previous,
         stationLoading: false,
-        error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u history."),
+        error: getApiErrorMessage(error, "Không tải được dữ liệu lịch sử."),
       }));
     }
   };
@@ -272,14 +353,14 @@ export function History() {
       <PageHeading
         trailing={
           <Badge variant="neutral" className="text-[9px]">
-            Äá»“ng bá»™ lÃºc {formatTimeUtil(state.lastRefreshAt)}
+            Đồng bộ lúc {formatTimeUtil(state.lastRefreshAt)}
           </Badge>
         }
       />
 
       {state.error ? (
         <InlineError
-          title="Lá»—i Ä‘iá»u tra lá»‹ch sá»­"
+          title="Lỗi điều tra lịch sử"
           message={state.error}
           onRetry={() => {
             void loadPageData({ selectedStationId: state.selectedStationId });
@@ -297,14 +378,14 @@ export function History() {
           <div className="space-y-1">
             <div className="flex items-center gap-3 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">
               <span className="bg-slate-100 px-2 py-0.5 rounded">
-                Nguá»“n: API backend
+                Nguồn: API backend
               </span>
               <span className="text-mekong-teal italic">
                 /readings/history, /risk/latest, /audit/logs
               </span>
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-              Äiá»u tra dá»¯ liá»‡u lá»‹ch sá»­
+              Điều tra dữ liệu lịch sử
             </h1>
           </div>
         </div>
@@ -350,7 +431,7 @@ export function History() {
             <div className="p-2.5 bg-mekong-teal/10 rounded-xl text-mekong-teal border border-mekong-teal/20">
               <Waves size={18} />
             </div>
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Salinity snapshot</h3>
+            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Ảnh chụp độ mặn</h3>
           </div>
           <div className="space-y-3">
             <div className="flex items-end gap-2">
@@ -360,10 +441,10 @@ export function History() {
               <span className="text-sm font-black text-slate-400 uppercase mb-1">g/L</span>
             </div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-              Ghi nháº­n: {formatDateTimeUtil(latestReading?.recorded_at ?? null)}
+              Ghi nhận: {formatDateTimeUtil(latestReading?.recorded_at ?? null)}
             </p>
             <Badge variant="warning" className="uppercase text-[10px]">
-              Rá»§i ro: {state.risk?.assessment.risk_level ?? "unknown"}
+              Rủi ro: {state.risk?.assessment.risk_level ?? "unknown"}
             </Badge>
           </div>
         </Card>
@@ -371,23 +452,23 @@ export function History() {
         <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <Target size={18} className="text-mekong-navy" />
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Historical stats</h3>
+            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Thống kê lịch sử</h3>
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Äá»™ máº·n trung bÃ¬nh</span>
+              <span>Độ mặn trung bình</span>
               <span className="font-black text-mekong-navy">{formatNumberUtil(averageSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Äá»™ máº·n cao nháº¥t</span>
+              <span>Độ mặn cao nhất</span>
               <span className="font-black text-mekong-navy">{formatNumberUtil(maxSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Äá»™ lá»‡ch (má»›i nháº¥t-cÅ© nháº¥t)</span>
+              <span>Độ lệch (mới nhất - cũ nhất)</span>
               <span className="font-black text-mekong-navy">{formatNumberUtil(trendDelta, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Sá»‘ máº«u</span>
+              <span>Số mẫu</span>
               <span className="font-black text-mekong-navy">{state.readings.length}</span>
             </div>
           </div>
@@ -396,23 +477,23 @@ export function History() {
         <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <AlertCircle size={18} className="text-mekong-critical" />
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Incident context</h3>
+            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Ngữ cảnh sự cố</h3>
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Sá»± cá»‘ Ä‘ang má»Ÿ</span>
+              <span>Sự cố đang mở</span>
               <span className="font-black text-mekong-critical">{openIncidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Tá»•ng sá»± cá»‘</span>
+              <span>Tổng sự cố</span>
               <span className="font-black text-mekong-navy">{state.incidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Nháº­t kÃ½ audit</span>
+              <span>Nhật ký audit</span>
               <span className="font-black text-mekong-navy">{state.auditLogs.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Tráº¡ng thÃ¡i tráº¡m</span>
+              <span>Trạng thái trạm</span>
               <span className="font-black text-mekong-navy">{selectedStation?.status ?? "--"}</span>
             </div>
           </div>
@@ -423,15 +504,15 @@ export function History() {
         <Card variant="white" className="col-span-12 lg:col-span-8 rounded-[32px] p-8 shadow-soft border border-slate-100">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tight">Reading history</h3>
+              <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tight">Lịch sử số liệu</h3>
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">
                 {selectedStation
                   ? `${selectedStation.code} - ${selectedStation.name}`
-                  : "No station selected"}
+                  : "Chưa chọn trạm"}
               </p>
             </div>
             <Badge className="uppercase text-[10px]" variant={state.stationLoading ? "warning" : "optimal"}>
-              {state.stationLoading ? "Loading station..." : "Synced"}
+              {state.stationLoading ? "Đang tải trạm..." : "Đã đồng bộ"}
             </Badge>
           </div>
 
@@ -439,10 +520,10 @@ export function History() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/70 border-b border-slate-100">
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Recorded at</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Salinity (g/L)</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Water level (m)</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Wind (m/s)</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Thời điểm ghi nhận</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Độ mặn (g/L)</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mực nước (m)</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Gió (m/s)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -466,8 +547,8 @@ export function History() {
                   <tr>
                     <td colSpan={4} className="px-4 py-6">
                       <EmptyState
-                        title="ChÆ°a cÃ³ dá»¯ liá»‡u lá»‹ch sá»­ cho tráº¡m nÃ y"
-                        description="Thá»­ chá»n station khÃ¡c hoáº·c Ä‘á»£i chu ká»³ ghi nháº­n tiáº¿p theo."
+                        title="Chưa có dữ liệu lịch sử cho trạm này"
+                        description="Thử chọn trạm khác hoặc đợi chu kỳ ghi nhận tiếp theo."
                       />
                     </td>
                   </tr>
@@ -478,7 +559,7 @@ export function History() {
         </Card>
 
         <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
-          <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest mb-4">Audit timeline</h3>
+          <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest mb-4">Dòng thời gian audit</h3>
           <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
             {state.auditLogs.slice(0, 15).map((log) => (
               <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -496,8 +577,8 @@ export function History() {
             ))}
             {state.auditLogs.length === 0 ? (
               <EmptyState
-                title="ChÆ°a cÃ³ audit log"
-                description="Audit trail sáº½ xuáº¥t hiá»‡n khi backend ghi nháº­n event váº­n hÃ nh."
+                title="Chưa có audit log"
+                description="Audit trail sẽ xuất hiện khi backend ghi nhận event vận hành."
               />
             ) : null}
           </div>

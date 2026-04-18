@@ -33,6 +33,12 @@ Nếu muốn chạy kịch bản timeout auto-reject thay vì fast approve:
 ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
 ```
 
+Nếu muốn demo nhánh cảnh giác rồi hồi phục dần thay vì leo thang tới critical:
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
 Nếu muốn bắn thử thông báo qua Zalo cho demo:
 
 ```bash
@@ -41,6 +47,8 @@ set ZALO_OA_ACCESS_TOKEN=your-access-token
 set ZALO_OA_RECIPIENT_USER_ID=your-zalo-user-id
 ./.venv/Scripts/python.exe scripts/send_demo_zalo_notification.py --subject "Mekong-SALT demo" --message "Tin nhắn demo qua Zalo từ backend."
 ```
+
+//hiện tại ko test được zalo
 
 Nếu dùng PowerShell:
 
@@ -175,6 +183,15 @@ Mỗi scenario hiện được chia thành 3 phần:
 - `Steps`: lệnh chạy chính.
 - `Sau demo`: lệnh kiểm tra kết quả.
 
+### Bảng kịch bản đầy đủ
+
+| Scenario | Khi nào dùng | Lệnh chính | Điểm nhấn demo |
+|---|---|---|---|
+| `fast-approve-execute` | Muốn thể hiện luồng chuẩn end-to-end trong thời gian ngắn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Dữ liệu vào, approval, execution mô phỏng, feedback |
+| `critical-timeout-replan` | Muốn thể hiện cơ chế auto-reject và lập plan mới | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Escalation lên critical, timeout, replan |
+| `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, quan sát, recovery window |
+| `rag-provenance-drilldown` | Muốn soi trace truy hồi và nguồn tri thức | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json` | Citations, knowledge context, trace provenance |
+
 ## 8) Chạy simulate
 
 ### 8.1 Scenario khuyến nghị
@@ -218,6 +235,53 @@ Scenario này dùng để xem:
 - trace truy hồi,
 - top citations,
 - knowledge context preview.
+
+### 8.4 Scenario warning observe / recovery
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
+Scenario này dùng để demo:
+
+- mức cảnh báo trung gian thay vì chỉ critical escalation,
+- posture quan sát thận trọng trước khi phục hồi,
+- luồng recovery window và rule quyết định bảo thủ,
+- hành vi fallback HTTP khi MQTT broker không sẵn sàng.
+
+### 8.5 Kịch bản full demo đề xuất
+
+Nếu bạn muốn demo đầy đủ trong một buổi trình bày, nên chạy theo thứ tự sau:
+
+1. **Fast approve execute** để mở màn bằng luồng chuẩn.
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
+2. **Critical timeout replan** để cho thấy hệ thống biết tự xử lý khi plan bị kẹt approval.
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario critical-timeout-replan --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
+3. **Warning observe recover** để nhấn mạnh posture bảo thủ và recovery an toàn.
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300
+```
+
+4. **RAG provenance drilldown** để kết bằng phần giải thích bằng chứng và nguồn tri thức.
+
+```bash
+./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json
+```
+
+Trình tự này giúp câu chuyện demo đi theo logic:
+
+- data -> risk -> plan -> approval -> execution,
+- escalation -> timeout -> recovery,
+- cuối cùng là provenance và reasoning trace.
 
 ## 9) Ý nghĩa các flag của simulate
 

@@ -24,10 +24,8 @@ from app.services.agent_trace_service import (
     start_agent_run,
 )
 from app.services.audit_service import write_audit_log
-from app.services.db import append_domain_event_and_dispatch
 from app.services.incident_service import ensure_incident_for_assessment, get_incident
 from app.services.llm import VertexGeminiPlannerAdapter
-from app.services.notify import get_domain_event_notification_dispatcher
 from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
 from app.services.risk_service import RiskEvaluationBundle
 
@@ -116,29 +114,6 @@ async def generate_agent_plan(
             validation_result=validation_result,
             retrieved_context=retrieved_context,
             transition_log=transition_log,
-        )
-        await append_domain_event_and_dispatch(
-            session,
-            event_type="notification.plan_created",
-            source="planning-service",
-            summary=f"Kế hoạch hành động đã được tạo ({plan.status.value})",
-            payload={
-                "event": "plan_created",
-                "subject": f"Kế hoạch hành động đã được tạo ({plan.status.value})",
-                "message": f"Kế hoạch '{plan.id}' đã được tạo cho mục tiêu: {plan.objective}",
-                "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
-                "details": {
-                    "action_plan_id": str(plan.id),
-                    "status": plan.status.value,
-                    "objective": plan.objective,
-                },
-            },
-            aggregate_type="incident" if plan.incident_id is not None else "action_plan",
-            aggregate_id=plan.incident_id if plan.incident_id is not None else plan.id,
-            region_id=plan.region_id,
-            incident_id=plan.incident_id,
-            action_plan_id=plan.id,
-            dispatcher=get_domain_event_notification_dispatcher(),
         )
         finish_agent_run(
             run,

@@ -298,15 +298,24 @@ async def execute_simulated_plan(
         payload={
             "event": "execution_summary",
             "subject": f"Tổng kết thực thi: {feedback.outcome_class}",
-            "message": feedback.summary,
+            "message": _build_execution_summary_notification_message(
+                plan=plan,
+                feedback=feedback,
+                executions=executions,
+            ),
             "execution_id": str(executions[-1].id) if executions else None,
-            "channels": ["dashboard", "sms_mock", "zalo_mock", "email_mock"],
+            "channels": ["dashboard"],
             "details": {
                 "action_plan_id": str(plan.id),
                 "execution_batch_id": str(batch.id),
                 "execution_count": len(executions),
                 "outcome_class": feedback.outcome_class,
                 "replan_recommended": feedback.replan_recommended,
+                "assessment_summary": (
+                    plan.risk_assessment.summary if plan.risk_assessment is not None else None
+                ),
+                "plan_summary": plan.summary,
+                "action_summary": _summarize_execution_steps(executions),
             },
         },
         aggregate_type="incident" if plan.incident_id is not None else "action_plan",
@@ -451,3 +460,34 @@ def _build_execution_summary(action_type) -> str:
         "start-pump-simulated": "Đã hoàn tất kịch bản khởi động bơm mô phỏng.",
     }
     return summaries[action_type.value]
+
+
+def _summarize_execution_steps(executions: list[ActionExecution], max_items: int = 3) -> str:
+    """Build a short step synopsis for the final summary notification."""
+    steps: list[str] = []
+    for execution in executions[:max_items]:
+        summary = execution.result_summary or execution.action_type.value
+        steps.append(str(summary).strip())
+    return " -> ".join(step for step in steps if step)
+
+
+def _build_execution_summary_notification_message(
+    *,
+    plan: ActionPlan,
+    feedback: FeedbackEvaluation,
+    executions: list[ActionExecution],
+) -> str:
+    """Build the single dashboard notification summarizing the final outcome."""
+    assessment_summary = (
+        plan.risk_assessment.summary if plan.risk_assessment is not None else "Chưa có tóm tắt đánh giá rủi ro."
+    )
+    action_summary = _summarize_execution_steps(executions)
+    plan_summary = plan.summary.strip() if plan.summary.strip() else "Chưa có mô tả kế hoạch."
+    parts = [
+        f"Kế hoạch {plan.status.value} cho mục tiêu '{plan.objective}'.",
+        f"Đánh giá sự việc: {assessment_summary}",
+        f"Phương án xử lý: {plan_summary}",
+        f"Hành động đã làm: {action_summary or 'Chưa có bước thực thi.'}",
+        f"Kết quả cuối: {feedback.summary}",
+    ]
+    return " ".join(parts)

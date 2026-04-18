@@ -120,6 +120,27 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
             note="nhịp hậu planning để giữ trace truy hồi sống",
         ),
     ),
+    "warning-observe-recover": SensorScenarioProfile(
+        key="warning-observe-recover",
+        description="Gây cảnh báo mức vừa rồi để backend đi qua cửa sổ quan sát và hồi phục tự nhiên.",
+        objective="Quan sát nhịp warning, giữ posture thận trọng, rồi kiểm tra recovery window.",
+        warning_threshold_dsm="1.80",
+        critical_threshold_dsm="3.20",
+        frames=(
+            SensorFrame("1.92", "1.16", "28.70", "92.20", wind_speed_mps="5.20", wind_direction_deg=135, note="cảnh giác ban đầu"),
+            SensorFrame("2.18", "1.18", "28.82", "91.90", wind_speed_mps="5.80", wind_direction_deg=130, note="xu hướng tăng nhưng chưa tới critical"),
+            SensorFrame("2.05", "1.15", "28.76", "91.70", wind_speed_mps="5.10", wind_direction_deg=145, note="giữ ở warning"),
+        ),
+        post_planning_frame=SensorFrame(
+            "1.68",
+            "1.12",
+            "28.60",
+            "91.50",
+            wind_speed_mps="4.30",
+            wind_direction_deg=160,
+            note="recovery window bắt đầu mở ra",
+        ),
+    ),
 }
 
 RUNTIME_CONFIG = SimulationRuntimeConfig()
@@ -952,12 +973,48 @@ def scenario_rag_provenance_drilldown(
     }
 
 
+def scenario_warning_observe_recover(
+    base_url: str,
+    timeout_seconds: int,
+    *,
+    station_code: str | None = None,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
+    close_open_incidents: bool = True,
+    inject_post_execute_reading: bool = True,
+) -> dict[str, Any]:
+    print("\n[SCENARIO] warning-observe-recover")
+    prepared = _prepare_plan_from_sensor_profile(
+        base_url,
+        profile=SCENARIO_SENSOR_PROFILES["warning-observe-recover"],
+        timeout_seconds=timeout_seconds,
+        station_code=station_code,
+        frame_pause_seconds=frame_pause_seconds,
+        close_open_incidents=close_open_incidents,
+    )
+
+    return {
+        "scenario": "warning-observe-recover",
+        "station_code": prepared["station_code"],
+        "goal_name": prepared["goal_name"],
+        "pending_plan_id": None,
+        "post_execute_feedback": {
+            "state": "skipped",
+            "reason": (
+                "Scenario này chỉ publish warning->recovery frames; backend worker tự quyết định posture."
+                if inject_post_execute_reading
+                else "Đã tắt tiêm post-execute reading."
+            ),
+        },
+    }
+
+
 ScenarioRunner = Callable[..., dict[str, Any]]
 
 SCENARIO_EXECUTORS: dict[str, ScenarioRunner] = {
     "critical-timeout-replan": scenario_critical_timeout_replan,
     "fast-approve-execute": scenario_fast_approve_execute,
     "rag-provenance-drilldown": scenario_rag_provenance_drilldown,
+    "warning-observe-recover": scenario_warning_observe_recover,
 }
 
 

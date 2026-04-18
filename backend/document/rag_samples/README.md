@@ -13,6 +13,9 @@ This folder contains normalized source documents for RAG ingestion and retrieval
 - `threshold/threshold_policy_matrix.csv`: structured threshold and response policy matrix.
 - `casebook/casebook_salinity_incidents.csv`: scenario-based incident/outcome cases for retrieval benchmarking.
 - `guideline/weather_tide_operational_notes.md`: hydro-meteorological interpretation guidance.
+- `guideline/sensor_confidence_and_calibration_notes.md`: confidence and calibration checklist for sensor readings.
+- `sop/recovery_and_closure_checklist.md`: staged recovery and closure checklist after an incident.
+- `casebook/casebook_recovery_patterns.csv`: recovery-window and hold-position reference cases.
 
 ## Conventions
 - Language: English (international-readable baseline)
@@ -25,6 +28,7 @@ This folder contains normalized source documents for RAG ingestion and retrieval
 - This pack is designed for RAG benchmarking and operator training support.
 - Casebook rows are normalized reference scenarios unless explicitly marked as validated field incidents.
 - Avoid claiming synthetic/reference cases as official government observations.
+- New files may summarize operational best practice and reference scenarios; keep them clearly labeled as guidance or benchmark material.
 
 ## File-Level Expectations
 - Markdown docs: include document control section (ID, version, status, effective date).

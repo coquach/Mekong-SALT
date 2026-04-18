@@ -1,21 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bell,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  MapPin,
-  Search,
-  Sparkles,
-} from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Bell, ChevronDown, ChevronRight, MapPin, Search, Sparkles } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import avatarImage from "../../assets/hien.jpg";
 import { apiGet } from "../../lib/api/http";
-import { buildBreadcrumb, getRouteMeta } from "../../lib/navigation";
 import { getDashboardSummary } from "../../lib/api/dashboard";
+import { APP_ROUTES, buildBreadcrumb, getRouteMeta } from "../../lib/navigation";
 import { Badge } from "../ui/Badge";
 import { RealtimeBadge } from "../ui/RealtimeBadge";
+
+function prefetchRoute(path: string): void {
+  if (path === "/dashboard") {
+    void import("../../pages/Dashboard");
+    return;
+  }
+  if (path === "/map") {
+    void import("../../pages/InteractiveMap");
+    return;
+  }
+  if (path === "/strategy") {
+    void import("../../pages/StrategyOrchestration");
+    return;
+  }
+  if (path === "/logs") {
+    void import("../../pages/ActionLogs");
+    return;
+  }
+  if (path === "/notifications") {
+    void import("../../pages/Notifications");
+    return;
+  }
+  if (path === "/history") {
+    void import("../../pages/History");
+  }
+}
 
 interface NotificationRead {
   id: string;
@@ -67,9 +85,11 @@ export const Header = () => {
             signal: controller.signal,
           }),
         ]);
+
         if (!mounted) {
           return;
         }
+
         setNotificationCount(summary.active_notifications ?? notificationCollection.count ?? 0);
         setNotifications(notificationCollection.items);
       } catch {
@@ -124,6 +144,32 @@ export const Header = () => {
             ))}
           </nav>
 
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
+            {APP_ROUTES.map((route) => {
+              const isActive =
+                route.path === "/"
+                  ? pathname === "/"
+                  : pathname === route.path || pathname.startsWith(`${route.path}/`);
+
+              return (
+                <Link
+                  key={route.path}
+                  to={route.path}
+                  onMouseEnter={() => prefetchRoute(route.path)}
+                  onFocus={() => prefetchRoute(route.path)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                    isActive
+                      ? "border-mekong-navy bg-mekong-navy text-white"
+                      : "border-slate-200 bg-white text-slate-500"
+                  }`}
+                >
+                  {route.navLabel}
+                </Link>
+              );
+            })}
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-black tracking-tight text-mekong-navy lg:text-xl">
               {routeMeta.title}
@@ -167,12 +213,10 @@ export const Header = () => {
             </button>
 
             {isNotificationMenuOpen ? (
-              <div className="absolute right-0 z-30 mt-2 w-96 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
+              <div className="absolute right-0 z-30 mt-2 w-[calc(100vw-1.5rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:w-96">
                 <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                      Thông báo
-                    </p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Thông báo</p>
                     <p className="mt-1 text-sm font-black text-mekong-navy">
                       {notificationCount} mục chưa xử lý
                     </p>
@@ -199,7 +243,10 @@ export const Header = () => {
                               {notification.message}
                             </p>
                           </div>
-                          <Badge variant={notification.status === "sent" ? "optimal" : "warning"} className="text-[8px]">
+                          <Badge
+                            variant={notification.status === "sent" ? "optimal" : "warning"}
+                            className="text-[8px]"
+                          >
                             {notification.status}
                           </Badge>
                         </div>
@@ -215,6 +262,14 @@ export const Header = () => {
                     </p>
                   )}
                 </div>
+
+                <Link
+                  to="/notifications"
+                  onClick={() => setIsNotificationMenuOpen(false)}
+                  className="mb-2 flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-mekong-navy transition-colors hover:border-mekong-teal/30 hover:text-mekong-teal"
+                >
+                  Xem tất cả thông báo
+                </Link>
 
                 <button
                   type="button"
@@ -236,10 +291,7 @@ export const Header = () => {
             >
               <MapPin size={15} />
               <span>{selectedRegion}</span>
-              <ChevronDown
-                size={14}
-                className={`transition-transform ${isRegionMenuOpen ? "rotate-180" : ""}`}
-              />
+              <ChevronDown size={14} className={`transition-transform ${isRegionMenuOpen ? "rotate-180" : ""}`} />
             </button>
 
             {isRegionMenuOpen ? (
@@ -254,29 +306,23 @@ export const Header = () => {
                         : "text-mekong-navy hover:bg-slate-50"
                     }`}
                   >
-                    {region}
-                    {selectedRegion === region ? <Check size={14} /> : null}
+                    <span>{region}</span>
                   </button>
                 ))}
               </div>
             ) : null}
           </div>
 
-          <div className="inline-flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-            <img
-              src={avatarImage}
-              alt="Ảnh đại diện người vận hành"
-              className="h-9 w-9 rounded-lg object-cover ring-2 ring-slate-100"
-            />
-            <div className="hidden text-right xl:block">
-              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-mekong-navy">
-                Trần Gia Hiển
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-mekong-teal">
-                Quản trị trưởng
-              </p>
+          <button
+            type="button"
+            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 transition-colors hover:border-slate-300"
+          >
+            <img src={avatarImage} alt="Avatar người dùng" className="h-8 w-8 rounded-lg object-cover" />
+            <div className="hidden text-left sm:block">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Operator</p>
+              <p className="text-xs font-bold text-mekong-navy">Demo maintainer</p>
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </header>

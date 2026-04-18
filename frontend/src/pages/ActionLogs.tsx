@@ -16,6 +16,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { ApiError } from "../lib/api/types";
 import {
   evaluateFeedback,
@@ -44,17 +45,42 @@ type ActionLogsState = {
   lastRefreshAt: string | null;
 };
 
+type ActionLogsCache = {
+  state: Pick<ActionLogsState, "plans" | "actionLogs" | "batches" | "outcomes" | "feedback" | "lastRefreshAt">;
+};
+
+const ACTION_LOGS_CACHE_KEY = "mekong.cache.action-logs";
+const ACTION_LOGS_CACHE_MAX_AGE_MS = 30_000;
+
 export function ActionLogs() {
-  const [state, setState] = useState<ActionLogsState>({
-    loading: true,
-    error: null,
-    searchText: "",
-    plans: [],
-    actionLogs: [],
-    batches: [],
-    outcomes: [],
-    feedback: null,
-    lastRefreshAt: null,
+  const cachedActionLogs = useMemo(() => readPageCache<ActionLogsCache>(ACTION_LOGS_CACHE_KEY), []);
+  const [state, setState] = useState<ActionLogsState>(() => {
+    const cachedState = cachedActionLogs?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        error: null,
+        searchText: "",
+        plans: [],
+        actionLogs: [],
+        batches: [],
+        outcomes: [],
+        feedback: null,
+        lastRefreshAt: null,
+      };
+    }
+
+    return {
+      loading: false,
+      error: null,
+      searchText: "",
+      plans: cachedState.plans,
+      actionLogs: cachedState.actionLogs,
+      batches: cachedState.batches,
+      outcomes: cachedState.outcomes,
+      feedback: cachedState.feedback,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
   });
   const [simulateBusy, setSimulateBusy] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
@@ -97,6 +123,17 @@ export function ActionLogs() {
         feedback,
         lastRefreshAt: new Date().toISOString(),
       }));
+
+      writePageCache<ActionLogsCache>(ACTION_LOGS_CACHE_KEY, {
+        state: {
+          plans,
+          actionLogs: actionLogs.items,
+          batches: batches.items,
+          outcomes: outcomes.items,
+          feedback,
+          lastRefreshAt: new Date().toISOString(),
+        },
+      });
     } catch (error) {
       if (signal?.aborted) {
         return;
@@ -104,16 +141,23 @@ export function ActionLogs() {
       setState((previous) => ({
         ...previous,
         loading: false,
-        error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u action logs."),
+        error: getApiErrorMessage(error, "Không tải được dữ liệu nhật ký hành động."),
       }));
     }
   };
 
   useEffect(() => {
     const abortController = new AbortController();
+    const shouldSkipInitialRefresh =
+      cachedActionLogs !== null && isPageCacheFresh(cachedActionLogs, ACTION_LOGS_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => abortController.abort();
+    }
+
     void refreshData({ signal: abortController.signal, showLoading: true });
     return () => abortController.abort();
-  }, []);
+  }, [cachedActionLogs]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -148,7 +192,7 @@ export function ActionLogs() {
     if (!approvedPlan) {
       setState((previous) => ({
         ...previous,
-        error: "KhÃ´ng cÃ³ plan APPROVED Ä‘á»ƒ cháº¡y simulate.",
+        error: "Không có plan APPROVED để chạy simulate.",
       }));
       return;
     }
@@ -157,7 +201,7 @@ export function ActionLogs() {
       await simulateExecutionBatch(approvedPlan.id);
       await refreshData();
     } catch (error) {
-      setState((previous) => ({ ...previous, error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u action logs.") }));
+      setState((previous) => ({ ...previous, error: getApiErrorMessage(error, "Không tải được dữ liệu nhật ký hành động.") }));
     } finally {
       setSimulateBusy(false);
     }
@@ -170,14 +214,25 @@ export function ActionLogs() {
     setFeedbackBusy(true);
     try {
       const feedback = await evaluateFeedback(latestBatch.id);
+      const nextLastRefreshAt = new Date().toISOString();
       setState((previous) => ({
         ...previous,
         feedback,
         error: null,
-        lastRefreshAt: new Date().toISOString(),
+        lastRefreshAt: nextLastRefreshAt,
       }));
+      writePageCache<ActionLogsCache>(ACTION_LOGS_CACHE_KEY, {
+        state: {
+          plans: state.plans,
+          actionLogs: state.actionLogs,
+          batches: state.batches,
+          outcomes: state.outcomes,
+          feedback,
+          lastRefreshAt: nextLastRefreshAt,
+        },
+      });
     } catch (error) {
-      setState((previous) => ({ ...previous, error: getApiErrorMessage(error, "Kh??ng t???i ???????c d??? li???u action logs.") }));
+      setState((previous) => ({ ...previous, error: getApiErrorMessage(error, "Không tải được dữ liệu nhật ký hành động.") }));
     } finally {
       setFeedbackBusy(false);
     }
@@ -188,14 +243,14 @@ export function ActionLogs() {
       <PageHeading
         trailing={
           <Badge variant="neutral" className="text-[9px]">
-            Äá»“ng bá»™ lÃºc {formatTimeUtil(state.lastRefreshAt)}
+            Đồng bộ lúc {formatTimeUtil(state.lastRefreshAt)}
           </Badge>
         }
       />
 
       {state.error ? (
         <InlineError
-          title="Lá»—i nháº­t kÃ½ hÃ nh Ä‘á»™ng"
+          title="Lỗi nhật ký hành động"
           message={state.error}
           onRetry={() => {
             void refreshData({ showLoading: true });
@@ -208,15 +263,15 @@ export function ActionLogs() {
       <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
-            Trung tÃ¢m can thiá»‡p & há»c táº­p
+            Trung tâm can thiệp & học tập
           </h1>
           <p className="text-base text-mekong-slate font-medium max-w-3xl leading-relaxed">
-            Follow execution-batches, action logs, outcomes, and feedback lifecycle from backend.
+            Theo dõi lô chạy, nhật ký hành động, outcome và vòng đời feedback từ backend.
           </p>
         </div>
-        <div className="flex gap-4 w-full lg:w-auto">
+          <div className="flex gap-4 w-full lg:w-auto">
           <Button variant="outline" className="flex-1 lg:flex-none h-14 px-8 border-slate-200 bg-white">
-            <Share2 size={18} className="mr-2" /> Chia sáº» bÃ¡o cÃ¡o
+            <Share2 size={18} className="mr-2" /> Chia sẻ báo cáo
           </Button>
           <Button
             variant="navy"
@@ -225,7 +280,7 @@ export function ActionLogs() {
             disabled={simulateBusy}
           >
             <Download size={18} className="mr-2" />
-            {simulateBusy ? "Äang mÃ´ phá»ng..." : "MÃ´ phá»ng plan Ä‘Ã£ duyá»‡t"}
+            {simulateBusy ? "Đang mô phỏng..." : "Mô phỏng plan đã duyệt"}
           </Button>
         </div>
       </div>
@@ -239,11 +294,11 @@ export function ActionLogs() {
               </div>
               <div className="space-y-4">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
-                    Feedback má»›i nháº¥t
-                  </p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
+                Feedback mới nhất
+              </p>
                   <p className="text-[15px] font-bold text-mekong-navy leading-relaxed italic">
-                    {state.feedback?.evaluation.summary ?? "ChÆ°a cÃ³ feedback lifecycle cho batch gáº§n nháº¥t."}
+                    {state.feedback?.evaluation.summary ?? "Chưa có feedback lifecycle cho batch gần nhất."}
                   </p>
                 </div>
                 <div className="flex justify-between items-center pt-2">
@@ -259,7 +314,7 @@ export function ActionLogs() {
                   disabled={!latestBatch || feedbackBusy}
                   onClick={() => void handleEvaluateFeedback()}
                 >
-                  {feedbackBusy ? "Äang Ä‘Ã¡nh giÃ¡..." : "ÄÃ¡nh giÃ¡ feedback"}
+                  {feedbackBusy ? "Đang đánh giá..." : "Đánh giá feedback"}
                 </button>
               </div>
             </div>
@@ -268,19 +323,19 @@ export function ActionLogs() {
           <Card variant="navy" padding="none" className="bg-mekong-navy text-white rounded-[40px] overflow-hidden min-h-[220px] flex flex-col p-10 shadow-2xl relative border border-white/5">
             <div className="relative z-10 space-y-2 flex-1">
               <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">
-                Snapshot overview
+                Tổng quan nhanh
               </p>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Batches</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Lô chạy</span>
                   <span className="text-2xl font-black text-mekong-cyan">{state.batches.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Nháº­t kÃ½</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Nhật ký</span>
                   <span className="text-2xl font-black text-mekong-cyan">{state.actionLogs.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Success</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Thành công</span>
                   <span className="text-2xl font-black text-mekong-cyan">{successfulActions}</span>
                 </div>
               </div>
@@ -297,17 +352,17 @@ export function ActionLogs() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tighter leading-none">
-                    Execution batches gáº§n Ä‘Ã¢y
+                    Các lô chạy gần đây
                   </h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                    Batch má»›i nháº¥t: {latestBatch ? latestBatch.id.slice(0, 8) : "--"}
+                    Lô gần nhất: {latestBatch ? latestBatch.id.slice(0, 8) : "--"}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100 shadow-sm">
                 <div className="w-2 h-2 bg-mekong-mint rounded-full animate-pulse" />
                 <span className="text-[10px] font-black text-mekong-navy uppercase tracking-widest">
-                  {state.loading ? "Äang táº£i" : "Äá»“ng bá»™"}
+                  {state.loading ? "Đang tải" : "Đồng bộ"}
                 </span>
               </div>
             </div>
@@ -325,7 +380,7 @@ export function ActionLogs() {
                       </Badge>
                     </div>
                     <p className="text-[13px] font-semibold text-slate-600">
-                      Plan: {batch.plan_id.slice(0, 8)} â€¢ Steps: {batch.step_count}
+                      Plan: {batch.plan_id.slice(0, 8)} · Steps: {batch.step_count}
                     </p>
                     <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-2">
                       Start: {formatDateTimeUtil(batch.started_at)}
@@ -340,14 +395,14 @@ export function ActionLogs() {
 
       <section className={`bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="bg-mekong-navy px-10 py-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
-              <ClipboardList size={26} />
-            </div>
-            <div>
-              <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Lá»‹ch sá»­ action log chi tiáº¿t</h3>
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
+                <ClipboardList size={26} />
+              </div>
+              <div>
+              <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Lịch sử nhật ký hành động chi tiết</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 opacity-80">
-                Nguá»“n: GET /api/v1/actions/logs
+                Nguồn: GET /api/v1/actions/logs
               </p>
             </div>
           </div>
@@ -356,7 +411,7 @@ export function ActionLogs() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input
                 type="text"
-                placeholder="TÃ¬m kiáº¿m action/status..."
+                placeholder="Tìm kiếm action/status..."
                 value={state.searchText}
                 onChange={(event) =>
                   setState((previous) => ({ ...previous, searchText: event.target.value }))
@@ -365,7 +420,7 @@ export function ActionLogs() {
               />
             </div>
             <Button variant="outline" className="border-white/20 text-white hover:bg-white/10 px-6 h-11 text-[11px]">
-              <Filter size={14} className="mr-2" /> Bá»™ lá»c
+              <Filter size={14} className="mr-2" /> Bộ lọc
             </Button>
           </div>
         </div>
@@ -373,12 +428,12 @@ export function ActionLogs() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Thá»i gian</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Action type</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Result</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Trace</th>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Thời gian</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Loại hành động</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kết quả</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Dấu vết</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -415,12 +470,12 @@ export function ActionLogs() {
                 </tr>
               ))}
               {filteredLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-6">
-                    <EmptyState
-                      title="KhÃ´ng cÃ³ action log phÃ¹ há»£p"
-                      description="HÃ£y Ä‘á»•i tá»« khÃ³a tÃ¬m kiáº¿m hoáº·c cháº¡y simulate Ä‘á»ƒ sinh dá»¯ liá»‡u má»›i."
-                      actionLabel="LÃ m má»›i"
+              <tr>
+                <td colSpan={5} className="px-6 py-6">
+                  <EmptyState
+                      title="Không có nhật ký hành động phù hợp"
+                      description="Hãy đổi từ khóa tìm kiếm hoặc chạy mô phỏng để sinh dữ liệu mới."
+                      actionLabel="Làm mới"
                       onAction={() => {
                         void refreshData({ showLoading: true });
                       }}
@@ -434,10 +489,10 @@ export function ActionLogs() {
 
         <div className="bg-slate-50 px-10 py-6 flex justify-between items-center border-t border-slate-100">
           <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-            Hiá»ƒn thá»‹ {Math.min(filteredLogs.length, 20)} / {filteredLogs.length} action logs
+            Hiển thị {Math.min(filteredLogs.length, 20)} / {filteredLogs.length} nhật ký hành động
           </span>
           <div className="flex items-center gap-2 text-[10px] font-black text-mekong-teal uppercase tracking-widest">
-            Outcomes: {state.outcomes.length} <ArrowUpRight size={12} />
+            Kết quả: {state.outcomes.length} <ArrowUpRight size={12} />
           </div>
         </div>
       </section>

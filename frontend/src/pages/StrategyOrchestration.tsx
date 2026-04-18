@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -18,6 +18,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 import {
   decidePlan,
@@ -39,6 +40,13 @@ type StrategyState = {
   selectedPlanId: string | null;
   lastRefreshAt: string | null;
 };
+
+type StrategyCache = {
+  state: Pick<StrategyState, "goals" | "plans" | "runs" | "selectedPlanId" | "lastRefreshAt">;
+};
+
+const STRATEGY_CACHE_KEY = "mekong.cache.strategy";
+const STRATEGY_CACHE_MAX_AGE_MS = 30_000;
 
 function parseApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -174,19 +182,40 @@ function toRecordList(value: unknown): Record<string, unknown>[] {
 }
 
 export function StrategyOrchestration() {
-  const [state, setState] = useState<StrategyState>({
-    loading: true,
-    error: null,
-    goals: [],
-    plans: [],
-    runs: [],
-    selectedPlanId: null,
-    lastRefreshAt: null,
+  const cachedStrategy = useMemo(() => readPageCache<StrategyCache>(STRATEGY_CACHE_KEY), []);
+  const [state, setState] = useState<StrategyState>(() => {
+    const cachedState = cachedStrategy?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        error: null,
+        goals: [],
+        plans: [],
+        runs: [],
+        selectedPlanId: null,
+        lastRefreshAt: null,
+      };
+    }
+
+    return {
+      loading: false,
+      error: null,
+      goals: cachedState.goals,
+      plans: cachedState.plans,
+      runs: cachedState.runs,
+      selectedPlanId: cachedState.selectedPlanId,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
   });
   const [decisionBusy, setDecisionBusy] = useState<"approved" | "rejected" | null>(null);
   const [goalBusyId, setGoalBusyId] = useState<string | null>(null);
+  const selectedPlanIdRef = useRef<string | null>(state.selectedPlanId);
 
-  const refreshData = async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+  useEffect(() => {
+    selectedPlanIdRef.current = state.selectedPlanId;
+  }, [state.selectedPlanId]);
+
+  const refreshData = useCallback(async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
     const signal = options?.signal;
     const showLoading = options?.showLoading ?? false;
     if (showLoading) {
@@ -217,6 +246,20 @@ export function StrategyOrchestration() {
           lastRefreshAt: new Date().toISOString(),
         };
       });
+
+      const nextLastRefreshAt = new Date().toISOString();
+      const reviewablePlans = plans.filter((plan) => plan.status === "pending_approval");
+      const nextSelectedPlan =
+        reviewablePlans.find((plan) => plan.id === selectedPlanIdRef.current) ?? reviewablePlans[0] ?? null;
+      writePageCache<StrategyCache>(STRATEGY_CACHE_KEY, {
+        state: {
+          goals: goals.items,
+          plans,
+          runs: runs.items,
+          selectedPlanId: nextSelectedPlan?.id ?? null,
+          lastRefreshAt: nextLastRefreshAt,
+        },
+      });
     } catch (error) {
       if (signal?.aborted) {
         return;
@@ -227,20 +270,27 @@ export function StrategyOrchestration() {
         error: parseApiError(error),
       }));
     }
-  };
+  }, []);
 
   useEffect(() => {
     const abortController = new AbortController();
+    const shouldSkipInitialRefresh =
+      cachedStrategy !== null && isPageCacheFresh(cachedStrategy, STRATEGY_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => abortController.abort();
+    }
+
     void refreshData({ signal: abortController.signal, showLoading: true });
     return () => abortController.abort();
-  }, []);
+  }, [cachedStrategy, refreshData]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       void refreshData({ showLoading: false });
     }, 20_000);
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [refreshData]);
 
   const reviewablePlans = useMemo(
     () => state.plans.filter((plan) => plan.status === "pending_approval"),

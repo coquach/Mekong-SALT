@@ -1,70 +1,61 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-// Import Layout chính
-import { GlobalLayout } from './components/layout/GlobalLayout';
+import { GlobalLayout } from "./components/layout/GlobalLayout";
+import { RenderErrorBoundary } from "./components/ui/RenderErrorBoundary";
 
-// Import tất cả các Pages đã build
-import { InformationHub } from './pages/InformationHub';
-import { Dashboard } from './pages/Dashboard';
-import { InteractiveMap } from './pages/InteractiveMap';
-import { StrategyOrchestration } from './pages/StrategyOrchestration';
-import { ActionLogs } from './pages/ActionLogs';
-import { History } from './pages/History';
+const InformationHub = lazy(() => import("./pages/InformationHub"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const InteractiveMap = lazy(() => import("./pages/InteractiveMap"));
+const StrategyOrchestration = lazy(() => import("./pages/StrategyOrchestration"));
+const ActionLogs = lazy(() => import("./pages/ActionLogs"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const History = lazy(() => import("./pages/History"));
 
-/**
- * UTILITY COMPONENT: ScrollToTop
- * Giúp tự động cuộn lên đầu trang khi chuyển Route.
- * Một chi tiết nhỏ nhưng cực kỳ quan trọng cho trải nghiệm người dùng (UX).
- */
+const RouteFallback = () => (
+  <div className="mx-auto w-full max-w-425 px-4 py-6 lg:px-10">
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
+      <div className="space-y-3">
+        <div className="h-3 w-24 rounded-full bg-slate-200" />
+        <div className="h-8 w-2/3 rounded-full bg-slate-200" />
+        <div className="h-3 w-full rounded-full bg-slate-100" />
+        <div className="h-3 w-5/6 rounded-full bg-slate-100" />
+      </div>
+    </div>
+  </div>
+);
+
 const ScrollToTop = () => {
   const { pathname } = useLocation();
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
+
   return null;
 };
 
-/**
- * APP COMPONENT
- * -------------
- * - Thiết lập hệ thống Routing sử dụng React Router v6.
- * - GlobalLayout bọc bên ngoài để giữ Sidebar và Header cố định.
- * - Các trang con (Outlet) sẽ thay đổi nội dung bên trong vùng Main.
- */
 function App() {
   return (
     <BrowserRouter>
-      {/* Đảm bảo mỗi lần chuyển trang đều bắt đầu từ đỉnh trang */}
       <ScrollToTop />
-      
-      <Routes>
-        {/* Định nghĩa GlobalLayout là cha của các trang nội dung */}
-        <Route element={<GlobalLayout />}>
-          
-          {/* 1. Trang chủ - Information Hub */}
-          <Route path="/" element={<InformationHub />} />
-          
-          {/* 2. Trang Dashboard chính */}
-          <Route path="/dashboard" element={<Dashboard />} />
-          
-          {/* 3. Trang Bản đồ tương tác */}
-          <Route path="/map" element={<InteractiveMap />} />
-          
-          {/* 4. Trang logic AI (Agent Logic / Planning) */}
-          <Route path="/strategy" element={<StrategyOrchestration />} />
-          
-          {/* 5. Trang nhật ký hành động (Action Logs) */}
-          <Route path="/logs" element={<ActionLogs />} />
-          
-          {/* 6. Trang phân tích lịch sử (History Deep Dive) */}
-          <Route path="/history" element={<History />} />
 
-          {/* Cấu hình fallback: Nếu người dùng nhập sai URL, tự động quay về Dashboard */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          
-        </Route>
-      </Routes>
+      <RenderErrorBoundary fallback={<RouteFallback />}>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route element={<GlobalLayout />}>
+              <Route path="/" element={<InformationHub />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/map" element={<InteractiveMap />} />
+              <Route path="/strategy" element={<StrategyOrchestration />} />
+              <Route path="/logs" element={<ActionLogs />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/history" element={<History />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </RenderErrorBoundary>
     </BrowserRouter>
   );
 }
