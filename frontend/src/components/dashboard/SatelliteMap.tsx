@@ -312,6 +312,12 @@ export function SatelliteMap({
 }: SatelliteMapProps) {
   const stationsToRender = stations ?? [];
   const gatesToRender = gates ?? [];
+  const validStationsToRender = stationsToRender.filter(
+    (station) => Number.isFinite(station.latitude) && Number.isFinite(station.longitude),
+  );
+  const validGatesToRender = gatesToRender.filter(
+    (gate) => Number.isFinite(gate.latitude) && Number.isFinite(gate.longitude),
+  );
 
   return (
     <div className="w-full h-full relative group">
@@ -328,7 +334,7 @@ export function SatelliteMap({
         />
 
         {layers.stations &&
-          stationsToRender.map((station) => (
+          validStationsToRender.map((station) => (
             <Marker
               key={station.id}
               position={[station.latitude, station.longitude]}
@@ -380,7 +386,7 @@ export function SatelliteMap({
           ))}
 
         {layers.gates &&
-          gatesToRender.map((gate) => {
+          validGatesToRender.map((gate) => {
             const latitude = toNumber(gate.latitude);
             const longitude = toNumber(gate.longitude);
             if (latitude === null || longitude === null) {

@@ -13,6 +13,7 @@ from app.models.weather import WeatherSnapshot
 from app.schemas.agent import GeneratedActionPlan, PlanStep
 from app.schemas.risk import RiskEvaluationFilters
 from app.services.active_monitoring_service import run_monitoring_goal_cycle
+from app.services.agent_trace_service import normalize_agent_run_trace
 from app.services.risk_service import evaluate_current_risk
 
 
@@ -20,6 +21,51 @@ from app.services.risk_service import evaluate_current_risk
 async def test_agent_plans_route_removed(client):
     response = await client.get("/api/v1/agent/plans")
     assert response.status_code == 404
+
+
+def test_normalize_agent_run_trace_produces_stable_shape():
+    normalized = normalize_agent_run_trace(
+        {
+            "incident_decision": "not-a-dict",
+            "plan_decision": {
+                "decision": "created",
+                "reason": None,
+                "action_plan_id": 123,
+                "validation": {
+                    "is_valid": True,
+                    "errors": ["one", None, "two"],
+                    "warnings": "ignore-me",
+                },
+            },
+            "retrieval_trace": {
+                "total_evidence": "4",
+                "source_counts": {"rag": "3", "bad": "skip"},
+                "top_citations": [
+                    {
+                        "citation": "Doc A",
+                        "source": "rag",
+                        "score": "0.92",
+                        "rank": 1,
+                    },
+                    "ignored-entry",
+                ],
+            },
+            "planning_transition_log": [
+                {"node": "observe", "status": "completed"},
+                "bad-entry",
+            ],
+        }
+    )
+
+    assert normalized["incident_decision"] == {"decision": None, "reason": None}
+    assert normalized["plan_decision"]["action_plan_id"] == "123"
+    assert normalized["plan_decision"]["validation"]["errors"] == ["one", "two"]
+    assert normalized["plan_decision"]["validation"]["warnings"] == []
+    assert normalized["retrieval_trace"]["total_evidence"] == 4
+    assert normalized["retrieval_trace"]["source_counts"] == {"rag": 3}
+    assert normalized["retrieval_trace"]["top_citations"][0]["citation"] == "Doc A"
+    assert normalized["planning_transition_log"][0]["node"] == "observe"
+    assert normalized["operator_summary"] is not None
 
 
 async def _persist_stub_weather_snapshot(

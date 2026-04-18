@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
-import { AISentinel } from "../components/dashboard/AISentinel";
+import { AISentinelPanel } from "../components/dashboard/AISentinelPanel";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -394,7 +394,7 @@ export function StrategyOrchestration() {
       {isBootstrapping ? <SkeletonCards count={3} /> : null}
 
       <div className={`${isBootstrapping ? "hidden" : ""}`}>
-        <AISentinel
+        <AISentinelPanel
           agentRun={latestPlanningRun}
           streamStatus={reasoningStreamStatus}
           lastStreamAt={state.lastRefreshAt}

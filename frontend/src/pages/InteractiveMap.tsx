@@ -56,9 +56,12 @@ function parseApiError(error: unknown): string {
   return "Không tải được dữ liệu bản đồ.";
 }
 
-function toNumber(value: string | number): number {
+function toNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatValue(value: string | number | null | undefined, digits = 2): string {
@@ -150,12 +153,22 @@ export function InteractiveMap() {
     }
 
     try {
-      const [stations, gates, latestReadings, incidents] = await Promise.all([
+      const [stationsResult, gatesResult, latestReadingsResult, incidentsResult] = await Promise.allSettled([
         getStations({ limit: 300 }, signal),
         getGates({ limit: 100 }, signal),
         getLatestReadings({ limit: 500 }, signal),
         getIncidents({ limit: 30 }, signal),
       ]);
+
+      const stations = stationsResult.status === "fulfilled" ? stationsResult.value : { items: [], count: 0 };
+      const gates = gatesResult.status === "fulfilled" ? gatesResult.value : { items: [], count: 0 };
+      const latestReadings =
+        latestReadingsResult.status === "fulfilled" ? latestReadingsResult.value : { items: [], count: 0 };
+      const incidents = incidentsResult.status === "fulfilled" ? incidentsResult.value : { items: [], count: 0 };
+
+      const firstFailure = [stationsResult, gatesResult, latestReadingsResult, incidentsResult].find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
 
       const selectedStationIdCandidate =
         stationIdOverride ??
@@ -182,7 +195,7 @@ export function InteractiveMap() {
       setState((previous) => ({
         ...previous,
         loading: false,
-        error: null,
+        error: firstFailure ? parseApiError(firstFailure.reason) : null,
         stations: stations.items,
         gates: gates.items,
         latestReadings: latestReadings.items,
@@ -221,29 +234,37 @@ export function InteractiveMap() {
 
   const mapStations = useMemo<MapStation[]>(
     () =>
-      state.stations.map((station) => {
+      state.stations.flatMap((station) => {
         const reading = readingsByStationId.get(station.id);
         const latestSalinityGl =
           reading?.salinity_gl !== null && reading?.salinity_gl !== undefined
             ? Number(reading.salinity_gl)
             : null;
         const derivedRisk = deriveRiskLevel(latestSalinityGl);
+        const latitude = toNumber(station.latitude);
+        const longitude = toNumber(station.longitude);
 
-        return {
-          id: station.id,
-          code: station.code,
-          name: station.name,
-          latitude: toNumber(station.latitude),
-          longitude: toNumber(station.longitude),
-          status: station.status,
-          stationType: station.station_type,
-          stationMetadata: station.station_metadata,
-          latestSalinityGl,
-          riskLevel:
-            state.selectedRisk?.assessment.station_id === station.id
-              ? state.selectedRisk.assessment.risk_level
-              : derivedRisk,
-        };
+        if (latitude === null || longitude === null) {
+          return [] as MapStation[];
+        }
+
+        return [
+          {
+            id: station.id,
+            code: station.code,
+            name: station.name,
+            latitude,
+            longitude,
+            status: station.status,
+            stationType: station.station_type,
+            stationMetadata: station.station_metadata,
+            latestSalinityGl,
+            riskLevel:
+              state.selectedRisk?.assessment.station_id === station.id
+                ? state.selectedRisk.assessment.risk_level
+                : derivedRisk,
+          },
+        ];
       }),
     [state.stations, readingsByStationId, state.selectedRisk],
   );
@@ -253,7 +274,7 @@ export function InteractiveMap() {
       state.gates.flatMap((gate) => {
           const latitude = toNumber(gate.latitude);
           const longitude = toNumber(gate.longitude);
-          if (latitude === 0 || longitude === 0) {
+          if (latitude === null || longitude === null) {
             return [] as MapGate[];
           }
 

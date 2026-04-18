@@ -66,7 +66,7 @@ def _classify_feedback(
         return _build_feedback(
             outcome_class="inconclusive",
             status="insufficient_new_observation",
-            summary="No comparable readings were available for feedback evaluation.",
+            summary="Không có cặp reading tương ứng để đánh giá kết quả vận hành.",
         )
     if latest.recorded_at <= baseline.recorded_at:
         return _build_feedback(
@@ -74,7 +74,7 @@ def _classify_feedback(
             status="insufficient_new_observation",
             baseline_salinity_dsm=baseline.salinity_dsm,
             latest_salinity_dsm=latest.salinity_dsm,
-            summary="No newer sensor reading is available after the simulated actions.",
+            summary="Chưa có reading mới hơn sau các hành động mô phỏng.",
         )
 
     delta = latest.salinity_dsm - baseline.salinity_dsm
@@ -85,7 +85,7 @@ def _classify_feedback(
             baseline_salinity_dsm=baseline.salinity_dsm,
             latest_salinity_dsm=latest.salinity_dsm,
             delta_dsm=delta,
-            summary="Latest observed salinity is lower than the baseline reading.",
+            summary="Độ mặn quan sát gần nhất đã giảm so với reading nền.",
         )
     if delta == Decimal("0.00"):
         return _build_feedback(
@@ -94,7 +94,7 @@ def _classify_feedback(
             baseline_salinity_dsm=baseline.salinity_dsm,
             latest_salinity_dsm=latest.salinity_dsm,
             delta_dsm=delta,
-            summary="Latest observed salinity is unchanged after simulated actions.",
+            summary="Độ mặn quan sát gần nhất không thay đổi sau hành động mô phỏng.",
         )
     return _build_feedback(
         outcome_class="failed_execution",
@@ -102,7 +102,7 @@ def _classify_feedback(
         baseline_salinity_dsm=baseline.salinity_dsm,
         latest_salinity_dsm=latest.salinity_dsm,
         delta_dsm=delta,
-        summary="Latest observed salinity did not decrease after simulated actions.",
+        summary="Độ mặn quan sát gần nhất chưa giảm sau hành động mô phỏng.",
     )
 
 
@@ -232,13 +232,13 @@ async def evaluate_execution_feedback(
         return _build_feedback(
             outcome_class="failed_plan",
             status="insufficient_new_observation",
-            summary="Risk assessment is missing station context for feedback evaluation.",
+            summary="Risk assessment chưa có ngữ cảnh trạm để đánh giá feedback.",
         )
     if plan.risk_assessment.based_on_reading_id is None:
         return _build_feedback(
             outcome_class="failed_plan",
             status="insufficient_new_observation",
-            summary="Risk assessment is missing a baseline reading for feedback evaluation.",
+            summary="Risk assessment chưa có reading nền để đánh giá feedback.",
         )
 
     baseline, latest = await _resolve_baseline_latest_readings(session, plan)

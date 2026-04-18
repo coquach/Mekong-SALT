@@ -15,6 +15,11 @@ type PlanningTrace = {
     decision?: string;
     reason?: string;
     action_plan_id?: string;
+    validation?: {
+      is_valid?: boolean;
+      errors?: string[];
+      warnings?: string[];
+    };
   };
   retrieval_trace?: {
     total_evidence?: number;
@@ -144,6 +149,45 @@ function formatCompactId(value: string | null | undefined): string {
   return value.length > 10 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
+function getString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function getStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function getCountEntries(value: unknown): Array<{ key: string; value: number }> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  return Object.entries(value)
+    .map(([key, rawValue]) => {
+      const numericValue = typeof rawValue === "number" ? rawValue : Number(rawValue);
+      return { key, value: numericValue };
+    })
+    .filter((item) => Number.isFinite(item.value) && item.value > 0)
+    .sort((left, right) => right.value - left.value);
+}
+
+function getDecisionTone(planDecision: PlanningTrace["plan_decision"] | undefined): "critical" | "warning" | "optimal" | "neutral" {
+  const validation = planDecision?.validation;
+  if (planDecision?.decision === "failed" || validation?.is_valid === false || getStringList(validation?.errors).length > 0) {
+    return "critical";
+  }
+  if (getStringList(validation?.warnings).length > 0 || planDecision?.decision === "held_draft") {
+    return "warning";
+  }
+  if (planDecision?.decision === "created") {
+    return "optimal";
+  }
+  return "neutral";
+}
+
 function getStageState(
   stageNode: string,
   completedNodes: Set<string>,
@@ -220,14 +264,19 @@ function getProgressWidthClass(progressPercent: number): string {
 
 export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReasoningPanelProps) => {
   const trace = getPlanningTrace(agentRun);
-  const transitions = trace?.planning_transition_log ?? [];
+  const transitions = Array.isArray(trace?.planning_transition_log) ? trace.planning_transition_log : [];
   const retrievalTrace = trace?.retrieval_trace;
   const evidenceCount = retrievalTrace?.total_evidence ?? 0;
-  const citationsCount = retrievalTrace?.top_citations?.length ?? 0;
-  const topCitations = retrievalTrace?.top_citations?.slice(0, 3) ?? [];
-  const objective = getRunObjective(agentRun);
+  const citationsCount = Array.isArray(retrievalTrace?.top_citations) ? retrievalTrace.top_citations.length : 0;
+  const topCitations = Array.isArray(retrievalTrace?.top_citations)
+    ? retrievalTrace.top_citations.slice(0, 3)
+    : [];
+  const sourceBreakdown = getCountEntries(retrievalTrace?.source_counts).slice(0, 4);
+  const objective = getString(getRunObjective(agentRun));
   const planDecision = trace?.plan_decision;
   const incidentDecision = trace?.incident_decision;
+  const validationErrors = getStringList(planDecision?.validation?.errors);
+  const validationWarnings = getStringList(planDecision?.validation?.warnings);
   const statusLabel = agentRun ? `Run ${agentRun.status}` : "Awaiting agent run";
   const runAt = agentRun?.finished_at ?? agentRun?.started_at ?? null;
   const completedNodes = new Set(
@@ -242,6 +291,23 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
   const completionPercent = Math.round(
     (Math.min(completedNodes.size, PLANNING_STAGES.length) / PLANNING_STAGES.length) * 100,
   );
+  const decisionTone = getDecisionTone(planDecision);
+  const decisionHeadline =
+    decisionTone === "critical"
+      ? "Không nên duyệt"
+      : decisionTone === "warning"
+        ? "Duyệt có điều kiện"
+        : decisionTone === "optimal"
+          ? "Có thể duyệt"
+          : "Chưa đủ tín hiệu";
+  const decisionSummary =
+    decisionTone === "critical"
+      ? "Policy guard hoặc trace mới đang báo rủi ro. Nên xem lại plan trước khi approve."
+      : decisionTone === "warning"
+        ? "Plan đã hợp lệ một phần nhưng vẫn còn cảnh báo từ trace hoặc validation."
+        : decisionTone === "optimal"
+          ? "Trace và validation đang nghiêng về trạng thái sẵn sàng duyệt."
+          : "Chưa có đủ trace mới để kết luận rõ ràng.";
   const visualStages = PLANNING_STAGES.map((stage, index) => ({
     ...stage,
     index: index + 1,
@@ -256,53 +322,64 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
             <BrainCircuit size={28} strokeWidth={2.5} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-black tracking-tight leading-none">
-              AI Sentinel
-            </h3>
+            <h3 className="text-lg font-black tracking-tight leading-none">AI Sentinel</h3>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">
-              Trace theo từng node, cập nhật từ run mới nhất
+              Trace theo node, evidence và policy guard của run mới nhất
             </p>
           </div>
         </div>
-        <Badge className={`${getStreamStatusClass(streamStatus)} text-[9px] py-0.5 px-2 font-bold`}>
-          {getStreamStatusText(streamStatus)}
-        </Badge>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <Badge className={`${getStreamStatusClass(streamStatus)} text-[9px] py-0.5 px-2 font-bold`}>
+            {getStreamStatusText(streamStatus)}
+          </Badge>
+          <Badge variant={decisionTone} className="text-[9px] py-0.5 px-2 font-bold">
+            {decisionHeadline}
+          </Badge>
+        </div>
       </div>
 
       <div className="relative z-10 space-y-5 flex-1 min-h-0">
         <div className="rounded-card border border-white/10 bg-white/5 p-5 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Terminal size={16} className="text-mekong-cyan" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {statusLabel}
-              </span>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center gap-2">
+                <Terminal size={16} className="text-mekong-cyan" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{statusLabel}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-slate-200">
+                {objective ? `Mục tiêu: ${objective}` : "Đang chờ trace agent mới từ backend."}
+              </p>
+              <p className="text-[12px] leading-relaxed text-slate-400">{decisionSummary}</p>
             </div>
-            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] shrink-0">
               <Clock3 size={14} />
               {formatTime(lastStreamAt)}
             </div>
           </div>
 
-          <p className="text-sm leading-relaxed text-slate-200">
-            {objective ? `Mục tiêu: ${objective}` : "Đang chờ trace agent mới từ backend."}
-          </p>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Bước hoàn tất</p>
+              <p className="mt-2 text-lg font-black text-white">{completedNodes.size}/{PLANNING_STAGES.length}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Tiến độ</p>
+              <p className="mt-2 text-lg font-black text-white">{completionPercent}%</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Bằng chứng</p>
+              <p className="mt-2 text-lg font-black text-white">{evidenceCount}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Citations</p>
+              <p className="mt-2 text-lg font-black text-white">{citationsCount}</p>
+            </div>
+          </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                <Sparkles size={13} className="text-mekong-cyan" />
-                {completedNodes.size}/{PLANNING_STAGES.length} bước
-              </div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {completionPercent}%
-              </div>
-            </div>
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className={`h-full rounded-full bg-linear-to-r from-mekong-teal via-mekong-cyan to-mekong-mint transition-all duration-700 ${getProgressWidthClass(completionPercent)}`}
-              />
-            </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className={`h-full rounded-full bg-linear-to-r from-mekong-teal via-mekong-cyan to-mekong-mint transition-all duration-700 ${getProgressWidthClass(completionPercent)}`}
+            />
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -310,14 +387,21 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
               Plan {planDecision?.decision ?? "pending"}
             </Badge>
             <Badge variant="neutral" className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5">
-              Evidence {evidenceCount}
-            </Badge>
-            <Badge variant="optimal" className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5">
-              Citations {citationsCount}
-            </Badge>
-            <Badge className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5 text-slate-300">
               Trace {transitions.length}
             </Badge>
+            <Badge variant="optimal" className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5">
+              Nodes {completedNodes.size}
+            </Badge>
+            {validationErrors.length > 0 ? (
+              <Badge variant="critical" className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5">
+                {validationErrors.length} lỗi
+              </Badge>
+            ) : null}
+            {validationWarnings.length > 0 ? (
+              <Badge variant="warning" className="border-white/10 bg-white/10 text-[9px] px-2 py-0.5">
+                {validationWarnings.length} cảnh báo
+              </Badge>
+            ) : null}
           </div>
 
           {topCitations.length > 0 ? (
@@ -331,8 +415,56 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
                 </Badge>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <p className="text-[11px] font-semibold text-slate-500">Chưa có citations nổi bật trong trace.</p>
+          )}
         </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Incident decision</p>
+            <p className="text-sm font-black text-white mt-2">{incidentDecision?.decision ?? "unknown"}</p>
+            <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
+              {incidentDecision?.reason ?? "Chưa có quyết định sự cố."}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Plan decision</p>
+            <p className="text-sm font-black text-white mt-2">{planDecision?.decision ?? "pending"}</p>
+            <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
+              {planDecision?.reason ?? "Đang chờ agent tạo hoặc xác thực kế hoạch."}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Validation</p>
+            <p className="text-sm font-black text-white mt-2">
+              {validationErrors.length > 0
+                ? "failed"
+                : validationWarnings.length > 0
+                  ? "warning"
+                  : planDecision?.validation?.is_valid === false
+                    ? "failed"
+                    : "passed"}
+            </p>
+            <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
+              {validationErrors[0] ?? validationWarnings[0] ?? "Policy guard không có lỗi nổi bật."}
+            </p>
+          </div>
+        </div>
+
+        {sourceBreakdown.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {sourceBreakdown.map((entry) => (
+              <Badge
+                key={entry.key}
+                variant="neutral"
+                className="border-white/10 bg-white/5 text-[9px] px-2 py-0.5 text-slate-300"
+              >
+                {entry.key}: {entry.value}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar space-y-3">
           {visualStages.map((stage, index) => (

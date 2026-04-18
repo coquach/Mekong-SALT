@@ -768,9 +768,15 @@ export function Dashboard() {
   const riskLevelLabel = useMemo(() => {
     const level = state.risk?.assessment.risk_level;
     if (level) {
-      return `Risk: ${level}`;
+      const labels: Record<string, string> = {
+        safe: "An toàn",
+        warning: "Cảnh báo",
+        danger: "Nguy cơ cao",
+        critical: "Khẩn cấp",
+      };
+      return `Rủi ro: ${labels[level] ?? level}`;
     }
-    return "Risk: unknown";
+    return "Rủi ro: chưa rõ";
   }, [state.risk?.assessment.risk_level]);
 
   const latestPendingApprovalPlan = useMemo(
@@ -892,61 +898,74 @@ export function Dashboard() {
         </>
       ) : null}
 
-      <section className={`relative overflow-hidden bg-[#00203F] rounded-4xl p-7 lg:p-9 text-white shadow-2xl border border-white/10 ${isBootstrapping ? "hidden" : ""}`}>
-        <div className="absolute top-0 right-0 w-125 h-full bg-mekong-cyan/3 rounded-full blur-[120px] pointer-events-none" />
-        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
-          <div className="flex items-center gap-6 flex-1 min-w-0">
-            <div className="relative shrink-0">
-              <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-mekong-cyan border border-white/10 shadow-inner">
-                <Activity size={28} strokeWidth={2.5} />
-              </div>
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-mekong-mint rounded-full border-2 border-[#00203F] animate-pulse" />
+      <section
+        className={`relative overflow-hidden rounded-4xl border border-white/10 bg-linear-to-br from-[#00203F] via-[#002845] to-[#05304b] px-6 py-6 text-white shadow-2xl lg:px-8 lg:py-7 ${isBootstrapping ? "hidden" : ""}`}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(117,231,254,0.15),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(0,200,180,0.10),transparent_28%)] pointer-events-none" />
+        <div className="relative z-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300">
+              <Activity size={13} className="text-mekong-cyan" />
+              <span>Dashboard thời gian thực</span>
             </div>
-            <div className="space-y-2 truncate">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] opacity-80 leading-none">
-                Dashboard thời gian thực
-              </p>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2 className="text-xl lg:text-2xl font-black tracking-tight whitespace-nowrap">
-                  Mục tiêu độ mặn sầu riêng &lt; 0.5 g/L
-                </h2>
-                <Badge className="bg-mekong-mint/10 text-mekong-mint border-mekong-mint/20 text-[9px] py-0.5 px-2 italic font-bold">
-                  {state.loading ? "Đang tải..." : riskLevelLabel}
-                </Badge>
-                <Badge className={`${streamBadgeClass} text-[9px] py-0.5 px-2 font-bold`}>
-                  {streamBadgeText}
-                </Badge>
-              </div>
 
-              <div className="flex flex-wrap gap-3 pt-4">
-                <Button variant="cyan" size="sm" onClick={() => navigate("/map")}>
-                  Bản đồ
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/strategy")}>
-                  Điều phối
-                </Button>
-                <Button variant="navy" size="sm" onClick={() => navigate("/logs")}>
-                  Nhật ký
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setReloadVersion((previous) => previous + 1)}>
-                  Làm mới
-                </Button>
-              </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h2 className="max-w-4xl text-[clamp(1.35rem,2vw,2.05rem)] font-black leading-[1.08] tracking-tight">
+                Mục tiêu độ mặn sầu riêng &lt; 0.5 g/L
+              </h2>
+              <Badge className="border border-white/15 bg-white/10 px-2.5 py-1 text-[9px] font-bold text-white shadow-none">
+                {state.loading ? "Đang tải..." : riskLevelLabel}
+              </Badge>
+              <Badge className={`border border-white/15 ${streamBadgeClass} px-2.5 py-1 text-[9px] font-bold shadow-none`}>
+                {streamBadgeText}
+              </Badge>
+            </div>
+
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
+              Chỉ số hiện tại, xu hướng và luồng realtime được gom vào một màn để operator nhìn nhanh:
+              đang xảy ra gì, có cần can thiệp không, và dữ liệu nào đang đẩy quyết định hiện tại.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button variant="cyan" size="sm" onClick={() => navigate("/map")}>
+                Bản đồ
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate("/strategy")}>
+                Điều phối
+              </Button>
+              <Button variant="navy" size="sm" onClick={() => navigate("/logs")}>
+                Nhật ký
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setReloadVersion((previous) => previous + 1)}>
+                Làm mới
+              </Button>
             </div>
           </div>
-          <div className="flex flex-col items-center lg:items-end lg:px-12 border-l border-white/5">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">
-              Biến thiên hiện tại
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-black text-mekong-cyan tracking-tighter">
-                {formatSigned(trendDeltaGl, 2)}
-              </span>
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">g/L</span>
+
+          <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_12px_48px_-24px_rgba(0,0,0,0.8)] backdrop-blur-sm sm:grid-cols-3 lg:grid-cols-1">
+            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Biến thiên hiện tại</p>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-3xl font-black tracking-tight text-mekong-cyan">
+                  {formatSigned(trendDeltaGl, 2)}
+                </span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-300">g/L</span>
+              </div>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 mt-2">
-              Sự kiện gần nhất: {formatTime(state.lastStreamAt)}
-            </p>
+
+            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Lần phát tín hiệu</p>
+              <p className="mt-2 text-xl font-black tracking-tight text-white">
+                {formatTime(state.lastStreamAt)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Trạng thái dòng</p>
+              <p className="mt-2 text-sm font-black leading-snug text-white">
+                {trendText}
+              </p>
+            </div>
           </div>
         </div>
       </section>

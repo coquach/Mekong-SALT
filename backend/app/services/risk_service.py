@@ -95,6 +95,20 @@ async def evaluate_current_risk(
             before_recorded_at=reading.recorded_at,
             exclude_reading_id=reading.id,
         )
+        trend_history = await reading_repo.list_history(
+            station_id=reading.station_id,
+            end_at=reading.recorded_at,
+            limit=3,
+        )
+        trend_window_salinity_dsm = [
+            item.salinity_dsm for item in reversed(trend_history)
+        ]
+        reading_age_minutes = _reading_age_minutes(reading.recorded_at)
+        previous_reading_gap_minutes = (
+            _reading_gap_minutes(previous_reading.recorded_at, reading.recorded_at)
+            if previous_reading is not None
+            else None
+        )
         weather_snapshot = await get_or_fetch_weather_snapshot(
             session,
             region=region,
@@ -108,12 +122,16 @@ async def evaluate_current_risk(
                 previous_salinity_dsm=(
                     previous_reading.salinity_dsm if previous_reading is not None else None
                 ),
+                trend_window_salinity_dsm=trend_window_salinity_dsm,
                 wind_speed_mps=(
                     weather_snapshot.wind_speed_mps if weather_snapshot is not None else None
                 ),
                 tide_level_m=(
                     weather_snapshot.tide_level_m if weather_snapshot is not None else None
                 ),
+                previous_reading_gap_minutes=previous_reading_gap_minutes,
+                reading_age_minutes=reading_age_minutes,
+                battery_level_pct=reading.battery_level_pct,
             )
         )
 
@@ -404,9 +422,9 @@ async def resolve_target_reading(
 
     candidate_readings.sort(
         key=lambda item: (
-            Decimal(item.salinity_dsm),
             item.recorded_at,
             item.created_at,
+            item.station_id,
         ),
         reverse=True,
     )
@@ -443,3 +461,26 @@ def _build_alert_message(bundle: RiskEvaluationBundle) -> str:
         f"/~{dsm_to_gl(bundle.reading.salinity_dsm)} g/L, "
         f"wind={wind_context}, tide={tide_context}."
     )
+
+
+def _reading_age_minutes(recorded_at: datetime) -> Decimal:
+    """Compute the age of one reading at evaluation time in minutes."""
+    recorded_at_utc = recorded_at if recorded_at.tzinfo is not None else recorded_at.replace(tzinfo=UTC)
+    age_seconds = (datetime.now(UTC) - recorded_at_utc).total_seconds()
+    return Decimal(str(max(age_seconds / 60.0, 0.0))).quantize(Decimal("0.01"))
+
+
+def _reading_gap_minutes(previous_recorded_at: datetime, current_recorded_at: datetime) -> Decimal:
+    """Compute the gap between two readings in minutes."""
+    previous_utc = (
+        previous_recorded_at
+        if previous_recorded_at.tzinfo is not None
+        else previous_recorded_at.replace(tzinfo=UTC)
+    )
+    current_utc = (
+        current_recorded_at
+        if current_recorded_at.tzinfo is not None
+        else current_recorded_at.replace(tzinfo=UTC)
+    )
+    gap_seconds = (current_utc - previous_utc).total_seconds()
+    return Decimal(str(max(gap_seconds / 60.0, 0.0))).quantize(Decimal("0.01"))

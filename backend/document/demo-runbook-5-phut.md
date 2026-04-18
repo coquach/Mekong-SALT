@@ -292,3 +292,25 @@ docker compose up -d
 - Nếu MQTT không ingest, kiểm tra broker `localhost:1883` và topic `mekong/sensors/readings`.
 - Nếu simulate bị timeout, tăng `--timeout-seconds`.
 - Nếu muốn demo sạch lại từ đầu, chỉ cần chạy lại `scripts/seed.py` vì seed đã tự reset dữ liệu demo.
+
+## 13) Ma Trận Đánh Giá Risk
+
+Bảng này dùng để giải thích nhanh cách engine hiện tại ra quyết định:
+
+| Tín hiệu đầu vào | Engine làm gì | Kết quả / ý nghĩa |
+|---|---|---|
+| Salinity dưới `1.00 dS/m` | Gán `safe` | Mức an toàn, chưa cần alert |
+| Salinity từ `1.00` đến dưới `2.50 dS/m` | Gán `warning` | Bắt đầu theo dõi chặt hơn |
+| Salinity từ `2.50` đến dưới `4.00 dS/m` | Gán `danger` | Cần cảnh báo và chuẩn bị phản ứng |
+| Salinity từ `4.00 dS/m` trở lên | Gán `critical` | Mức nguy cấp, cần xử lý ngay |
+| Trend tăng mạnh | Đẩy risk lên 1 bậc nếu đủ ngưỡng | Phản ánh salinity đang xấu nhanh hơn |
+| Trend giảm | Ghi nhận trong rationale nhưng không kéo risk xuống dưới band salinity hiện tại | Tránh false negative khi nước vẫn còn mặn |
+| Wind/tide mạnh | Chỉ cộng thêm khi reading đã ít nhất là `warning` | Modifier, không được override reading an toàn |
+| Đánh giá theo region | Chọn reading mới nhất theo thời gian | Tránh lấy mẫu “mặn nhất” nhưng không phải mới nhất |
+
+Một cách đọc đơn giản:
+
+- `band salinity` là sàn.
+- `trend` chỉ làm xấu thêm.
+- `external context` chỉ khuếch đại.
+- `mới nhất` thắng, không phải `mặn nhất`.
