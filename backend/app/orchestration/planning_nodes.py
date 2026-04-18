@@ -15,6 +15,7 @@ from app.core.salinity_units import dsm_to_gl
 from app.agents.policy_guard import validate_generated_plan
 from app.agents.providers import PlanProvider
 from app.db.redis import RedisManager
+from app.repositories.gate import GateRepository
 from app.repositories.region import RegionRepository
 from app.schemas.retrieval import RetrievalContext
 from app.schemas.risk import RiskEvaluationFilters
@@ -91,6 +92,25 @@ async def retrieve_context_node(
         "top_citations": retrieval_context_payload["ranking_metadata"]["top_citations"],
     }
 
+    gate_repo = GateRepository(services.session)
+    gates = list(await gate_repo.list_by_region(risk_bundle.assessment.region_id, limit=25))
+    gate_targets = [
+        {
+            "id": str(gate.id),
+            "code": gate.code,
+            "name": gate.name,
+            "status": gate.status.value,
+            "station_id": str(gate.station_id) if gate.station_id is not None else None,
+            "station_code": gate.station.code if gate.station is not None else None,
+            "location_description": gate.location_description,
+        }
+        for gate in gates
+    ]
+    recommended_gate_target = next(
+        (gate for gate in gate_targets if gate["station_id"] == str(risk_bundle.assessment.station_id)),
+        gate_targets[0] if gate_targets else None,
+    )
+
     earth_engine_context = await get_or_fetch_earth_engine_context(
         region=region,
         station=risk_bundle.reading.station,
@@ -103,6 +123,7 @@ async def retrieve_context_node(
             "fallback_used": earth_engine_context.get("fallback_used", False),
             "dataset": earth_engine_context.get("dataset"),
         }
+    retrieval_trace["gate_targets"] = len(gate_targets)
 
     retrieved_context = {
         "region": {
@@ -157,6 +178,9 @@ async def retrieve_context_node(
         "retrieval_context": retrieval_context_payload,
         "knowledge_context": knowledge_context,
         "retrieval_trace": retrieval_trace,
+        "gate_targets": gate_targets,
+        "recommended_gate_target": recommended_gate_target,
+        "recommended_gate_target_code": recommended_gate_target["code"] if recommended_gate_target is not None else None,
     }
     return {"retrieved_context": retrieved_context}
 

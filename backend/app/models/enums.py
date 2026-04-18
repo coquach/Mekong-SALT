@@ -11,6 +11,15 @@ class StationStatus(str, Enum):
     MAINTENANCE = "maintenance"
 
 
+class GateStatus(str, Enum):
+    """Supported operational gate states."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    TRANSITIONING = "transitioning"
+    MAINTENANCE = "maintenance"
+
+
 class RiskLevel(str, Enum):
     """Deterministic risk levels for salinity intrusion."""
 

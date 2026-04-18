@@ -1,4 +1,4 @@
-"""Scenario-driven sensor simulation for triggering Mekong-SALT agentic flow."""
+"""Scenario-driven sensor publish stream for Mekong-SALT demo flows."""
 
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ class SensorScenarioProfile:
     warning_threshold_dsm: str
     critical_threshold_dsm: str
     frames: tuple[SensorFrame, ...]
+    post_planning_frame: SensorFrame | None = None
 
 
 @dataclass(slots=True)
@@ -64,43 +65,67 @@ class SimulationRuntimeConfig:
 SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
     "critical-timeout-replan": SensorScenarioProfile(
         key="critical-timeout-replan",
-        description="Escalating salinity to critical, leave pending plan untouched for timeout auto-reject.",
-        objective="Handle critical salinity escalation with mandatory HITL review.",
+        description="Tăng dần độ mặn lên mức nguy cấp, rồi giữ thêm một nhịp hậu planning để chờ auto-reject.",
+        objective="Xử lý leo thang độ mặn nguy cấp với luồng HITL bắt buộc và timeout tự từ chối.",
         warning_threshold_dsm="2.50",
         critical_threshold_dsm="4.00",
         frames=(
-            SensorFrame("3.90", "1.48", "29.20", "84.00", note="danger baseline"),
-            SensorFrame("4.45", "1.60", "29.40", "83.70", pause_seconds=0.8, note="cross critical"),
-            SensorFrame("5.15", "1.72", "29.70", "83.20", pause_seconds=0.8, note="sustain critical"),
+            SensorFrame("3.90", "1.48", "29.20", "84.00", note="mốc nguy cơ ban đầu"),
+            SensorFrame("4.45", "1.60", "29.40", "83.70", note="vượt ngưỡng nguy cấp"),
+            SensorFrame("5.15", "1.72", "29.70", "83.20", note="duy trì trạng thái nguy cấp"),
+        ),
+        post_planning_frame=SensorFrame(
+            "5.30",
+            "1.76",
+            "29.82",
+            "82.90",
+            note="nhịp hậu planning để mô phỏng cảnh báo kéo dài",
         ),
     ),
     "fast-approve-execute": SensorScenarioProfile(
         key="fast-approve-execute",
-        description="High-risk readings to create pending plan, then approve and simulate execution.",
-        objective="Generate an actionable high-risk plan for quick operator approval and simulation.",
+        description="Bắn dữ liệu rủi ro cao, tạo plan pending, sau đó duyệt và mô phỏng thực thi.",
+        objective="Sinh ra plan hành động có thể duyệt nhanh cho operator và kiểm tra luồng feedback.",
         warning_threshold_dsm="2.50",
         critical_threshold_dsm="4.00",
         frames=(
-            SensorFrame("3.35", "1.30", "28.90", "88.50", note="elevated warning"),
-            SensorFrame("4.05", "1.42", "29.10", "88.00", pause_seconds=0.8, note="danger threshold"),
-            SensorFrame("4.60", "1.55", "29.30", "87.60", pause_seconds=0.8, note="pending approval trigger"),
+            SensorFrame("3.35", "1.30", "28.90", "88.50", note="cảnh báo tăng"),
+            SensorFrame("4.05", "1.42", "29.10", "88.00", note="chạm ngưỡng nguy cấp"),
+            SensorFrame("4.60", "1.55", "29.30", "87.60", note="kích hoạt pending plan"),
+        ),
+        post_planning_frame=SensorFrame(
+            "4.18",
+            "1.46",
+            "29.18",
+            "87.40",
+            note="nhịp hậu planning trước khi duyệt plan",
         ),
     ),
     "rag-provenance-drilldown": SensorScenarioProfile(
         key="rag-provenance-drilldown",
-        description="Context-rich readings to trigger a fresh planning run for retrieval trace inspection.",
-        objective="Create a plan that requires evidence-grounded rationale for operator briefing.",
+        description="Đẩy dữ liệu giàu ngữ cảnh để kích hoạt planning mới và soi trace truy hồi.",
+        objective="Tạo plan cần lập luận có bằng chứng để briefing operator rõ hơn.",
         warning_threshold_dsm="2.30",
         critical_threshold_dsm="3.90",
         frames=(
-            SensorFrame("2.60", "1.12", "28.60", "91.00", note="warning onset"),
-            SensorFrame("3.20", "1.24", "28.80", "90.50", pause_seconds=0.8, note="rising trend"),
-            SensorFrame("3.85", "1.36", "29.00", "90.10", pause_seconds=0.8, note="near critical"),
+            SensorFrame("2.60", "1.12", "28.60", "91.00", note="mở đầu cảnh báo"),
+            SensorFrame("3.20", "1.24", "28.80", "90.50", note="xu hướng tăng"),
+            SensorFrame("3.85", "1.36", "29.00", "90.10", note="tiệm cận nguy cấp"),
+        ),
+        post_planning_frame=SensorFrame(
+            "3.92",
+            "1.38",
+            "29.04",
+            "89.85",
+            note="nhịp hậu planning để giữ trace truy hồi sống",
         ),
     ),
 }
 
 RUNTIME_CONFIG = SimulationRuntimeConfig()
+
+DEFAULT_FRAME_PAUSE_SECONDS = 10.0
+DEFAULT_TIMEOUT_SECONDS = 300
 
 def _to_query(params: dict[str, Any]) -> str:
     encoded = parse.urlencode(
@@ -108,23 +133,6 @@ def _to_query(params: dict[str, Any]) -> str:
         doseq=True,
     )
     return f"?{encoded}" if encoded else ""
-
-
-def _parse_iso_datetime(raw: Any) -> datetime | None:
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def _to_decimal(raw: Any, *, fallback: str) -> Decimal:
@@ -188,7 +196,7 @@ def _ensure_server_ready(base_url: str) -> None:
         _http_json(base_url=base_url, method="GET", path="/api/v1/health", timeout=10)
     except SimulationError as exc:
         raise SimulationError(
-            "Backend API is not reachable. Start server first with: "
+            "Backend API chưa sẵn sàng. Hãy khởi động server trước với: "
             "./.venv/Scripts/python.exe -m uvicorn main:app --reload"
         ) from exc
 
@@ -237,7 +245,7 @@ def _resolve_station_scope(base_url: str, *, station_code: str | None = None) ->
     )
     items = list((payload or {}).get("items") or [])
     if not items:
-        raise SimulationError("No station reading found. Run seed/setup first.")
+        raise SimulationError("Không tìm thấy reading của trạm nào. Hãy chạy seed/setup trước.")
 
     target = items[0]
     station = target.get("station") or {}
@@ -245,7 +253,7 @@ def _resolve_station_scope(base_url: str, *, station_code: str | None = None) ->
     station_id = str(station.get("id") or "")
     region_id = str(station.get("region_id") or "")
     if not code or not station_id or not region_id:
-        raise SimulationError("Station payload is missing code/id/region_id.")
+        raise SimulationError("Payload trạm thiếu code/id/region_id.")
 
     return {
         "station_code": code,
@@ -353,6 +361,7 @@ def _build_sensor_frame_payload(
     frame_index: int,
     station_code: str,
     recorded_at: datetime,
+    phase: str,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "station_code": station_code,
@@ -365,6 +374,7 @@ def _build_sensor_frame_payload(
         "context_payload": {
             "scenario": profile.key,
             "frame_index": frame_index,
+            "phase": phase,
             "frame_note": frame.note,
             "description": profile.description,
         },
@@ -431,12 +441,53 @@ def _publish_sensor_reading_via_mqtt(
         )
 
 
+def _emit_sensor_frame(
+    base_url: str,
+    *,
+    profile: SensorScenarioProfile,
+    frame: SensorFrame,
+    frame_index: int,
+    station_code: str,
+    recorded_at: datetime,
+    phase: str,
+    mqtt_client: Any | None = None,
+    mqtt_lib: Any | None = None,
+) -> dict[str, Any]:
+    payload = _build_sensor_frame_payload(
+        profile=profile,
+        frame=frame,
+        frame_index=frame_index,
+        station_code=station_code,
+        recorded_at=recorded_at,
+        phase=phase,
+    )
+
+    if RUNTIME_CONFIG.transport == "mqtt":
+        if mqtt_client is None or mqtt_lib is None:
+            raise SimulationError("Đang bật MQTT nhưng publisher chưa sẵn sàng.")
+        _publish_sensor_reading_via_mqtt(
+            mqtt_client=mqtt_client,
+            mqtt_lib=mqtt_lib,
+            payload=payload,
+        )
+    else:
+        _http_json(
+            base_url=base_url,
+            method="POST",
+            path="/api/v1/sensors/ingest",
+            payload=payload,
+        )
+
+    return payload
+
+
 def _ingest_sensor_profile(
     base_url: str,
     *,
     profile: SensorScenarioProfile,
     station_code: str,
     frame_pause_seconds: float,
+    phase: str,
 ) -> list[dict[str, Any]]:
     base_time = datetime.now(UTC)
     emitted: list[dict[str, Any]] = []
@@ -446,40 +497,30 @@ def _ingest_sensor_profile(
         mqtt_client, mqtt_lib = _open_mqtt_client()
 
     try:
+        elapsed_seconds = 0.0
         for index, frame in enumerate(profile.frames, start=1):
-            recorded_at = base_time + timedelta(seconds=index)
-            payload = _build_sensor_frame_payload(
+            recorded_at = base_time + timedelta(seconds=elapsed_seconds)
+            payload = _emit_sensor_frame(
+                base_url,
                 profile=profile,
                 frame=frame,
                 frame_index=index,
                 station_code=station_code,
                 recorded_at=recorded_at,
+                phase=phase,
+                mqtt_client=mqtt_client,
+                mqtt_lib=mqtt_lib,
             )
-
-            if RUNTIME_CONFIG.transport == "mqtt":
-                if mqtt_client is None or mqtt_lib is None:
-                    raise SimulationError("MQTT transport is enabled but publisher is not ready.")
-                _publish_sensor_reading_via_mqtt(
-                    mqtt_client=mqtt_client,
-                    mqtt_lib=mqtt_lib,
-                    payload=payload,
-                )
-            else:
-                _http_json(
-                    base_url=base_url,
-                    method="POST",
-                    path="/api/v1/sensors/ingest",
-                    payload=payload,
-                )
             emitted.append(payload)
             print(
                 f"[OK] Emitted frame {index}/{len(profile.frames)} via {RUNTIME_CONFIG.transport.upper()} "
                 f"salinity={_format_salinity_dual(frame.salinity_dsm)} note={frame.note or '-'}"
             )
 
-            pause = max(frame_pause_seconds, frame.pause_seconds)
+            pause = max(frame_pause_seconds, frame.pause_seconds, DEFAULT_FRAME_PAUSE_SECONDS)
             if index < len(profile.frames) and pause > 0:
                 time.sleep(pause)
+                elapsed_seconds += pause
     finally:
         if mqtt_client is not None:
             mqtt_client.loop_stop()
@@ -488,42 +529,63 @@ def _ingest_sensor_profile(
     return emitted
 
 
-def _inject_post_execute_reading_and_evaluate_feedback(
+def _ingest_follow_up_frame(
     base_url: str,
+    *,
+    profile: SensorScenarioProfile,
+    frame: SensorFrame,
+    station_code: str,
+    frame_index: int,
+    frame_pause_seconds: float,
+    phase: str,
+) -> dict[str, Any]:
+    base_time = datetime.now(UTC)
+    recorded_at = base_time.replace(microsecond=0)
+    mqtt_client: Any | None = None
+    mqtt_lib: Any | None = None
+    if RUNTIME_CONFIG.transport == "mqtt":
+        mqtt_client, mqtt_lib = _open_mqtt_client()
+
+    try:
+        payload = _emit_sensor_frame(
+            base_url,
+            profile=profile,
+            frame=frame,
+            frame_index=frame_index,
+            station_code=station_code,
+            recorded_at=recorded_at,
+            phase=phase,
+            mqtt_client=mqtt_client,
+            mqtt_lib=mqtt_lib,
+        )
+        print(
+            f"[OK] Emitted {phase} frame {frame_index} via {RUNTIME_CONFIG.transport.upper()} "
+            f"salinity={_format_salinity_dual(frame.salinity_dsm)} note={frame.note or '-'}"
+        )
+        return payload
+    finally:
+        if mqtt_client is not None:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+
+
+def _publish_post_execute_reading_via_mqtt(
     *,
     station_code: str,
     execution_batch_id: str,
     scenario_key: str,
 ) -> dict[str, Any]:
-    payload = _http_json(
-        base_url=base_url,
-        method="GET",
-        path=f"/api/v1/readings/latest{_to_query({'station_code': station_code, 'limit': 1})}",
-    )
-    items = list((payload or {}).get("items") or [])
-    if not items:
-        raise SimulationError(
-            f"Cannot inject post-execute reading: no latest reading for station '{station_code}'."
-        )
+    profile = SCENARIO_SENSOR_PROFILES.get(scenario_key)
+    if profile is None:
+        raise SimulationError(f"Không nhận diện được scenario profile '{scenario_key}'.")
 
-    latest = items[0]
-    latest_recorded_at = _parse_iso_datetime(latest.get("recorded_at"))
-    next_recorded_at = datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=2)
-    if latest_recorded_at is not None and next_recorded_at <= latest_recorded_at:
-        next_recorded_at = latest_recorded_at + timedelta(seconds=2)
+    base_frame = profile.post_planning_frame or profile.frames[-1]
+    target_salinity = max(Decimal("0.20"), _to_decimal(base_frame.salinity_dsm, fallback="3.00") - Decimal("0.45"))
+    target_water_level = max(Decimal("0.10"), _to_decimal(base_frame.water_level_m, fallback="1.20") - Decimal("0.03"))
+    target_temperature = _to_decimal(base_frame.temperature_c, fallback="29.00") - Decimal("0.10")
+    target_battery = max(Decimal("1.00"), _to_decimal(base_frame.battery_level_pct, fallback="82.00") - Decimal("0.20"))
 
-    latest_salinity = _to_decimal(latest.get("salinity_dsm"), fallback="3.00")
-    target_salinity = max(Decimal("0.20"), latest_salinity - Decimal("0.45"))
-
-    latest_water_level = _to_decimal(latest.get("water_level_m"), fallback="1.20")
-    target_water_level = max(Decimal("0.10"), latest_water_level - Decimal("0.03"))
-
-    latest_temperature = _to_decimal(latest.get("temperature_c"), fallback="29.00")
-    target_temperature = latest_temperature - Decimal("0.10")
-
-    latest_battery = _to_decimal(latest.get("battery_level_pct"), fallback="82.00")
-    target_battery = max(Decimal("1.00"), latest_battery - Decimal("0.20"))
-
+    next_recorded_at = datetime.now(UTC).replace(microsecond=0)
     ingest_payload: dict[str, Any] = {
         "station_code": station_code,
         "recorded_at": next_recorded_at.isoformat(),
@@ -534,60 +596,60 @@ def _inject_post_execute_reading_and_evaluate_feedback(
         "source": "demo-post-execute-feedback",
         "context_payload": {
             "scenario": scenario_key,
+            "execution_batch_id": execution_batch_id,
             "phase": "post_execute_feedback_probe",
-            "note": "Injected after simulated execution to make feedback evaluate comparable latest reading.",
+            "note": "Published after simulated execution so backend can observe a fresh MQTT reading.",
         },
     }
 
-    if latest.get("wind_speed_mps") is not None:
-        ingest_payload["wind_speed_mps"] = latest.get("wind_speed_mps")
-    if latest.get("wind_direction_deg") is not None:
-        ingest_payload["wind_direction_deg"] = latest.get("wind_direction_deg")
-    if latest.get("flow_rate_m3s") is not None:
-        ingest_payload["flow_rate_m3s"] = latest.get("flow_rate_m3s")
-
-    ingested = _http_json(
-        base_url=base_url,
-        method="POST",
-        path="/api/v1/sensors/ingest",
-        payload=ingest_payload,
+    follow_up_frame = SensorFrame(
+        salinity_dsm=ingest_payload["salinity_dsm"],
+        water_level_m=ingest_payload["water_level_m"],
+        temperature_c=ingest_payload["temperature_c"],
+        battery_level_pct=ingest_payload["battery_level_pct"],
+        wind_speed_mps=base_frame.wind_speed_mps,
+        wind_direction_deg=base_frame.wind_direction_deg,
+        flow_rate_m3s=base_frame.flow_rate_m3s,
+        note="post-execute feedback probe",
     )
+
+    payload = _build_sensor_frame_payload(
+        profile=profile,
+        frame=follow_up_frame,
+        frame_index=len(profile.frames) + 2,
+        station_code=station_code,
+        recorded_at=next_recorded_at,
+        phase="post_execute_feedback_probe",
+    )
+    payload.setdefault("context_payload", {})
+    if isinstance(payload["context_payload"], dict):
+        payload["context_payload"]["execution_batch_id"] = execution_batch_id
+        payload["context_payload"]["transport"] = "mqtt"
+
+    mqtt_client, mqtt_lib = _open_mqtt_client()
+    try:
+        _publish_sensor_reading_via_mqtt(
+            mqtt_client=mqtt_client,
+            mqtt_lib=mqtt_lib,
+            payload=payload,
+        )
+    finally:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+
     print(
-        "[OK] Injected post-execute reading "
-        f"station={station_code} salinity={_format_salinity_dual(ingest_payload['salinity_dsm'])}"
-    )
-
-    evaluated = _http_json(
-        base_url=base_url,
-        method="POST",
-        path=f"/api/v1/feedback/execution-batches/{execution_batch_id}/evaluate",
-    )
-    feedback = evaluated.get("feedback") or {}
-    print(
-        "[OK] Evaluated feedback "
-        f"batch={execution_batch_id} outcome={feedback.get('outcome_class')} "
-        f"status={feedback.get('status')}"
-    )
-
-    latest_feedback = _http_json(
-        base_url=base_url,
-        method="GET",
-        path=f"/api/v1/feedback/execution-batches/{execution_batch_id}/latest",
+        "[OK] Đã publish reading hậu execute "
+        f"station={station_code} salinity={_format_salinity_dual(payload['salinity_dsm'])}"
     )
 
     return {
-        "state": "evaluated",
+        "state": "published",
         "execution_batch_id": execution_batch_id,
-        "ingested_reading_id": ingested.get("id"),
-        "ingested_recorded_at": ingested.get("recorded_at"),
-        "ingested_salinity_dsm": ingested.get("salinity_dsm"),
-        "ingested_salinity_gl": str(dsm_to_gl(_to_decimal(ingested.get("salinity_dsm"), fallback="0.00"))),
-        "feedback_outcome_class": feedback.get("outcome_class"),
-        "feedback_status": feedback.get("status"),
-        "feedback_summary": feedback.get("summary"),
-        "replan_recommended": feedback.get("replan_recommended"),
-        "evaluation_id": (evaluated.get("evaluation") or {}).get("id"),
-        "latest_evaluation_id": (latest_feedback.get("evaluation") or {}).get("id"),
+        "published_recorded_at": payload.get("recorded_at"),
+        "published_salinity_dsm": payload.get("salinity_dsm"),
+        "published_salinity_gl": str(dsm_to_gl(_to_decimal(payload.get("salinity_dsm"), fallback="0.00"))),
+        "transport": "mqtt",
+        "note": "Backend sẽ tự xử lý theo luồng ingest/MQTT hiện có; script không gọi GET hay feedback endpoint.",
     }
 
 
@@ -654,7 +716,7 @@ def _wait_plan_generation_run_for_goal(
                 continue
             status = str(run.get("status") or "")
             if status == "failed":
-                raise SimulationError(f"Plan generation run failed for goal '{goal_name}'.")
+                raise SimulationError(f"Plan generation cho goal '{goal_name}' đã thất bại.")
             if status == "succeeded":
                 return True, run
         return False, None
@@ -676,69 +738,42 @@ def _prepare_plan_from_sensor_profile(
     frame_pause_seconds: float,
     close_open_incidents: bool,
 ) -> dict[str, Any]:
-    station_scope = _resolve_station_scope(base_url, station_code=station_code)
-    goal = _ensure_monitoring_goal(base_url, profile=profile, station_scope=station_scope)
-    goal_name = str(goal.get("name") or _goal_name(profile.key, station_scope["station_code"]))
-
-    closed_incident_ids: list[str] = []
-    if close_open_incidents:
-        closed_incident_ids = _close_open_incidents(
-            base_url,
-            region_id=station_scope["region_id"],
-        )
-
-    baseline_plan_ids = {
-        str(item.get("id"))
-        for item in _list_plans(base_url, limit=120)
-        if item.get("id")
-    }
-    baseline_run_ids = {
-        str(item.get("id"))
-        for item in _list_agent_runs(base_url, limit=120)
-        if item.get("id")
-    }
-
+    del timeout_seconds, close_open_incidents
+    station = str(station_code or "GOCONG-01")
     emitted_frames = _ingest_sensor_profile(
         base_url,
         profile=profile,
-        station_code=station_scope["station_code"],
+        station_code=station,
         frame_pause_seconds=frame_pause_seconds,
+        phase="primary",
     )
 
-    run = _wait_plan_generation_run_for_goal(
-        base_url,
-        goal_name=goal_name,
-        baseline_run_ids=baseline_run_ids,
-        timeout_seconds=timeout_seconds,
-    )
-
-    action_plan_id = str(run.get("action_plan_id") or "")
-    if action_plan_id:
-        plan = _http_json(base_url=base_url, method="GET", path=f"/api/v1/plans/{action_plan_id}")
-    else:
-        plan = _wait_new_pending_plan(
+    if profile.post_planning_frame is not None:
+        follow_up_index = len(emitted_frames) + 1
+        follow_up_pause = max(frame_pause_seconds, profile.post_planning_frame.pause_seconds, DEFAULT_FRAME_PAUSE_SECONDS)
+        if follow_up_pause > 0:
+            time.sleep(follow_up_pause)
+        follow_up_payload = _ingest_follow_up_frame(
             base_url,
-            baseline_plan_ids=baseline_plan_ids,
-            timeout_seconds=timeout_seconds,
+            profile=profile,
+            frame=profile.post_planning_frame,
+            station_code=station,
+            frame_index=follow_up_index,
+            frame_pause_seconds=frame_pause_seconds,
+            phase="post_planning",
         )
-        action_plan_id = str(plan.get("id") or "")
-
-    if not action_plan_id:
-        raise SimulationError("Plan generation run completed but did not expose an action plan id.")
+        emitted_frames.append(follow_up_payload)
 
     return {
         "profile_key": profile.key,
-        "goal_id": goal.get("id"),
-        "goal_name": goal_name,
-        "station_code": station_scope["station_code"],
-        "station_id": station_scope["station_id"],
-        "region_id": station_scope["region_id"],
-        "closed_incident_ids": closed_incident_ids,
+        "goal_name": _goal_name(profile.key, station),
+        "station_code": station,
         "emitted_frames": emitted_frames,
-        "trigger_run": run,
-        "plan": plan,
-        "plan_id": action_plan_id,
-        "baseline_plan_ids": baseline_plan_ids,
+        "closed_incident_ids": [],
+        "trigger_run": None,
+        "plan": None,
+        "plan_id": None,
+        "baseline_plan_ids": set(),
     }
 
 
@@ -748,14 +783,14 @@ def run_sensor_profile(
     scenario_key: str,
     timeout_seconds: int,
     station_code: str | None = None,
-    frame_pause_seconds: float = 1.2,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
-    """Emit scenario-specific sensor stream and wait until plan generation is triggered."""
+    """Emit scenario-specific sensor stream without polling server state."""
     profile = SCENARIO_SENSOR_PROFILES.get(scenario_key)
     if profile is None:
-        raise SimulationError(f"Unknown scenario profile '{scenario_key}'.")
+        raise SimulationError(f"Không nhận diện được scenario profile '{scenario_key}'.")
     prepared = _prepare_plan_from_sensor_profile(
         base_url,
         profile=profile,
@@ -767,20 +802,15 @@ def run_sensor_profile(
     return {
         "scenario": scenario_key,
         "station_code": prepared["station_code"],
-        "goal_id": prepared["goal_id"],
         "goal_name": prepared["goal_name"],
-        "plan_id": prepared["plan_id"],
-        "plan_status": str((prepared["plan"] or {}).get("status") or ""),
-        "trigger_run_id": prepared["trigger_run"].get("id"),
-        "trigger_run_status": prepared["trigger_run"].get("status"),
         "emitted_frame_count": len(prepared["emitted_frames"]),
-        "closed_incident_count": len(prepared["closed_incident_ids"]),
+        "closed_incident_count": 0,
         "post_execute_feedback": {
             "state": "skipped",
             "reason": (
-                "Sensor-profile mode does not execute plans, so no post-execute reading is injected."
+                "Chế độ publish-only không thực thi plan, nên không tiêm post-execute reading."
                 if inject_post_execute_reading
-                else "Post-execute reading injection is disabled."
+                else "Đã tắt tiêm post-execute reading."
             ),
         },
     }
@@ -791,7 +821,7 @@ def scenario_critical_timeout_replan(
     timeout_seconds: int,
     *,
     station_code: str | None = None,
-    frame_pause_seconds: float = 1.2,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
@@ -804,40 +834,21 @@ def scenario_critical_timeout_replan(
         frame_pause_seconds=frame_pause_seconds,
         close_open_incidents=close_open_incidents,
     )
-    pending_id = str(prepared["plan_id"])
-
-    _wait_plan_status(
-        base_url,
-        plan_id=pending_id,
-        target_statuses={"pending_approval", "rejected"},
-        timeout_seconds=max(timeout_seconds, 90),
-    )
-    rejected = _wait_plan_status(
-        base_url,
-        plan_id=pending_id,
-        target_statuses={"rejected"},
-        timeout_seconds=max(timeout_seconds, 120),
-    )
-    newer_pending = _wait_new_pending_plan(
-        base_url,
-        baseline_plan_ids=prepared["baseline_plan_ids"] | {pending_id},
-        timeout_seconds=timeout_seconds,
-    )
 
     return {
         "scenario": "critical-timeout-replan",
         "station_code": prepared["station_code"],
         "goal_name": prepared["goal_name"],
-        "pending_plan_id": pending_id,
-        "rejected_plan_status": rejected.get("status"),
-        "replacement_plan_id": newer_pending.get("id"),
-        "replacement_plan_status": newer_pending.get("status"),
+        "pending_plan_id": None,
+        "rejected_plan_status": None,
+        "replacement_plan_id": None,
+        "replacement_plan_status": None,
         "post_execute_feedback": {
             "state": "skipped",
             "reason": (
-                "This scenario keeps plans pending/rejected for timeout-replan behavior and does not execute."
+                "Scenario này chỉ publish sensor frames; backend worker tự xử lý timeout-replan."
                 if inject_post_execute_reading
-                else "Post-execute reading injection is disabled."
+                else "Đã tắt tiêm post-execute reading."
             ),
         },
     }
@@ -848,7 +859,7 @@ def scenario_fast_approve_execute(
     timeout_seconds: int,
     *,
     station_code: str | None = None,
-    frame_pause_seconds: float = 1.2,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
@@ -861,85 +872,42 @@ def scenario_fast_approve_execute(
         frame_pause_seconds=frame_pause_seconds,
         close_open_incidents=close_open_incidents,
     )
-
-    plan_id = str(prepared["plan_id"])
-    pending_plan = _wait_plan_status(
-        base_url,
-        plan_id=plan_id,
-        target_statuses={"pending_approval"},
-        timeout_seconds=timeout_seconds,
-    )
-
-    _http_json(
-        base_url=base_url,
-        method="POST",
-        path=f"/api/v1/approvals/plans/{plan_id}/decision?actor_name=demo-operator",
-        payload={"decision": "approved", "comment": "demo fast approval after sensor stream"},
-    )
-    print(f"[OK] Approved plan {plan_id}")
-
-    simulated = _http_json(
-        base_url=base_url,
-        method="POST",
-        path=f"/api/v1/execution-batches/plans/{plan_id}/simulate",
-        payload={"idempotency_key": f"demo-fast-approve-execute:{plan_id}"},
-    )
-    batch = simulated.get("batch") or {}
-    batch_id = batch.get("id")
-    print(f"[OK] Simulated execution batch created for plan {plan_id}")
-
-    post_execute = _wait_plan_status(
-        base_url,
-        plan_id=plan_id,
-        target_statuses={"simulated", "closed"},
-        timeout_seconds=timeout_seconds,
-    )
-
-    def _has_action_logs() -> tuple[bool, Any]:
-        logs = _http_json(
-            base_url=base_url,
-            method="GET",
-            path=f"/api/v1/actions/logs{_to_query({'plan_id': plan_id, 'limit': 20})}",
-        )
-        count = int((logs or {}).get("count") or 0)
-        return count > 0, logs
-
-    logs = _poll(
-        description=f"execution logs for plan {plan_id}",
-        timeout_seconds=timeout_seconds,
-        interval_seconds=4.0,
-        condition=_has_action_logs,
-    )
-
     post_execute_feedback: dict[str, Any]
     if inject_post_execute_reading:
-        if batch_id is None:
-            post_execute_feedback = {
-                "state": "skipped",
-                "reason": "Execution completed without batch_id; feedback probe not triggered.",
-            }
-        else:
-            post_execute_feedback = _inject_post_execute_reading_and_evaluate_feedback(
-                base_url,
-                station_code=prepared["station_code"],
-                execution_batch_id=str(batch_id),
-                scenario_key="fast-approve-execute",
-            )
+        feedback_frame = SCENARIO_SENSOR_PROFILES["fast-approve-execute"].post_planning_frame
+        if feedback_frame is None:
+            feedback_frame = SCENARIO_SENSOR_PROFILES["fast-approve-execute"].frames[-1]
+        follow_up_payload = _ingest_follow_up_frame(
+            base_url,
+            profile=SCENARIO_SENSOR_PROFILES["fast-approve-execute"],
+            frame=feedback_frame,
+            station_code=prepared["station_code"],
+            frame_index=len(prepared["emitted_frames"]) + 1,
+            frame_pause_seconds=frame_pause_seconds,
+            phase="post_execute_feedback_probe",
+        )
+        post_execute_feedback = {
+            "state": "published",
+            "transport": RUNTIME_CONFIG.transport,
+            "station_code": prepared["station_code"],
+            "scenario": "fast-approve-execute",
+            "recorded_at": follow_up_payload.get("recorded_at"),
+        }
     else:
         post_execute_feedback = {
             "state": "skipped",
-            "reason": "Post-execute reading injection is disabled.",
+            "reason": "Đã tắt tiêm post-execute reading.",
         }
 
     return {
         "scenario": "fast-approve-execute",
         "station_code": prepared["station_code"],
         "goal_name": prepared["goal_name"],
-        "pending_plan_id": pending_plan.get("id"),
-        "approved_plan_id": plan_id,
-        "execution_batch_id": batch_id,
-        "post_execute_status": post_execute.get("status"),
-        "action_log_count": int((logs or {}).get("count") or 0),
+        "pending_plan_id": None,
+        "approved_plan_id": None,
+        "execution_batch_id": None,
+        "post_execute_status": None,
+        "action_log_count": 0,
         "post_execute_feedback": post_execute_feedback,
     }
 
@@ -949,7 +917,7 @@ def scenario_rag_provenance_drilldown(
     timeout_seconds: int,
     *,
     station_code: str | None = None,
-    frame_pause_seconds: float = 1.2,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
@@ -963,38 +931,22 @@ def scenario_rag_provenance_drilldown(
         close_open_incidents=close_open_incidents,
     )
 
-    run_id = str(prepared["trigger_run"].get("id") or "")
-    if not run_id:
-        raise SimulationError("Unable to resolve trigger run id for RAG drilldown.")
-
-    run_detail = _http_json(base_url=base_url, method="GET", path=f"/api/v1/agent/runs/{run_id}")
-    trace = run_detail.get("trace") or {}
-    retrieval_trace = trace.get("retrieval_trace") or {}
-    snapshot = run_detail.get("observation_snapshot") or {}
-    snapshot_payload = snapshot.get("payload") or {}
-    preview = list(snapshot_payload.get("knowledge_context_preview") or [])
-    top_citations = list(retrieval_trace.get("top_citations") or [])
-    source_counts = retrieval_trace.get("source_counts") or {}
-    total_evidence = retrieval_trace.get("total_evidence")
-    if total_evidence is None:
-        total_evidence = len(preview)
-
     return {
         "scenario": "rag-provenance-drilldown",
         "station_code": prepared["station_code"],
         "goal_name": prepared["goal_name"],
-        "run_id": run_id,
-        "plan_id": prepared["plan_id"],
-        "total_evidence": int(total_evidence),
-        "source_counts": source_counts,
-        "top_citations": top_citations,
-        "knowledge_context_preview": preview,
+        "run_id": None,
+        "plan_id": None,
+        "total_evidence": 0,
+        "source_counts": {},
+        "top_citations": [],
+        "knowledge_context_preview": [],
         "post_execute_feedback": {
             "state": "skipped",
             "reason": (
-                "This scenario focuses on planning provenance and does not execute the plan."
+                "This scenario chỉ publish sensor frames; backend tự sinh trace provenance."
                 if inject_post_execute_reading
-                else "Post-execute reading injection is disabled."
+                else "Đã tắt tiêm post-execute reading."
             ),
         },
     }
@@ -1015,14 +967,14 @@ def run_named_scenario(
     scenario_key: str,
     timeout_seconds: int,
     station_code: str | None = None,
-    frame_pause_seconds: float = 1.2,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
     """Dispatch one scenario with runtime options."""
     runner = SCENARIO_EXECUTORS.get(scenario_key)
     if runner is None:
-        raise SimulationError(f"Unknown scenario '{scenario_key}'. Use --list.")
+        raise SimulationError(f"Không nhận diện được scenario '{scenario_key}'. Dùng --list để xem danh sách.")
     return runner(
         base_url,
         timeout_seconds,
@@ -1040,7 +992,7 @@ SCENARIO_RUNNERS: dict[str, Callable[[str, int], dict[str, Any]]] = {
             scenario_key=_key,
             timeout_seconds=timeout_seconds,
             station_code=None,
-            frame_pause_seconds=1.2,
+            frame_pause_seconds=DEFAULT_FRAME_PAUSE_SECONDS,
             close_open_incidents=True,
         )
     )
@@ -1068,18 +1020,18 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=220,
-        help="Polling timeout per major wait step.",
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help="Reserved for compatibility; publish-only mode does not poll server state.",
     )
     parser.add_argument(
         "--station-code",
         default=None,
-        help="Optional station_code target for sensor stream (default: auto-select latest station).",
+        help="Optional station_code target for sensor stream (default: GOCONG-01).",
     )
     parser.add_argument(
         "--frame-pause-seconds",
         type=float,
-        default=1.2,
+        default=DEFAULT_FRAME_PAUSE_SECONDS,
         help="Default pause between sensor frames in one scenario.",
     )
     parser.add_argument(
@@ -1129,14 +1081,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--keep-open-incidents",
         action="store_true",
-        help="Do not auto-close open incidents before sending scenario frames.",
+        help="Reserved for compatibility; publish-only mode does not auto-close incidents.",
     )
     parser.add_argument(
         "--no-post-execute-reading",
         action="store_true",
         help=(
-            "Disable automatic post-execution reading injection + feedback evaluation "
-            "for scenarios that execute plans."
+            "Disable the follow-up feedback probe publish for scenarios that emit it."
         ),
     )
     parser.add_argument(
@@ -1155,7 +1106,7 @@ def main() -> None:
         return
 
     if args.scenario != "all" and args.scenario not in SCENARIO_EXECUTORS:
-        raise SystemExit(f"Unknown scenario '{args.scenario}'. Use --list.")
+        raise SystemExit(f"Không nhận diện được scenario '{args.scenario}'. Dùng --list để xem danh sách.")
 
     RUNTIME_CONFIG.transport = str(args.transport)
     RUNTIME_CONFIG.mqtt_broker_url = str(args.mqtt_broker_url)
@@ -1166,8 +1117,7 @@ def main() -> None:
     RUNTIME_CONFIG.mqtt_client_id = str(args.mqtt_client_id)
     RUNTIME_CONFIG.mqtt_qos = int(args.mqtt_qos)
 
-    _ensure_server_ready(args.base_url)
-    print(f"[OK] Backend API reachable at {args.base_url}")
+    print(f"[OK] Demo simulation configured for {args.base_url}")
     if RUNTIME_CONFIG.transport == "mqtt":
         print(
             "[OK] Sensor stream transport MQTT "

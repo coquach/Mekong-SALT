@@ -10,6 +10,7 @@ from app.api.v1.endpoints.dashboard import router as dashboard_router
 from app.api.v1.endpoints.execution_batches import router as execution_batches_router
 from app.api.v1.endpoints.feedback import router as feedback_router
 from app.api.v1.endpoints.goals import router as goals_router
+from app.api.v1.endpoints.gates import router as gates_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.incidents import router as incidents_router
 from app.api.v1.endpoints.notifications import router as notifications_router
@@ -30,6 +31,7 @@ router.include_router(dashboard_router)
 router.include_router(execution_batches_router)
 router.include_router(feedback_router)
 router.include_router(goals_router)
+router.include_router(gates_router)
 router.include_router(health_router)
 router.include_router(incidents_router)
 router.include_router(notifications_router)

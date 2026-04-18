@@ -1,6 +1,28 @@
 import { apiGet } from "./http";
 import type { RiskLatestResponse, SensorReadingCollection } from "./dashboard";
 
+export interface StationMarkerMetadata {
+  icon?: string;
+  color?: string;
+  tone?: string;
+  label?: string;
+}
+
+export interface StationMetadata {
+  display_name?: string;
+  operational_role?: string;
+  owner?: string;
+  connectivity?: string;
+  coverage_radius_km?: number;
+  marker?: StationMarkerMetadata;
+  notes?: string;
+  [key: string]: unknown;
+  sensor_package?: string[];
+  reference_water_body?: string;
+  sampling_interval_minutes?: number;
+  calibration_cycle_days?: number;
+}
+
 export interface SensorStationRead {
   id: string;
   created_at: string;
@@ -14,11 +36,60 @@ export interface SensorStationRead {
   longitude: string | number;
   location_description: string | null;
   installed_at: string | null;
-  station_metadata: Record<string, unknown> | null;
+  station_metadata: StationMetadata | null;
 }
 
 export interface SensorStationCollection {
   items: SensorStationRead[];
+  count: number;
+}
+
+export interface GateMarkerMetadata {
+  icon?: string;
+  color?: string;
+  tone?: string;
+  label?: string;
+}
+
+export interface GateMetadata {
+  display_name?: string;
+  operational_role?: string;
+  controller?: string;
+  control_channel?: string;
+  marker?: GateMarkerMetadata;
+  notes?: string;
+  [key: string]: unknown;
+}
+
+export interface SensorStationSummary {
+  id: string;
+  region_id: string;
+  code: string;
+  name: string;
+  station_type: string;
+  status: "active" | "inactive" | "maintenance";
+}
+
+export interface GateRead {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  region_id: string;
+  station_id: string | null;
+  code: string;
+  name: string;
+  gate_type: string;
+  status: "open" | "closed" | "transitioning" | "maintenance";
+  latitude: string | number;
+  longitude: string | number;
+  location_description: string | null;
+  last_operated_at: string | null;
+  gate_metadata: GateMetadata | null;
+  station: SensorStationSummary | null;
+}
+
+export interface GateCollection {
+  items: GateRead[];
   count: number;
 }
 
@@ -79,6 +150,13 @@ export function getStations(
   signal?: AbortSignal,
 ): Promise<SensorStationCollection> {
   return apiGet<SensorStationCollection>("/stations", { query, signal });
+}
+
+export function getGates(
+  query?: { limit?: number; region_code?: string },
+  signal?: AbortSignal,
+): Promise<GateCollection> {
+  return apiGet<GateCollection>("/gates", { query, signal });
 }
 
 export function getReadingHistory(

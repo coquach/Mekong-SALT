@@ -51,6 +51,7 @@ class SensorStation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     monitoring_goals = relationship("MonitoringGoal", back_populates="station")
     agent_runs = relationship("AgentRun", back_populates="station")
     observation_snapshots = relationship("ObservationSnapshot", back_populates="station")
+    gates = relationship("Gate", back_populates="station")
 
 
 class SensorReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):

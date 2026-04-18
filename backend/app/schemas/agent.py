@@ -34,6 +34,7 @@ class PlanStep(ORMBaseSchema):
     title: str = Field(max_length=255)
     instructions: str
     rationale: str
+    target_gate_code: str | None = Field(default=None, max_length=50)
     simulated: bool = True
 
 

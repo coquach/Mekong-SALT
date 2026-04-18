@@ -41,6 +41,7 @@ from app.schemas.goal import (
     MonitoringGoalRead,
     MonitoringGoalUpdate,
 )
+from app.schemas.gate import GateCollection, GateCreate, GateRead, GateUpdate
 from app.schemas.incident import IncidentCollection, IncidentCreate, IncidentRead, IncidentUpdate
 from app.schemas.knowledge import (
     EmbeddedChunkCreate,
@@ -113,6 +114,10 @@ __all__ = [
     "FeedbackLifecycleRead",
     "FeedbackSnapshotRead",
     "OutcomeEvaluationRead",
+    "GateCollection",
+    "GateCreate",
+    "GateRead",
+    "GateUpdate",
     "GoalThresholds",
     "IncidentCollection",
     "IncidentCreate",

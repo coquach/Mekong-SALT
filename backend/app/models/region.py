@@ -36,3 +36,4 @@ class Region(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     monitoring_goals = relationship("MonitoringGoal", back_populates="region")
     agent_runs = relationship("AgentRun", back_populates="region")
     observation_snapshots = relationship("ObservationSnapshot", back_populates="region")
+    gates = relationship("Gate", back_populates="region")

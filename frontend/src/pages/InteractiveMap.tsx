@@ -1,37 +1,46 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Eye,
   Layers,
   MapPin,
   Navigation,
+  RefreshCcw,
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { SatelliteMap, type MapStation } from "../components/dashboard/SatelliteMap";
+import { SatelliteMap, type MapGate, type MapStation } from "../components/dashboard/SatelliteMap";
+import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { PageHeading } from "../components/ui/PageHeading";
 import { getLatestReadings, type SensorReading } from "../lib/api/dashboard";
 import {
   getIncidents,
+  getGates,
   getLatestRisk,
   getStations,
+  type GateRead,
   type IncidentRead,
   type SensorStationRead,
 } from "../lib/api/telemetry";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 
+type RiskFilter = "all" | "critical" | "warning" | "safe";
+
 type InteractiveMapState = {
   loading: boolean;
   error: string | null;
   stations: SensorStationRead[];
+  gates: GateRead[];
   latestReadings: SensorReading[];
   incidents: IncidentRead[];
   selectedStationId: string | null;
   selectedRisk: Awaited<ReturnType<typeof getLatestRisk>> | null;
+  lastRefreshAt: string | null;
 };
 
 function parseApiError(error: unknown): string {
@@ -65,9 +74,33 @@ function formatValue(value: string | number | null | undefined, digits = 2): str
 
 function formatRiskLabel(riskLevel: string | null | undefined): string {
   if (!riskLevel) {
-    return "unknown";
+    return "UNKNOWN";
   }
   return riskLevel.toUpperCase();
+}
+
+function deriveRiskLevel(salinityGl: number | null | undefined): "critical" | "warning" | "safe" {
+  if (salinityGl === null || salinityGl === undefined) {
+    return "safe";
+  }
+  if (salinityGl >= 2) {
+    return "critical";
+  }
+  if (salinityGl >= 1) {
+    return "warning";
+  }
+  return "safe";
+}
+
+function formatTime(value: string | null): string {
+  if (!value) {
+    return "--:--";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+  return date.toLocaleTimeString("vi-VN", { hour12: false });
 }
 
 export function InteractiveMap() {
@@ -77,73 +110,21 @@ export function InteractiveMap() {
     gates: true,
     prediction: true,
   });
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [state, setState] = useState<InteractiveMapState>({
     loading: true,
     error: null,
     stations: [],
+    gates: [],
     latestReadings: [],
     incidents: [],
     selectedStationId: null,
     selectedRisk: null,
+    lastRefreshAt: null,
   });
   const navigate = useNavigate();
   const riskRequestIdRef = useRef(0);
   const riskAbortControllerRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-
-    const loadData = async () => {
-      setState((previous) => ({ ...previous, loading: true, error: null }));
-      try {
-        const [stations, latestReadings, incidents] = await Promise.all([
-          getStations({ limit: 300 }, abortController.signal),
-          getLatestReadings({ limit: 500 }, abortController.signal),
-          getIncidents({ limit: 30 }, abortController.signal),
-        ]);
-
-        const selectedStationId = stations.items[0]?.id ?? null;
-        let selectedRisk = null;
-        if (stations.items[0]) {
-          try {
-            selectedRisk = await getLatestRisk(
-              { station_code: stations.items[0].code },
-              abortController.signal,
-            );
-          } catch (error) {
-            if (!(error instanceof ApiError && error.statusCode === 404)) {
-              throw error;
-            }
-          }
-        }
-
-        setState({
-          loading: false,
-          error: null,
-          stations: stations.items,
-          latestReadings: latestReadings.items,
-          incidents: incidents.items,
-          selectedStationId,
-          selectedRisk,
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setState((previous) => ({
-          ...previous,
-          loading: false,
-          error: parseApiError(error),
-        }));
-      }
-    };
-
-    void loadData();
-    return () => {
-      abortController.abort();
-      riskAbortControllerRef.current?.abort();
-    };
-  }, []);
 
   const readingsByStationId = useMemo(() => {
     const map = new Map<string, SensorReading>();
@@ -153,10 +134,101 @@ export function InteractiveMap() {
     return map;
   }, [state.latestReadings]);
 
+  const refreshData = useCallback(async (
+    options?: {
+      signal?: AbortSignal;
+      showLoading?: boolean;
+      stationIdOverride?: string | null;
+    },
+  ) => {
+    const signal = options?.signal;
+    const showLoading = options?.showLoading ?? false;
+    const stationIdOverride = options?.stationIdOverride;
+
+    if (showLoading) {
+      setState((previous) => ({ ...previous, loading: true, error: null }));
+    }
+
+    try {
+      const [stations, gates, latestReadings, incidents] = await Promise.all([
+        getStations({ limit: 300 }, signal),
+        getGates({ limit: 100 }, signal),
+        getLatestReadings({ limit: 500 }, signal),
+        getIncidents({ limit: 30 }, signal),
+      ]);
+
+      const selectedStationIdCandidate =
+        stationIdOverride ??
+        state.selectedStationId ??
+        stations.items[0]?.id ??
+        null;
+      const selectedStation =
+        stations.items.find((station) => station.id === selectedStationIdCandidate) ??
+        stations.items[0] ??
+        null;
+      const selectedStationId = selectedStation?.id ?? null;
+
+      let selectedRisk = null;
+      if (selectedStation) {
+        try {
+          selectedRisk = await getLatestRisk({ station_code: selectedStation.code }, signal);
+        } catch (error) {
+          if (!(error instanceof ApiError && error.statusCode === 404)) {
+            throw error;
+          }
+        }
+      }
+
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: null,
+        stations: stations.items,
+        gates: gates.items,
+        latestReadings: latestReadings.items,
+        incidents: incidents.items,
+        selectedStationId,
+        selectedRisk,
+        lastRefreshAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      if (signal?.aborted) {
+        return;
+      }
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: parseApiError(error),
+      }));
+    }
+  }, [state.selectedStationId]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    void refreshData({ signal: abortController.signal, showLoading: true });
+    return () => {
+      abortController.abort();
+      riskAbortControllerRef.current?.abort();
+    };
+  }, [refreshData]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshData({ showLoading: false });
+    }, 20_000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshData]);
+
   const mapStations = useMemo<MapStation[]>(
     () =>
       state.stations.map((station) => {
         const reading = readingsByStationId.get(station.id);
+        const latestSalinityGl =
+          reading?.salinity_gl !== null && reading?.salinity_gl !== undefined
+            ? Number(reading.salinity_gl)
+            : null;
+        const derivedRisk = deriveRiskLevel(latestSalinityGl);
+
         return {
           id: station.id,
           code: station.code,
@@ -164,17 +236,61 @@ export function InteractiveMap() {
           latitude: toNumber(station.latitude),
           longitude: toNumber(station.longitude),
           status: station.status,
-          latestSalinityGl:
-            reading?.salinity_gl !== null && reading?.salinity_gl !== undefined
-              ? Number(reading.salinity_gl)
-              : null,
-          riskLevel: state.selectedRisk?.assessment.station_id === station.id
-            ? state.selectedRisk.assessment.risk_level
-            : null,
+          stationType: station.station_type,
+          stationMetadata: station.station_metadata,
+          latestSalinityGl,
+          riskLevel:
+            state.selectedRisk?.assessment.station_id === station.id
+              ? state.selectedRisk.assessment.risk_level
+              : derivedRisk,
         };
       }),
     [state.stations, readingsByStationId, state.selectedRisk],
   );
+
+  const mapGates = useMemo<MapGate[]>(
+    () =>
+      state.gates.flatMap((gate) => {
+          const latitude = toNumber(gate.latitude);
+          const longitude = toNumber(gate.longitude);
+          if (latitude === 0 || longitude === 0) {
+            return [] as MapGate[];
+          }
+
+          return [
+            {
+            id: gate.id,
+            code: gate.code,
+            name: gate.name,
+            latitude,
+            longitude,
+            gateType: gate.gate_type,
+            status: gate.status,
+            gateMetadata: gate.gate_metadata,
+            locationDescription: gate.location_description,
+            lastOperatedAt: gate.last_operated_at,
+            station: gate.station,
+            },
+          ];
+        }),
+    [state.gates],
+  );
+
+  const filteredMapStations = useMemo(() => {
+    if (riskFilter === "all") {
+      return mapStations;
+    }
+    return mapStations.filter((station) => {
+      const level = `${station.riskLevel ?? ""}`.toLowerCase();
+      if (riskFilter === "critical") {
+        return level === "critical" || level === "danger";
+      }
+      if (riskFilter === "warning") {
+        return level === "warning";
+      }
+      return level === "safe" || level === "";
+    });
+  }, [mapStations, riskFilter]);
 
   const selectedStation = useMemo(
     () => state.stations.find((station) => station.id === state.selectedStationId) ?? null,
@@ -192,20 +308,23 @@ export function InteractiveMap() {
     if (!station) {
       return;
     }
+
     riskAbortControllerRef.current?.abort();
     const riskAbortController = new AbortController();
     riskAbortControllerRef.current = riskAbortController;
     const requestId = ++riskRequestIdRef.current;
 
     try {
-      const risk = await getLatestRisk(
-        { station_code: station.code },
-        riskAbortController.signal,
-      );
+      const risk = await getLatestRisk({ station_code: station.code }, riskAbortController.signal);
       if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
         return;
       }
-      setState((previous) => ({ ...previous, selectedRisk: risk, error: null }));
+      setState((previous) => ({
+        ...previous,
+        selectedRisk: risk,
+        error: null,
+        lastRefreshAt: new Date().toISOString(),
+      }));
     } catch (error) {
       if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
         return;
@@ -225,29 +344,46 @@ export function InteractiveMap() {
 
   return (
     <div className="space-y-6">
+      <PageHeading
+        trailing={
+          <Badge variant="neutral" className="text-[9px]">
+            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+          </Badge>
+        }
+      />
+
       {state.error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-bold text-red-700">
-          {state.error}
-        </div>
+        <InlineError
+          title="Lỗi dữ liệu bản đồ"
+          message={state.error}
+          onRetry={() => {
+            void refreshData({ showLoading: true });
+          }}
+        />
       ) : null}
 
-      <div className="relative w-full h-[calc(100vh-220px)] rounded-[48px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10">
+      {state.loading && state.stations.length === 0 ? (
+        <SkeletonCards count={3} />
+      ) : null}
+
+      <div className={`relative w-full h-[calc(100vh-300px)] min-h-150 rounded-[40px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
         <SatelliteMap
           layers={layers}
           zoom={11}
           showControls
-          stations={mapStations}
+          stations={filteredMapStations}
+          gates={mapGates}
           selectedStationId={state.selectedStationId}
           onSelectStation={(stationId) => {
             void handleSelectStation(stationId);
           }}
         />
 
-        <div className="absolute top-8 left-8 z-20 space-y-4 w-80">
-          <Card variant="glass" className="p-6 rounded-[32px] border-white/40 shadow-glass backdrop-blur-2xl">
-            <div className="flex items-center gap-3 mb-6 border-b border-mekong-navy/10 pb-4">
-              <Layers size={18} className="text-mekong-navy" />
-              <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Lớp nhận thức AI</h3>
+        <div className="absolute top-6 left-6 z-20 space-y-4 w-80">
+          <Card variant="glass" className="p-5 rounded-3xl border-white/40 shadow-glass backdrop-blur-2xl">
+            <div className="flex items-center gap-3 mb-4 border-b border-mekong-navy/10 pb-3">
+              <Layers size={17} className="text-mekong-navy" />
+              <h3 className="text-xs font-black text-mekong-navy uppercase tracking-widest">Lớp bản đồ</h3>
             </div>
             <div className="space-y-1">
               {[
@@ -258,7 +394,7 @@ export function InteractiveMap() {
               ].map((item) => (
                 <button
                   key={item.key}
-                  className="w-full flex items-center justify-between py-2.5"
+                  className="w-full flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-white/70 transition-colors"
                   onClick={() =>
                     setLayers((previous) => ({
                       ...previous,
@@ -267,11 +403,11 @@ export function InteractiveMap() {
                   }
                 >
                   <div className="flex items-center gap-2.5">
-                    <item.icon size={16} className="text-mekong-teal" />
+                    <item.icon size={15} className="text-mekong-teal" />
                     <span className="text-[11px] font-black uppercase tracking-widest text-mekong-navy">{item.label}</span>
                   </div>
                   <Badge variant={layers[item.key as keyof typeof layers] ? "optimal" : "warning"} className="text-[9px] uppercase">
-                    {layers[item.key as keyof typeof layers] ? "on" : "off"}
+                    {layers[item.key as keyof typeof layers] ? "bật" : "tắt"}
                   </Badge>
                 </button>
               ))}
@@ -279,19 +415,52 @@ export function InteractiveMap() {
           </Card>
 
           <Card variant="glass" className="p-4 rounded-2xl border-white/35 shadow-md">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 italic">
-              Trạm trên bản đồ: {state.stations.length}
-            </p>
-            <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-              {state.stations.slice(0, 8).map((station) => (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Chú giải • {filteredMapStations.length}/{mapStations.length} trạm
+              </p>
+              <Button
+                variant="ghost"
+                className="h-7 rounded-lg px-2 text-[9px]"
+                onClick={() => {
+                  void refreshData({ showLoading: false });
+                }}
+              >
+                <RefreshCcw size={12} />
+              </Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { key: "all" as const, label: "Tất cả", badge: "neutral" as const },
+                { key: "critical" as const, label: "Nguy cấp", badge: "critical" as const },
+                { key: "warning" as const, label: "Cảnh báo", badge: "warning" as const },
+                { key: "safe" as const, label: "An toàn", badge: "optimal" as const },
+              ].map((item) => (
+                <button key={item.key} onClick={() => setRiskFilter(item.key)}>
+                  <Badge
+                    variant={riskFilter === item.key ? item.badge : "neutral"}
+                    className={riskFilter === item.key ? "ring-1 ring-mekong-navy/15" : "opacity-80"}
+                  >
+                    {item.label}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 space-y-2 max-h-28 overflow-y-auto custom-scrollbar pr-1">
+              {filteredMapStations.slice(0, 8).map((station) => (
                 <button
                   key={station.id}
-                  className="w-full flex items-center justify-between text-left text-[11px] font-bold text-mekong-navy hover:text-mekong-teal"
+                  className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-[11px] font-bold text-mekong-navy hover:bg-white/70 hover:text-mekong-teal"
                   onClick={() => {
                     void handleSelectStation(station.id);
                   }}
                 >
-                  <span>{station.code} - {station.name}</span>
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{station.code} - {station.stationMetadata?.display_name ?? station.name}</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                      {station.stationMetadata?.marker?.label ?? station.stationMetadata?.operational_role ?? station.stationType}
+                    </span>
+                  </span>
                   {state.selectedStationId === station.id ? <Navigation size={13} /> : null}
                 </button>
               ))}
@@ -299,9 +468,9 @@ export function InteractiveMap() {
           </Card>
         </div>
 
-        <div className="absolute top-8 right-8 z-20 w-80">
-          <Card variant="navy" padding="lg" className="bg-[#00203F]/95 text-white rounded-[32px] border border-white/10 shadow-2xl">
-            <h3 className="text-[12px] font-black uppercase tracking-[0.2em] mb-4">Sự cố đang mở</h3>
+        <div className="absolute top-6 right-6 z-20 w-80">
+          <Card variant="navy" padding="lg" className="bg-[#00203F]/95 text-white rounded-4xl border border-white/10 shadow-2xl">
+            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] mb-4">Incidents đang mở</h3>
             <div className="space-y-3">
               {criticalIncidents.slice(0, 3).map((incident) => (
                 <div key={incident.id} className="rounded-xl bg-white/5 border border-white/10 p-3">
@@ -315,29 +484,40 @@ export function InteractiveMap() {
                 </div>
               ))}
               {criticalIncidents.length === 0 ? (
-                <p className="text-[12px] font-semibold text-slate-300">Không có incident critical đang mở.</p>
+                <EmptyState
+                  title="Không có incident critical mở"
+                  description="Map vẫn tiếp tục cập nhật mỗi 20 giây để phát hiện biến động mới."
+                />
               ) : null}
             </div>
           </Card>
         </div>
       </div>
 
-      <Card variant="white" padding="lg" className="rounded-[40px] shadow-soft border border-slate-100">
-        <div className="flex justify-between items-start gap-4">
+      <Card variant="white" padding="lg" className="rounded-4xl shadow-soft border border-slate-100">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tight">
-              {selectedStation ? `${selectedStation.code} - ${selectedStation.name}` : "Chưa chọn trạm"}
+              {selectedStation
+                ? `${selectedStation.code} - ${selectedStation.station_metadata?.display_name ?? selectedStation.name}`
+                : "Chưa chọn trạm"}
             </h3>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-              Trạng thái: {selectedStation?.status ?? "--"} • Risk: {formatRiskLabel(state.selectedRisk?.assessment.risk_level)}
+              Trạng thái: {selectedStation?.status ?? "--"} • Rủi ro: {formatRiskLabel(state.selectedRisk?.assessment.risk_level)}
+            </p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              {selectedStation?.station_metadata?.marker?.label ?? selectedStation?.station_metadata?.operational_role ?? "Trạm quan trắc"}
+            </p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              {selectedStation?.station_metadata?.reference_water_body ?? "--"}
             </p>
           </div>
           <div className="flex gap-3">
-            <Badge variant="warning" className="uppercase">
-              Loading: {state.loading ? "yes" : "no"}
+            <Badge variant={state.loading ? "warning" : "optimal"} className="uppercase">
+              {state.loading ? "syncing..." : "synced"}
             </Badge>
             <Button variant="outline" className="h-10 px-4 text-[11px]" onClick={() => navigate("/strategy")}>
-              Chi tiết logic
+              Mở trang chiến lược
             </Button>
           </div>
         </div>

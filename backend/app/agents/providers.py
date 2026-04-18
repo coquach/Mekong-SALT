@@ -43,6 +43,7 @@ class MockProvider(PlanProvider):
     ) -> GeneratedActionPlan:
         """Generate a structured plan without calling an external LLM."""
         assessment = context.get("assessment") or {}
+        target_gate_code = _resolve_gate_target_code(context)
         risk_level = assessment.get("risk_level", "warning")
         mitigation_action = (
             "close_gate"
@@ -75,9 +76,22 @@ class MockProvider(PlanProvider):
                         "step_index": 2,
                         "action_type": mitigation_action,
                         "priority": 2,
-                        "title": "Mô phỏng biện pháp thủy lực",
-                        "instructions": "Chạy luồng thực thi mô phỏng và ghi nhận kết quả.",
-                        "rationale": "MVP phải giữ ở chế độ mô phỏng cho đến khi vận hành phê duyệt tích hợp thiết bị.",
+                        "title": (
+                            f"Mô phỏng thao tác cống {target_gate_code}"
+                            if target_gate_code and mitigation_action in {"close_gate", "open_gate"}
+                            else "Mô phỏng biện pháp thủy lực"
+                        ),
+                        "instructions": (
+                            f"Gửi lệnh mô phỏng tới cống {target_gate_code} và ghi nhận trạng thái trước/sau."
+                            if target_gate_code and mitigation_action in {"close_gate", "open_gate"}
+                            else "Chạy luồng thực thi mô phỏng và ghi nhận kết quả."
+                        ),
+                        "rationale": (
+                            "MVP phải giữ ở chế độ mô phỏng cho đến khi vận hành phê duyệt tích hợp thiết bị."
+                            if not target_gate_code
+                            else "Lệnh cống cần target_gate_code để driver mô phỏng có thể ánh xạ đúng thiết bị đầu ra."
+                        ),
+                        "target_gate_code": target_gate_code,
                         "simulated": True,
                     },
                     {
@@ -93,6 +107,28 @@ class MockProvider(PlanProvider):
             }
         )
 
+
+def _resolve_gate_target_code(context: dict[str, Any]) -> str | None:
+    """Resolve a stable gate code from planning context for gate actions."""
+    recommended = context.get("recommended_gate_target")
+    if isinstance(recommended, dict):
+        code = recommended.get("code")
+        if isinstance(code, str) and code:
+            return code
+
+    code = context.get("recommended_gate_target_code")
+    if isinstance(code, str) and code:
+        return code
+
+    gates = context.get("gate_targets")
+    if isinstance(gates, list):
+        for gate in gates:
+            if isinstance(gate, dict):
+                code = gate.get("code")
+                if isinstance(code, str) and code:
+                    return code
+
+    return None
 
 class GeminiProvider(PlanProvider):
     """Compatibility shim delegating Gemini planning to LLM service adapter."""

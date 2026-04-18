@@ -14,6 +14,12 @@ CRITICAL_MITIGATION_ACTIONS = {
     ActionType.START_PUMP_SIMULATED,
 }
 
+GATE_ACTIONS = {
+    ActionType.CLOSE_GATE,
+    ActionType.OPEN_GATE,
+    ActionType.CLOSE_GATE_SIMULATED,
+}
+
 
 def validate_generated_plan(
     plan: GeneratedActionPlan,
@@ -37,6 +43,10 @@ def validate_generated_plan(
         if not step.simulated:
             errors.append(
                 f"Step {step.step_index} must remain simulated in MVP planning."
+            )
+        if step.action_type in GATE_ACTIONS and not step.target_gate_code:
+            warnings.append(
+                f"Step {step.step_index} should include target_gate_code so the simulated PLC driver can resolve a gate."
             )
 
     if risk_level in {RiskLevel.DANGER, RiskLevel.CRITICAL}:

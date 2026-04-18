@@ -106,6 +106,6 @@ export const SalinityCard = ({
 };
 
 // Hàm bổ trợ xử lý class
-function cn(...inputs: any[]) {
+function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(' ');
 }

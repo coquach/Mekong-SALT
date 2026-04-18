@@ -11,9 +11,11 @@ import {
   Share2,
 } from "lucide-react";
 
+import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { PageHeading } from "../components/ui/PageHeading";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 import {
   evaluateFeedback,
@@ -37,6 +39,7 @@ type ActionLogsState = {
   batches: ExecutionBatchRead[];
   outcomes: ActionOutcomeRead[];
   feedback: FeedbackLifecycleRead | null;
+  lastRefreshAt: string | null;
 };
 
 function parseApiError(error: unknown): string {
@@ -63,6 +66,17 @@ function formatDateTime(value: string | null): string {
   return date.toLocaleString("vi-VN", { hour12: false });
 }
 
+function formatTime(value: string | null): string {
+  if (!value) {
+    return "--:--";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+  return date.toLocaleTimeString("vi-VN", { hour12: false });
+}
+
 function normalizeActionType(value: string): string {
   return value.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -77,59 +91,72 @@ export function ActionLogs() {
     batches: [],
     outcomes: [],
     feedback: null,
+    lastRefreshAt: null,
   });
   const [simulateBusy, setSimulateBusy] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-
-    const loadData = async () => {
+  const refreshData = async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+    const signal = options?.signal;
+    const showLoading = options?.showLoading ?? false;
+    if (showLoading) {
       setState((previous) => ({ ...previous, loading: true, error: null }));
-      try {
-        const [plans, actionLogs, batches, outcomes] = await Promise.all([
-          getPlans({ limit: 50 }, abortController.signal),
-          getActionLogs({ limit: 100 }, abortController.signal),
-          getExecutionBatches({ limit: 50 }, abortController.signal),
-          getActionOutcomes({ limit: 50 }, abortController.signal),
-        ]);
+    }
 
-        let feedback: FeedbackLifecycleRead | null = null;
-        const latestBatch = batches.items[0];
-        if (latestBatch) {
-          try {
-            feedback = await getLatestFeedback(latestBatch.id, abortController.signal);
-          } catch (error) {
-            if (!(error instanceof ApiError && error.statusCode === 404)) {
-              throw error;
-            }
+    try {
+      const [plans, actionLogs, batches, outcomes] = await Promise.all([
+        getPlans({ limit: 50 }, signal),
+        getActionLogs({ limit: 100 }, signal),
+        getExecutionBatches({ limit: 50 }, signal),
+        getActionOutcomes({ limit: 50 }, signal),
+      ]);
+
+      let feedback: FeedbackLifecycleRead | null = null;
+      const latestBatch = batches.items[0];
+      if (latestBatch) {
+        try {
+          feedback = await getLatestFeedback(latestBatch.id, signal);
+        } catch (error) {
+          if (!(error instanceof ApiError && error.statusCode === 404)) {
+            throw error;
           }
         }
-
-        setState({
-          loading: false,
-          error: null,
-          searchText: "",
-          plans,
-          actionLogs: actionLogs.items,
-          batches: batches.items,
-          outcomes: outcomes.items,
-          feedback,
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setState((previous) => ({
-          ...previous,
-          loading: false,
-          error: parseApiError(error),
-        }));
       }
-    };
 
-    void loadData();
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: null,
+        plans,
+        actionLogs: actionLogs.items,
+        batches: batches.items,
+        outcomes: outcomes.items,
+        feedback,
+        lastRefreshAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      if (signal?.aborted) {
+        return;
+      }
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: parseApiError(error),
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    void refreshData({ signal: abortController.signal, showLoading: true });
     return () => abortController.abort();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshData({ showLoading: false });
+    }, 20_000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const latestBatch = state.batches[0] ?? null;
@@ -165,20 +192,7 @@ export function ActionLogs() {
     setSimulateBusy(true);
     try {
       await simulateExecutionBatch(approvedPlan.id);
-      const [actionLogs, batches, outcomes, plans] = await Promise.all([
-        getActionLogs({ limit: 100 }),
-        getExecutionBatches({ limit: 50 }),
-        getActionOutcomes({ limit: 50 }),
-        getPlans({ limit: 50 }),
-      ]);
-      setState((previous) => ({
-        ...previous,
-        plans,
-        actionLogs: actionLogs.items,
-        batches: batches.items,
-        outcomes: outcomes.items,
-        error: null,
-      }));
+      await refreshData();
     } catch (error) {
       setState((previous) => ({ ...previous, error: parseApiError(error) }));
     } finally {
@@ -193,7 +207,12 @@ export function ActionLogs() {
     setFeedbackBusy(true);
     try {
       const feedback = await evaluateFeedback(latestBatch.id);
-      setState((previous) => ({ ...previous, feedback, error: null }));
+      setState((previous) => ({
+        ...previous,
+        feedback,
+        error: null,
+        lastRefreshAt: new Date().toISOString(),
+      }));
     } catch (error) {
       setState((previous) => ({ ...previous, error: parseApiError(error) }));
     } finally {
@@ -203,13 +222,27 @@ export function ActionLogs() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <PageHeading
+        trailing={
+          <Badge variant="neutral" className="text-[9px]">
+            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+          </Badge>
+        }
+      />
+
       {state.error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-bold text-red-700">
-          {state.error}
-        </div>
+        <InlineError
+          title="Lỗi nhật ký hành động"
+          message={state.error}
+          onRetry={() => {
+            void refreshData({ showLoading: true });
+          }}
+        />
       ) : null}
 
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+      {state.loading && state.actionLogs.length === 0 ? <SkeletonCards count={3} /> : null}
+
+      <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="space-y-3">
           <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter leading-none uppercase">
             Trung tâm can thiệp & học tập
@@ -229,12 +262,12 @@ export function ActionLogs() {
             disabled={simulateBusy}
           >
             <Download size={18} className="mr-2" />
-            {simulateBusy ? "Đang simulate..." : "Simulate plan approved"}
+            {simulateBusy ? "Đang mô phỏng..." : "Mô phỏng plan đã duyệt"}
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-8">
+      <div className={`grid grid-cols-12 gap-8 ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="col-span-12 lg:col-span-4 space-y-8">
           <Card variant="white" className="border-l-4 border-l-mekong-navy shadow-soft rounded-[32px] p-8">
             <div className="flex gap-5 items-start">
@@ -263,7 +296,7 @@ export function ActionLogs() {
                   disabled={!latestBatch || feedbackBusy}
                   onClick={() => void handleEvaluateFeedback()}
                 >
-                  {feedbackBusy ? "Đang đánh giá..." : "Evaluate feedback"}
+                  {feedbackBusy ? "Đang đánh giá..." : "Đánh giá feedback"}
                 </button>
               </div>
             </div>
@@ -280,11 +313,11 @@ export function ActionLogs() {
                   <span className="text-2xl font-black text-mekong-cyan">{state.batches.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Action logs</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Nhật ký</span>
                   <span className="text-2xl font-black text-mekong-cyan">{state.actionLogs.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-bold text-slate-300 uppercase">Succeeded</span>
+                  <span className="text-[12px] font-bold text-slate-300 uppercase">Thành công</span>
                   <span className="text-2xl font-black text-mekong-cyan">{successfulActions}</span>
                 </div>
               </div>
@@ -342,7 +375,7 @@ export function ActionLogs() {
         </div>
       </div>
 
-      <section className="bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden">
+      <section className={`bg-white rounded-[48px] border border-slate-200 shadow-soft overflow-hidden ${state.loading && state.actionLogs.length === 0 ? "hidden" : ""}`}>
         <div className="bg-mekong-navy px-10 py-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-mekong-cyan shadow-xl">
@@ -418,6 +451,20 @@ export function ActionLogs() {
                   </td>
                 </tr>
               ))}
+              {filteredLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-6">
+                    <EmptyState
+                      title="Không có action log phù hợp"
+                      description="Hãy đổi từ khóa tìm kiếm hoặc chạy simulate để sinh dữ liệu mới."
+                      actionLabel="Làm mới"
+                      onAction={() => {
+                        void refreshData({ showLoading: true });
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

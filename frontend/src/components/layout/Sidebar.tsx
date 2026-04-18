@@ -11,6 +11,7 @@ import {
   HelpCircle,
   FileText,
 } from "lucide-react";
+import { APP_ROUTES } from "../../lib/navigation";
 
 /**
  * THÀNH PHẦN THANH BÊN (SIDEBAR)
@@ -55,15 +56,20 @@ const NavItem = ({ icon: Icon, label, path, isActive }: NavItemProps) => {
 export const Sidebar = () => {
   const { pathname } = useLocation();
 
-  // Danh sách menu chính của hệ thống
-  const menuItems = [
-    { icon: Info, label: "Trung tâm Thông tin", path: "/" },
-    { icon: LayoutDashboard, label: "Bảng điều khiển", path: "/dashboard" },
-    { icon: MapIcon, label: "Bản đồ tương tác", path: "/map" },
-    { icon: BrainCircuit, label: "Logic Tác nhân AI", path: "/strategy" },
-    { icon: ClipboardList, label: "Nhật ký Hành động", path: "/logs" },
-    { icon: History, label: "Lịch sử dữ liệu", path: "/history" },
-  ];
+  const routeIcons: Record<string, React.ElementType> = {
+    "/": Info,
+    "/dashboard": LayoutDashboard,
+    "/map": MapIcon,
+    "/strategy": BrainCircuit,
+    "/logs": ClipboardList,
+    "/history": History,
+  };
+
+  const menuItems = APP_ROUTES.map((route) => ({
+    path: route.path,
+    label: route.navLabel,
+    icon: routeIcons[route.path] ?? Info,
+  }));
 
   return (
     <aside className="w-72 h-screen bg-white border-r border-slate-200 fixed left-0 top-0 flex flex-col z-50 transition-all duration-300">
@@ -84,7 +90,7 @@ export const Sidebar = () => {
       </div>
 
       {/* 2. CÁC LIÊN KẾT ĐIỀU HƯỚNG */}
-      <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar" aria-label="Main navigation">
         {menuItems.map((item) => (
           <NavItem
             key={item.path}

@@ -29,6 +29,7 @@ from app.schemas.action import (
     FeedbackEvaluation,
     SimulatedExecutionRequest,
 )
+from app.services.gate_command_driver import GATE_ACTION_TYPES, SimulatedGateCommandDriver
 from app.services.feedback.evaluation_service import evaluate_execution_feedback
 
 from app.services.memory_case_vector_service import MemoryCaseVectorService
@@ -131,10 +132,36 @@ async def execute_simulated_plan(
     executions: list[ActionExecution] = []
     decision_logs: list[DecisionLog] = []
     outcomes: list[ActionOutcome] = []
+    gate_driver = SimulatedGateCommandDriver()
     if plan.incident is not None:
         plan.incident.status = IncidentStatus.EXECUTING
 
     for step in steps:
+        result_summary = _build_execution_summary(step.action_type)
+        result_payload: dict[str, object] = {
+            "title": step.title,
+            "instructions": step.instructions,
+            "rationale": step.rationale,
+            "simulated": True,
+        }
+        if step.action_type in GATE_ACTION_TYPES:
+            gate_result = await gate_driver.execute(
+                session,
+                plan=plan,
+                step=step,
+                actor_name=actor_name,
+            )
+            result_summary = gate_result.summary
+            result_payload = {
+                **gate_result.payload,
+                "title": step.title,
+                "instructions": step.instructions,
+                "rationale": step.rationale,
+                "step_index": step.step_index,
+                "action_type": step.action_type.value,
+                "target_gate_code": step.target_gate_code,
+            }
+
         execution = ActionExecution(
             plan_id=plan.id,
             batch_id=batch.id,
@@ -145,13 +172,8 @@ async def execute_simulated_plan(
             step_index=step.step_index,
             started_at=now,
             completed_at=now,
-            result_summary=_build_execution_summary(step.action_type),
-            result_payload={
-                "title": step.title,
-                "instructions": step.instructions,
-                "rationale": step.rationale,
-                "simulated": True,
-            },
+            result_summary=result_summary,
+            result_payload=result_payload,
             idempotency_key=(
                 f"{payload.idempotency_key}:{step.step_index}"
                 if payload.idempotency_key is not None

@@ -7,6 +7,7 @@ from app.models.audit import ActionOutcome, AuditLog
 from app.models.decision import DecisionLog
 from app.models.domain_event import DomainEvent
 from app.models.feedback import FeedbackSnapshot, OutcomeEvaluation
+from app.models.gate import Gate
 from app.models.incident import Incident
 from app.models.knowledge import EmbeddedChunk, KnowledgeDocument
 from app.models.goal import MonitoringGoal
@@ -30,6 +31,7 @@ __all__ = [
     "DomainEvent",
     "EmbeddedChunk",
     "FeedbackSnapshot",
+    "Gate",
     "Incident",
     "KnowledgeDocument",
     "MemoryCase",

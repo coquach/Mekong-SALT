@@ -129,15 +129,25 @@ def main() -> None:
         _run_step("Ingest RAG sample corpus", [python_exe, "scripts/ingest_rag_samples.py"])
 
     print("\n[DONE] Demo setup completed.")
-    print("[NEXT] Start API: ./.venv/Scripts/python.exe -m uvicorn main:app --reload")
-    print("[NEXT] List scenarios: ./.venv/Scripts/python.exe scripts/run_demo_scenarios.py --list")
-    print("[NEXT] Print scenarios: ./.venv/Scripts/python.exe scripts/run_demo_scenarios.py --scenario all")
-    print("[NEXT] Run real simulation: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario all")
-    print("[NEXT] Target one station: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --station-code GOCONG-01")
-    print("[NEXT] MQTT simulation: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost --mqtt-broker-port 1883")
-    print("[NEXT] Launch Gradio demo: ./.venv/Scripts/python.exe gradio_app/demo_app.py")
-    print("[NEXT] Watch state: GET /api/v1/dashboard/summary and GET /api/v1/plans")
-    print("[NEXT] Unit policy note: backend/document/proposal_unit_alignment.md")
+    print("[NEXT] Khởi động API: ./.venv/Scripts/python.exe -m uvicorn main:app --reload")
+    print("[NEXT] Liệt kê scenario: ./.venv/Scripts/python.exe scripts/run_demo_scenarios.py --list")
+    print("[NEXT] In toàn bộ scenario: ./.venv/Scripts/python.exe scripts/run_demo_scenarios.py --scenario all")
+    print(
+        "[NEXT] Chạy mô phỏng thật: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py "
+        "--scenario all --timeout-seconds 300 --frame-pause-seconds 10"
+    )
+    print(
+        "[NEXT] Nhắm một trạm: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py "
+        "--scenario fast-approve-execute --station-code GOCONG-01 --frame-pause-seconds 10"
+    )
+    print(
+        "[NEXT] Mô phỏng MQTT: ./.venv/Scripts/python.exe scripts/run_demo_simulation.py "
+        "--scenario fast-approve-execute --transport mqtt --mqtt-broker-url localhost "
+        "--mqtt-broker-port 1883 --frame-pause-seconds 10"
+    )
+    print("[NEXT] Mở demo Gradio: ./.venv/Scripts/python.exe gradio_app/demo_app.py")
+    print("[NEXT] Theo dõi trạng thái: GET /api/v1/dashboard/summary và GET /api/v1/plans")
+    print("[NEXT] Ghi chú policy: backend/document/proposal_unit_alignment.md")
 
 
 if __name__ == "__main__":

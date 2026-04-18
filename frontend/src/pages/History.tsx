@@ -9,9 +9,11 @@ import {
   Waves,
 } from "lucide-react";
 
+import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { PageHeading } from "../components/ui/PageHeading";
 import { type RiskLatestResponse, type SensorReading } from "../lib/api/dashboard";
 import {
   getAuditLogs,
@@ -35,6 +37,7 @@ type HistoryState = {
   risk: RiskLatestResponse | null;
   incidents: IncidentRead[];
   auditLogs: AuditLogRead[];
+  lastRefreshAt: string | null;
 };
 
 function parseApiError(error: unknown): string {
@@ -76,6 +79,17 @@ function formatDateTime(value: string | null): string {
   return date.toLocaleString("vi-VN", { hour12: false });
 }
 
+function formatTime(value: string | null): string {
+  if (!value) {
+    return "--:--";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+  return date.toLocaleTimeString("vi-VN", { hour12: false });
+}
+
 async function loadStationContext(
   stationCode: string,
   signal?: AbortSignal,
@@ -112,6 +126,7 @@ export function History() {
     risk: null,
     incidents: [],
     auditLogs: [],
+    lastRefreshAt: null,
   });
   const stationContextRequestIdRef = useRef(0);
   const stationContextAbortControllerRef = useRef<AbortController | null>(null);
@@ -167,6 +182,7 @@ export function History() {
         risk,
         incidents: incidentsResponse.items,
         auditLogs: auditResponse.items,
+        lastRefreshAt: new Date().toISOString(),
       }));
     } catch (error) {
       if (signal?.aborted || requestId !== pageLoadRequestIdRef.current) {
@@ -189,6 +205,13 @@ export function History() {
       stationContextAbortControllerRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadPageData({ selectedStationId: state.selectedStationId });
+    }, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [state.selectedStationId]);
 
   const selectedStation = useMemo(
     () => state.stations.find((station) => station.id === state.selectedStationId) ?? null,
@@ -294,13 +317,27 @@ export function History() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <PageHeading
+        trailing={
+          <Badge variant="neutral" className="text-[9px]">
+            Đồng bộ lúc {formatTime(state.lastRefreshAt)}
+          </Badge>
+        }
+      />
+
       {state.error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-bold text-red-700">
-          {state.error}
-        </div>
+        <InlineError
+          title="Lỗi điều tra lịch sử"
+          message={state.error}
+          onRetry={() => {
+            void loadPageData({ selectedStationId: state.selectedStationId });
+          }}
+        />
       ) : null}
 
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-200 pb-8">
+      {state.loading && state.stations.length === 0 ? <SkeletonCards count={3} /> : null}
+
+      <div className={`flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-200 pb-8 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 bg-mekong-navy rounded-[20px] flex items-center justify-center text-white shadow-xl ring-4 ring-slate-100">
             <HistoryIcon size={28} strokeWidth={2.5} />
@@ -315,7 +352,7 @@ export function History() {
               </span>
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-              Data Forensics & History
+              Điều tra dữ liệu lịch sử
             </h1>
           </div>
         </div>
@@ -355,7 +392,7 @@ export function History() {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className={`grid grid-cols-12 gap-6 ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
         <Card variant="white" className="col-span-12 lg:col-span-4 rounded-[32px] p-6 shadow-soft border border-slate-100">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2.5 bg-mekong-teal/10 rounded-xl text-mekong-teal border border-mekong-teal/20">
@@ -371,10 +408,10 @@ export function History() {
               <span className="text-sm font-black text-slate-400 uppercase mb-1">g/L</span>
             </div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-              Recorded: {formatDateTime(latestReading?.recorded_at ?? null)}
+              Ghi nhận: {formatDateTime(latestReading?.recorded_at ?? null)}
             </p>
             <Badge variant="warning" className="uppercase text-[10px]">
-              Risk: {state.risk?.assessment.risk_level ?? "unknown"}
+              Rủi ro: {state.risk?.assessment.risk_level ?? "unknown"}
             </Badge>
           </div>
         </Card>
@@ -386,19 +423,19 @@ export function History() {
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Average salinity</span>
+              <span>Độ mặn trung bình</span>
               <span className="font-black text-mekong-navy">{formatNumber(averageSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Peak salinity</span>
+              <span>Độ mặn cao nhất</span>
               <span className="font-black text-mekong-navy">{formatNumber(maxSalinity, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Delta (latest-oldest)</span>
+              <span>Độ lệch (mới nhất-cũ nhất)</span>
               <span className="font-black text-mekong-navy">{formatNumber(trendDelta, 2)} g/L</span>
             </div>
             <div className="flex justify-between">
-              <span>Samples</span>
+              <span>Số mẫu</span>
               <span className="font-black text-mekong-navy">{state.readings.length}</span>
             </div>
           </div>
@@ -411,26 +448,26 @@ export function History() {
           </div>
           <div className="space-y-3 text-[13px] font-semibold text-slate-600">
             <div className="flex justify-between">
-              <span>Open incidents</span>
+              <span>Sự cố đang mở</span>
               <span className="font-black text-mekong-critical">{openIncidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Total incidents</span>
+              <span>Tổng sự cố</span>
               <span className="font-black text-mekong-navy">{state.incidents.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Audit logs</span>
+              <span>Nhật ký audit</span>
               <span className="font-black text-mekong-navy">{state.auditLogs.length}</span>
             </div>
             <div className="flex justify-between">
-              <span>Station status</span>
+              <span>Trạng thái trạm</span>
               <span className="font-black text-mekong-navy">{selectedStation?.status ?? "--"}</span>
             </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-12 gap-8 items-start">
+      <div className={`grid grid-cols-12 gap-8 items-start ${state.loading && state.stations.length === 0 ? "hidden" : ""}`}>
         <Card variant="white" className="col-span-12 lg:col-span-8 rounded-[32px] p-8 shadow-soft border border-slate-100">
           <div className="flex justify-between items-center mb-6">
             <div>
@@ -475,8 +512,11 @@ export function History() {
                 ))}
                 {state.readings.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm font-semibold text-slate-400">
-                      No history data for current station.
+                    <td colSpan={4} className="px-4 py-6">
+                      <EmptyState
+                        title="Chưa có dữ liệu lịch sử cho trạm này"
+                        description="Thử chọn station khác hoặc đợi chu kỳ ghi nhận tiếp theo."
+                      />
                     </td>
                   </tr>
                 ) : null}
@@ -503,7 +543,10 @@ export function History() {
               </div>
             ))}
             {state.auditLogs.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-400">No audit logs found.</p>
+              <EmptyState
+                title="Chưa có audit log"
+                description="Audit trail sẽ xuất hiện khi backend ghi nhận event vận hành."
+              />
             ) : null}
           </div>
         </Card>

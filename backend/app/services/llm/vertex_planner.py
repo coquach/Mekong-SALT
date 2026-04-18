@@ -38,7 +38,8 @@ class VertexPlanPromptBuilder:
             "- Return 2 to 5 ordered steps.\n"
             "- Return all human-readable fields in Vietnamese, including objective, summary, context_summary, risk_summary, assumptions, reasoning_summary, title, instructions, and rationale.\n"
             "- Keep JSON keys and action_type values in English.\n"
-            "- Every step must include action_type, title, instructions, rationale, and simulated=true.\n"
+            "- Every step must include action_type, title, instructions, rationale, simulated=true, and target_gate_code when the action is close_gate, open_gate, or close-gate-simulated.\n"
+            "- If the context provides gate_targets or recommended_gate_target_code, use one of those codes for target_gate_code.\n"
             f"Objective: {objective}\n"
             f"Context:\n{serialized_context}\n"
         )
