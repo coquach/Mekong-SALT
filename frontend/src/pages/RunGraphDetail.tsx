@@ -9,7 +9,9 @@ import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
 import { getApiErrorMessage } from "../lib/api/error";
 import { getApiBaseUrl } from "../lib/api/http";
+import type { ExecutionGraphRead } from "../lib/api/graph";
 import { getAgentRun, type AgentRunRead } from "../lib/api/strategy";
+import { useGraphStream } from "../lib/hooks/useGraphStream";
 
 function formatDatetime(value: string | null): string {
   if (!value) {
@@ -71,6 +73,8 @@ export default function RunGraphDetail() {
     loading: Boolean(runId),
     error: null,
   }));
+  const [liveGraph, setLiveGraph] = useState<ExecutionGraphRead | null>(null);
+  const [liveRunId, setLiveRunId] = useState<string | null>(null);
 
   const missingRunId = runId === undefined;
 
@@ -110,11 +114,40 @@ export default function RunGraphDetail() {
     };
   }, [runId]);
 
+  useGraphStream({
+    graphType: "planning",
+    enabled: Boolean(runId),
+    onTransition: (payload) => {
+      if (!runId || payload.graph_type !== "planning") {
+        return;
+      }
+      if (payload.run_id && payload.run_id !== runId) {
+        return;
+      }
+      if (payload.run_id) {
+        setLiveRunId(payload.run_id);
+      }
+      if (payload.graph_snapshot !== undefined && payload.graph_snapshot !== null) {
+        setLiveGraph(payload.graph_snapshot);
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!runId) {
+      return;
+    }
+    if (liveRunId !== runId) {
+      setLiveRunId(runId);
+      setLiveGraph(state.run?.execution_graph ?? null);
+    }
+  }, [liveRunId, runId, state.run?.execution_graph]);
+
   const isStale = state.runId !== (runId ?? null);
   const run = isStale ? null : state.run;
   const loading = missingRunId ? false : state.loading || isStale;
   const error = missingRunId ? "Thiếu runId trên đường dẫn." : state.error;
-  const graph = run?.execution_graph ?? null;
+  const graph = liveGraph ?? run?.execution_graph ?? null;
   const runMessage = useMemo(() => buildRunMessage(run), [run]);
   const backendBaseUrl = getApiBaseUrl();
   const runApiUrl = runId ? `${backendBaseUrl}/agent/runs/${runId}` : null;
@@ -213,9 +246,6 @@ export default function RunGraphDetail() {
                   {run.status}
                 </Badge>
                 <Badge variant="neutral" className="text-[9px] uppercase">
-                  {run.id.slice(0, 8)}
-                </Badge>
-                <Badge variant="neutral" className="text-[9px] uppercase">
                   {formatDatetime(run.started_at)}
                 </Badge>
               </div>
@@ -227,9 +257,6 @@ export default function RunGraphDetail() {
                   <p className="text-[9px] font-black uppercase tracking-[0.22em] text-mekong-cyan">Backend source</p>
                   <p className="text-sm font-semibold text-slate-700">
                     Trang này gọi trực tiếp backend qua API detail của agent run để lấy trace và execution_graph.
-                  </p>
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                    GET {runApiUrl ?? "--"}
                   </p>
                 </div>
                 {runApiUrl ? (
@@ -270,7 +297,7 @@ export default function RunGraphDetail() {
           <ExecutionGraphViewer
             graph={graph}
             title="Run Execution Graph"
-            subtitle={`run ${run.id.slice(0, 8)} · detail view`}
+            subtitle="Chi tiết phiên chạy"
             emptyTitle="Chưa có execution graph"
             emptyDescription="Run này chưa trả về execution_graph từ backend hoặc graph chưa được chuẩn hóa."
           />

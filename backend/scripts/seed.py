@@ -1,64 +1,48 @@
-"""Seed the database with minimal realistic sample data."""
+"""Seed the database with minimal realistic safe baseline data."""
 
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from sqlalchemy import delete
+from pathlib import Path
+
+from sqlalchemy import text
 
 from app.db.base import Base
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import AsyncSessionFactory, close_database_engine
 from app.models import (
-    ActionExecution,
-    Approval,
-    AuditLog,
-    ActionPlan,
-    AlertEvent,
-    AgentRun,
-    DecisionLog,
     EmbeddedChunk,
-    Incident,
+    Gate,
     KnowledgeDocument,
-    MemoryCase,
-    Notification,
-    Region,
+    MonitoringGoal,
     RiskAssessment,
+    Region,
     SensorReading,
     SensorStation,
-    ObservationSnapshot,
     WeatherSnapshot,
-    Gate,
 )
-from app.models.enums import (
-    ApprovalDecision,
-    AlertStatus,
-    AuditEventType,
-    ActionPlanStatus,
-    ActionType,
-    DecisionActorType,
-    ExecutionStatus,
-    IncidentStatus,
-    NotificationChannel,
-    NotificationStatus,
-    RiskLevel,
-    StationStatus,
-    TrendDirection,
-    GateStatus,
-)
-from app.repositories.region import RegionRepository
+from app.models.enums import GateStatus, RiskLevel, StationStatus, TrendDirection
 from app.repositories.gate import GateRepository
+from app.repositories.region import RegionRepository
 from app.repositories.sensor import SensorStationRepository
 
 logger = logging.getLogger(__name__)
 
 
 async def _reset_all_demo_data(session) -> None:
-    """Delete existing application rows so each seed starts from a clean slate."""
-    for table in reversed(Base.metadata.sorted_tables):
-        await session.execute(delete(table))
+    """Truncate existing application rows so each seed starts from a clean slate."""
+    table_names = ", ".join(_format_table_name(table) for table in Base.metadata.sorted_tables)
+    await session.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"))
     await session.flush()
+
+
+def _format_table_name(table) -> str:
+    """Return a safely quoted table identifier for the current database dialect."""
+    if table.schema:
+        return f'"{table.schema}"."{table.name}"'
+    return f'"{table.name}"'
 
 
 def _build_station_metadata(
@@ -127,6 +111,137 @@ def _build_gate_metadata(
     if map_anchor is not None:
         metadata["map_anchor"] = map_anchor
     return metadata
+
+
+def _discover_sample_documents(*, backend_root: Path) -> list[dict[str, object]]:
+    """Discover bundled RAG sample files that should be seeded as knowledge documents."""
+    samples_root = backend_root / "document" / "rag_samples"
+    if not samples_root.exists():
+        return []
+
+    supported_extensions = {".txt", ".md", ".rst", ".json", ".yaml", ".yml", ".log", ".csv"}
+    manifest: list[dict[str, object]] = []
+
+    for file_path in sorted(samples_root.rglob("*")):
+        if not file_path.is_file():
+            continue
+        if file_path.name.lower() == "readme.md":
+            continue
+        if file_path.suffix.lower() not in supported_extensions:
+            continue
+
+        relative_path = file_path.relative_to(backend_root).as_posix()
+        content_text = file_path.read_text(encoding="utf-8").strip()
+        category = _resolve_sample_category(file_path, samples_root)
+
+        manifest.append(
+            {
+                "relative_path": relative_path,
+                "title": _build_sample_title(file_path.stem),
+                "source_uri": _build_sample_source_uri(relative_path),
+                "document_type": category,
+                "summary": _build_sample_summary(
+                    file_path=file_path,
+                    content_text=content_text,
+                    category=category,
+                ),
+                "content_text": content_text,
+                "tags": _build_sample_tags(
+                    category=category,
+                    file_path=file_path,
+                    content_text=content_text,
+                ),
+                "metadata": {
+                    "language": "en",
+                    "source": "rag_samples",
+                    "sample_pack": "backend/document/rag_samples",
+                    "relative_path": relative_path,
+                    "category": category,
+                    "file_extension": file_path.suffix.lower().lstrip("."),
+                },
+            }
+        )
+
+    return manifest
+
+
+def _resolve_sample_category(file_path: Path, samples_root: Path) -> str:
+    try:
+        category = file_path.relative_to(samples_root).parts[0].strip().lower()
+    except ValueError:
+        category = "guideline"
+    if category in {"sop", "threshold", "casebook", "guideline"}:
+        return category
+    return "guideline"
+
+
+def _build_sample_title(stem: str) -> str:
+    title = stem.replace("_", " ").replace("-", " ").strip()
+    title = " ".join(part for part in title.split() if part)
+    if not title:
+        return "Sample Document"
+    return title.title()
+
+
+def _build_sample_source_uri(relative_path: str) -> str:
+    safe = relative_path.lower().replace(" ", "-")
+    safe = "".join(character for character in safe if character.isalnum() or character in {"-", "_", "/", "."})
+    safe = safe.replace(".", "-")
+    return f"mekong-salt://samples/{safe}"
+
+
+def _build_sample_tags(*, category: str, file_path: Path, content_text: str) -> list[str]:
+    tags = [category, "sample"]
+    extension = file_path.suffix.lower().lstrip(".")
+    if extension and extension not in tags:
+        tags.append(extension)
+
+    stem = file_path.stem.lower()
+    for token in (
+        "salinity",
+        "water",
+        "quality",
+        "irrigation",
+        "policy",
+        "report",
+        "weather",
+        "tide",
+        "sensor",
+        "calibration",
+        "closure",
+        "recovery",
+    ):
+        if token in stem and token not in tags:
+            tags.append(token)
+
+    content_lower = content_text.lower()
+    for token in ("policy", "sensor", "weather", "salinity", "recovery"):
+        if token in content_lower and token not in tags:
+            tags.append(token)
+
+    return tags
+
+
+def _build_sample_summary(*, file_path: Path, content_text: str, category: str) -> str:
+    lines = [line.strip() for line in content_text.splitlines() if line.strip()]
+    if not lines:
+        return f"{category.title()} sample document from rag_samples."
+
+    if file_path.suffix.lower() == ".csv":
+        row_count = max(len(lines) - 1, 0)
+        header = lines[0].split(",")[:4]
+        header_preview = ", ".join(part.strip() for part in header if part.strip())
+        if header_preview:
+            return f"{category.title()} sample table with {row_count} records and columns {header_preview}."
+        return f"{category.title()} sample table with {row_count} records."
+
+    for line in lines:
+        if line.startswith("#"):
+            continue
+        if len(line) >= 40:
+            return line[:255]
+
+    return lines[0][:255]
 
 
 async def _upsert_region_profile(
@@ -262,16 +377,19 @@ async def _upsert_gate_profile(
 
 
 async def run_seed() -> None:
-    """Insert a connected demo dataset for local development."""
+    """Insert a connected safe baseline dataset for local development."""
     settings = get_settings()
     configure_logging(settings.log_level)
     now = datetime.now(UTC)
+    backend_root = Path(__file__).resolve().parents[1]
 
     async with AsyncSessionFactory() as session:
         region_repo = RegionRepository(session)
         station_repo = SensorStationRepository(session)
+
         await _reset_all_demo_data(session)
         logger.info("Đã xóa toàn bộ dữ liệu demo cũ trước khi seed mới")
+
         region, _ = await _upsert_region_profile(session, region_repo=region_repo)
 
         station_a = await _upsert_station_profile(
@@ -315,6 +433,7 @@ async def run_seed() -> None:
                 },
             ),
         )
+
         station_b = await _upsert_station_profile(
             session,
             station_repo=station_repo,
@@ -357,6 +476,7 @@ async def run_seed() -> None:
         )
 
         gate_repo = GateRepository(session)
+
         await _upsert_gate_profile(
             session,
             gate_repo=gate_repo,
@@ -386,6 +506,7 @@ async def run_seed() -> None:
                 },
             ),
         )
+
         await _upsert_gate_profile(
             session,
             gate_repo=gate_repo,
@@ -413,6 +534,7 @@ async def run_seed() -> None:
                 },
             ),
         )
+
         await _upsert_gate_profile(
             session,
             gate_repo=gate_repo,
@@ -440,6 +562,7 @@ async def run_seed() -> None:
                 },
             ),
         )
+
         await _upsert_gate_profile(
             session,
             gate_repo=gate_repo,
@@ -468,408 +591,182 @@ async def run_seed() -> None:
             ),
         )
 
-        reading_a = SensorReading(
-            station_id=station_a.id,
-            recorded_at=now - timedelta(minutes=30),
-            salinity_dsm=Decimal("0.82"),
-            water_level_m=Decimal("1.62"),
-            temperature_c=Decimal("29.40"),
-            battery_level_pct=Decimal("88.00"),
-            source="simulator",
-            context_payload={
-                "source": "simulated-sensor",
-                "quality": "good",
-                "station_code": "GOCONG-01",
-                "station_label": "Trạm lấy nước Gò Công Đông",
-                "operational_role": "primary_intake",
-            },
-        )
-        reading_b = SensorReading(
-            station_id=station_b.id,
-            recorded_at=now - timedelta(minutes=20),
-            salinity_dsm=Decimal("0.78"),
-            water_level_m=Decimal("1.25"),
-            temperature_c=Decimal("29.10"),
-            battery_level_pct=Decimal("91.50"),
-            source="simulator",
-            context_payload={
-                "source": "simulated-sensor",
-                "quality": "good",
-                "station_code": "GOCONG-02",
-                "station_label": "Trạm quan trắc nội đồng Gò Công",
-                "operational_role": "secondary_monitoring",
-            },
-        )
-        session.add_all([reading_a, reading_b])
-        await session.flush()
-
-        reading_b_history_1 = SensorReading(
-            station_id=station_b.id,
-            recorded_at=now - timedelta(minutes=75),
-            salinity_dsm=Decimal("0.66"),
-            water_level_m=Decimal("1.28"),
-            temperature_c=Decimal("28.70"),
-            battery_level_pct=Decimal("92.10"),
-            source="simulator",
-            context_payload={
-                "source": "historical-sensor",
-                "quality": "good",
-                "station_code": "GOCONG-02",
-                "station_label": "Trạm quan trắc nội đồng Gò Công",
-                "operational_role": "secondary_monitoring",
-                "phase": "advisory_window",
-            },
-        )
-        reading_b_history_2 = SensorReading(
-            station_id=station_b.id,
-            recorded_at=now - timedelta(minutes=65),
-            salinity_dsm=Decimal("0.91"),
-            water_level_m=Decimal("1.24"),
-            temperature_c=Decimal("28.90"),
-            battery_level_pct=Decimal("91.80"),
-            source="simulator",
-            context_payload={
-                "source": "historical-sensor",
-                "quality": "good",
-                "station_code": "GOCONG-02",
-                "station_label": "Trạm quan trắc nội đồng Gò Công",
-                "operational_role": "secondary_monitoring",
-                "phase": "warning_rise",
-            },
-        )
-        session.add_all([reading_b_history_1, reading_b_history_2])
-        await session.flush()
-
-        recovery_weather = WeatherSnapshot(
-            region_id=region.id,
-            observed_at=now - timedelta(minutes=68),
-            wind_speed_mps=Decimal("5.10"),
-            wind_direction_deg=135,
-            tide_level_m=Decimal("1.58"),
-            rainfall_mm=Decimal("0.00"),
-            condition_summary="Triều đang lên nhưng chưa đạt đỉnh; gió biển vẫn đẩy mặn vào nội đồng.",
-            source_payload={"provider": "simulated-weather-feed", "phase": "warning_observation"},
-        )
-        session.add(recovery_weather)
-        await session.flush()
-
-        recovery_risk = RiskAssessment(
-            region_id=region.id,
-            station_id=station_b.id,
-            based_on_reading_id=reading_b_history_2.id,
-            based_on_weather_id=recovery_weather.id,
-            assessed_at=now - timedelta(minutes=60),
-            risk_level=RiskLevel.WARNING,
-            salinity_dsm=Decimal("0.91"),
-            trend_direction=TrendDirection.RISING,
-            trend_delta_dsm=Decimal("0.47"),
-            rule_version="v1",
-            summary="Độ mặn tăng trong cửa sổ cảnh giác nhưng chưa vượt ngưỡng nguy cấp.",
-            rationale={
-                "salinity_threshold_dsm": 2.5,
-                "wind_factor": "onshore_moderate",
-                "tide_factor": "rising_but_not_peak",
-                "sensor_confidence": "medium",
-            },
-        )
-        session.add(recovery_risk)
-        await session.flush()
-
-        recovery_alert = AlertEvent(
-            region_id=region.id,
-            risk_assessment_id=recovery_risk.id,
-            triggered_at=now - timedelta(minutes=59),
-            severity=RiskLevel.WARNING,
-            title="Cảnh báo quan trắc mức cảnh giác",
-            message="Độ mặn tăng nhưng chưa tới ngưỡng nguy cấp; ưu tiên quan sát và tái đánh giá.",
-            status=AlertStatus.ACKNOWLEDGED,
-            acknowledged_by="seed",
-            acknowledged_at=now - timedelta(minutes=58),
-        )
-        session.add(recovery_alert)
-        await session.flush()
-
-        recovery_incident = Incident(
-            region_id=region.id,
-            station_id=station_b.id,
-            risk_assessment_id=recovery_risk.id,
-            title="Tăng độ mặn mức cảnh giác tại trạm nội đồng Gò Công",
-            description="Cần quan sát thêm trước khi quyết định đóng/mở mô phỏng.",
-            severity=RiskLevel.WARNING,
-            status=IncidentStatus.INVESTIGATING,
-            source="seed",
-            evidence={"risk_assessment_id": str(recovery_risk.id), "alert_id": str(recovery_alert.id)},
-            opened_at=now - timedelta(minutes=59),
-            acknowledged_at=now - timedelta(minutes=58),
-            created_by="seed",
-        )
-        session.add(recovery_incident)
-        await session.flush()
-
-        recovery_plan = ActionPlan(
-            region_id=region.id,
-            risk_assessment_id=recovery_risk.id,
-            incident_id=recovery_incident.id,
-            status=ActionPlanStatus.REJECTED,
-            objective="Giữ quan sát và chờ cửa sổ an toàn trước khi thao tác mô phỏng.",
-            generated_by="phase-2-seed",
-            model_provider="mock",
-            summary="Đề xuất theo dõi và chờ safe window thay vì đóng mở sớm khi dữ liệu chưa ổn định.",
-            assumptions={
-                "items": [
-                    "Tín hiệu triều và gió vẫn còn gây áp lực mặn.",
-                    "Operator ưu tiên quan sát thay vì thi hành action ngay.",
-                ]
-            },
-            plan_steps=[
-                {
-                    "step_index": 1,
-                    "action_type": ActionType.NOTIFY_FARMERS.value,
-                    "priority": 1,
-                    "title": "Gửi cảnh báo mức cảnh giác",
-                    "instructions": "Thông báo cho operator và khu vực liên quan rằng hệ thống đang ở trạng thái quan sát.",
-                    "rationale": "Giữ mọi bên trong cùng một nhịp đánh giá trước khi thực thi.",
-                    "simulated": True,
+        readings = [
+            SensorReading(
+                station_id=station_a.id,
+                recorded_at=now - timedelta(minutes=70),
+                salinity_dsm=Decimal("0.74"),
+                water_level_m=Decimal("1.58"),
+                temperature_c=Decimal("29.00"),
+                battery_level_pct=Decimal("88.40"),
+                source="simulator",
+                context_payload={
+                    "source": "historical-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-01",
+                    "station_label": "Trạm lấy nước Gò Công Đông",
+                    "operational_role": "primary_intake",
+                    "phase": "baseline_safe",
                 },
-                {
-                    "step_index": 2,
-                    "action_type": ActionType.WAIT_SAFE_WINDOW.value,
-                    "priority": 2,
-                    "title": "Chờ safe window",
-                    "instructions": "Không đóng/mở cống cho đến khi có ít nhất một nhịp ổn định.",
-                    "rationale": "Dữ liệu hiện tại chưa đủ chắc để đảo trạng thái vận hành.",
-                    "simulated": True,
+            ),
+            SensorReading(
+                station_id=station_a.id,
+                recorded_at=now - timedelta(minutes=50),
+                salinity_dsm=Decimal("0.79"),
+                water_level_m=Decimal("1.60"),
+                temperature_c=Decimal("29.20"),
+                battery_level_pct=Decimal("88.20"),
+                source="simulator",
+                context_payload={
+                    "source": "historical-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-01",
+                    "station_label": "Trạm lấy nước Gò Công Đông",
+                    "operational_role": "primary_intake",
+                    "phase": "baseline_safe",
                 },
-            ],
-            validation_result={"is_valid": True, "policy": "warning_hold_then_reassess"},
-        )
-        session.add(recovery_plan)
+            ),
+            SensorReading(
+                station_id=station_a.id,
+                recorded_at=now - timedelta(minutes=30),
+                salinity_dsm=Decimal("0.82"),
+                water_level_m=Decimal("1.62"),
+                temperature_c=Decimal("29.40"),
+                battery_level_pct=Decimal("88.00"),
+                source="simulator",
+                context_payload={
+                    "source": "simulated-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-01",
+                    "station_label": "Trạm lấy nước Gò Công Đông",
+                    "operational_role": "primary_intake",
+                    "phase": "baseline_safe",
+                },
+            ),
+            SensorReading(
+                station_id=station_b.id,
+                recorded_at=now - timedelta(minutes=75),
+                salinity_dsm=Decimal("0.70"),
+                water_level_m=Decimal("1.28"),
+                temperature_c=Decimal("28.70"),
+                battery_level_pct=Decimal("92.10"),
+                source="simulator",
+                context_payload={
+                    "source": "historical-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-02",
+                    "station_label": "Trạm quan trắc nội đồng Gò Công",
+                    "operational_role": "secondary_monitoring",
+                    "phase": "baseline_safe",
+                },
+            ),
+            SensorReading(
+                station_id=station_b.id,
+                recorded_at=now - timedelta(minutes=65),
+                salinity_dsm=Decimal("0.74"),
+                water_level_m=Decimal("1.24"),
+                temperature_c=Decimal("28.90"),
+                battery_level_pct=Decimal("91.80"),
+                source="simulator",
+                context_payload={
+                    "source": "historical-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-02",
+                    "station_label": "Trạm quan trắc nội đồng Gò Công",
+                    "operational_role": "secondary_monitoring",
+                    "phase": "baseline_safe",
+                },
+            ),
+            SensorReading(
+                station_id=station_b.id,
+                recorded_at=now - timedelta(minutes=20),
+                salinity_dsm=Decimal("0.78"),
+                water_level_m=Decimal("1.25"),
+                temperature_c=Decimal("29.10"),
+                battery_level_pct=Decimal("91.50"),
+                source="simulator",
+                context_payload={
+                    "source": "simulated-sensor",
+                    "quality": "good",
+                    "station_code": "GOCONG-02",
+                    "station_label": "Trạm quan trắc nội đồng Gò Công",
+                    "operational_role": "secondary_monitoring",
+                    "phase": "baseline_safe",
+                },
+            ),
+        ]
+        session.add_all(readings)
         await session.flush()
 
-        recovery_approval = Approval(
-            plan_id=recovery_plan.id,
-            decided_by_name="supervisor",
-            decision=ApprovalDecision.REJECTED,
-            comment="Chưa đủ bằng chứng ổn định để chuyển sang đóng/mở mô phỏng.",
-            decided_at=now - timedelta(minutes=57),
-        )
-        session.add(recovery_approval)
+        weather_snapshots = [
+            WeatherSnapshot(
+                region_id=region.id,
+                observed_at=now - timedelta(minutes=40),
+                wind_speed_mps=Decimal("3.20"),
+                wind_direction_deg=135,
+                tide_level_m=Decimal("1.10"),
+                rainfall_mm=Decimal("0.00"),
+                condition_summary="Điều kiện nền ổn định, chưa có áp lực mặn đáng kể.",
+                source_payload={
+                    "provider": "simulated-weather-feed",
+                    "phase": "baseline_safe",
+                },
+            ),
+            WeatherSnapshot(
+                region_id=region.id,
+                observed_at=now - timedelta(minutes=10),
+                wind_speed_mps=Decimal("3.60"),
+                wind_direction_deg=140,
+                tide_level_m=Decimal("1.18"),
+                rainfall_mm=Decimal("0.00"),
+                condition_summary="Thời tiết và thủy triều ổn định, phù hợp trạng thái quan trắc an toàn ban đầu.",
+                source_payload={
+                    "provider": "simulated-weather-feed",
+                    "phase": "baseline_safe_latest",
+                },
+            ),
+        ]
+        session.add_all(weather_snapshots)
         await session.flush()
 
-        recovery_decision_log = DecisionLog(
-            region_id=region.id,
-            risk_assessment_id=recovery_risk.id,
-            action_plan_id=recovery_plan.id,
-            logged_at=now - timedelta(minutes=56),
-            actor_type=DecisionActorType.OPERATOR,
-            actor_name="operator-demo",
-            summary="Operator giữ trạng thái quan sát thay vì thi hành plan sớm.",
-            outcome="rejected-hold-position",
-            details={
-                "alert_id": str(recovery_alert.id),
-                "reason": "evidence-not-stable-enough",
-                "next_action": "reassess-after-20-minutes",
-            },
-            store_as_memory=False,
-        )
-        session.add(recovery_decision_log)
-        await session.flush()
-
-        recovery_memory_case = MemoryCase(
-            region_id=region.id,
-            station_id=station_b.id,
-            risk_assessment_id=recovery_risk.id,
-            incident_id=recovery_incident.id,
-            action_plan_id=recovery_plan.id,
-            decision_log_id=recovery_decision_log.id,
-            objective="Giữ quan sát, chờ safe window",
-            severity="warning",
-            outcome_class="advisory_hold",
-            outcome_status_legacy="rejected",
-            summary="Khi ngưỡng chưa ổn định, ưu tiên theo dõi thay vì mô phỏng đóng/mở vội.",
-            context_payload={
-                "tide_context": "rising",
-                "wind_context": "onshore_moderate",
-                "scenario": "warning-observe-recover",
-            },
-            action_payload={
-                "recommended_actions": ["notify_farmers", "wait_safe_window"],
-                "approval": "rejected",
-            },
-            outcome_payload={
-                "next_action": "reassess after 20 minutes",
-                "operator_posture": "observe",
-            },
-            keywords=["salinity", "warning", "hold", "safe-window", "recovery"],
-            occurred_at=now - timedelta(minutes=55),
-        )
-        session.add(recovery_memory_case)
-        await session.flush()
-
-        recovery_audit_log = AuditLog(
-            event_type=AuditEventType.APPROVAL,
-            actor_name="operator-demo",
-            actor_role="operator",
-            region_id=region.id,
-            incident_id=recovery_incident.id,
-            action_plan_id=recovery_plan.id,
-            action_execution_id=None,
-            occurred_at=now - timedelta(minutes=56),
-            summary="Operator giữ trạng thái quan sát và từ chối plan mô phỏng sớm.",
-            payload={"approval_id": str(recovery_approval.id), "memory_case_id": str(recovery_memory_case.id)},
-        )
-        session.add(recovery_audit_log)
-        await session.flush()
-
-        weather = WeatherSnapshot(
-            region_id=region.id,
-            observed_at=now - timedelta(minutes=25),
-            wind_speed_mps=Decimal("6.40"),
-            wind_direction_deg=135,
-            tide_level_m=Decimal("1.72"),
-            rainfall_mm=Decimal("0.00"),
-            condition_summary="Gió từ biển thổi vào, triều đang lên và áp lực mặn ở cửa lấy nước vẫn cao.",
-            source_payload={"provider": "simulated-weather-feed"},
-        )
-        session.add(weather)
-        await session.flush()
-
-        risk = RiskAssessment(
+        monitoring_goal = MonitoringGoal(
+            name="GO-CONG-PRIMARY-INTAKE-PLAN",
+            description=(
+                "Active monitoring goal for the main intake station so the worker can trigger "
+                "plan generation from fresh sensor frames."
+            ),
             region_id=region.id,
             station_id=station_a.id,
-            based_on_reading_id=reading_a.id,
-            based_on_weather_id=weather.id,
-            assessed_at=now - timedelta(minutes=15),
-            risk_level=RiskLevel.CRITICAL,
-            salinity_dsm=Decimal("0.82"),
-            trend_direction=TrendDirection.RISING,
-            trend_delta_dsm=Decimal("0.90"),
-            rule_version="v1",
-            summary="Độ mặn đã vượt ngưỡng nguy cấp và vẫn tiếp tục tăng trong cửa sổ quan trắc hiện tại.",
-            rationale={
-                "base_level": "critical",
-                "salinity_threshold_dsm": 4.0,
-                "trend_direction": "rising",
-                "trend_delta_dsm": "0.90",
-                "wind_factor": "đẩy mặn vào sâu hơn",
-                "tide_factor": "cửa triều đang cao",
-                "sensor_confidence": "high",
-            },
+            objective=(
+                "Bảo vệ chất lượng nước tưới tại cửa lấy nước Gò Công Đông và phản ứng khi độ mặn tăng."
+            ),
+            provider="mock",
+            warning_threshold_dsm=Decimal("2.50"),
+            critical_threshold_dsm=Decimal("4.00"),
+            evaluation_interval_minutes=1,
+            is_active=True,
         )
-        session.add(risk)
-        await session.flush()
-
-        alert = AlertEvent(
+        monitoring_goal_b = MonitoringGoal(
+            name="GO-CONG-INLAND-MONITOR",
+            description=(
+                "Active monitoring goal for the inland station so the worker can also "
+                "evaluate risk from fresh sensor frames at GOCONG-02."
+            ),
             region_id=region.id,
-            risk_assessment_id=risk.id,
-            triggered_at=now - timedelta(minutes=14),
-            severity=RiskLevel.CRITICAL,
-            title="Cảnh báo xâm nhập mặn nguy cấp",
-            message="Độ mặn quan sát được đã vượt ngưỡng nguy cấp gần cống lấy nước chính.",
+            station_id=station_b.id,
+            objective=(
+                "Theo dõi độ mặn nội đồng tại Gò Công và phát hiện sớm xu hướng lan truyền mặn."
+            ),
+            provider="mock",
+            warning_threshold_dsm=Decimal("2.50"),
+            critical_threshold_dsm=Decimal("4.00"),
+            evaluation_interval_minutes=1,
+            is_active=True,
         )
-        session.add(alert)
+        session.add_all([monitoring_goal, monitoring_goal_b])
         await session.flush()
 
-        incident = Incident(
-            region_id=region.id,
-            station_id=station_a.id,
-            risk_assessment_id=risk.id,
-            title="Sự cố xâm nhập mặn tại cống lấy nước Gò Công Đông",
-            description="Độ mặn vượt ngưỡng nguy cấp và cần luồng phản ứng có giám sát.",
-            severity=RiskLevel.CRITICAL,
-            status=IncidentStatus.APPROVED,
-            source="seed",
-            evidence={"risk_assessment_id": str(risk.id), "alert_id": str(alert.id)},
-            opened_at=now - timedelta(minutes=14),
-            acknowledged_at=now - timedelta(minutes=12),
-            created_by="seed",
-        )
-        session.add(incident)
-        await session.flush()
-
-        plan = ActionPlan(
-            region_id=region.id,
-            risk_assessment_id=risk.id,
-            incident_id=incident.id,
-            status=ActionPlanStatus.APPROVED,
-            objective="Chặn đà xâm nhập mặn nguy cấp trong cửa sổ rủi ro đang hoạt động.",
-            generated_by="phase-2-seed",
-            model_provider="mock",
-            summary="Thông báo các bên liên quan, tạm ngưng lấy nước và mô phỏng đóng cống chính cho đến khi điều kiện an toàn hơn.",
-            assumptions={
-                "items": [
-                    "Operator có mặt để duyệt plan.",
-                    "Tất cả hành động đều là mock/simulated cho bản demo.",
-                ]
-            },
-            plan_steps=[
-                {
-                    "step_index": 1,
-                    "action_type": ActionType.SEND_ALERT.value,
-                    "priority": 1,
-                    "title": "Gửi cảnh báo tới các bên",
-                    "instructions": "Thông báo cho operator và nông dân qua các kênh mô phỏng.",
-                    "rationale": "Các bên liên quan cần biết ngay trước khi thay đổi vận hành.",
-                    "simulated": True,
-                },
-                {
-                    "step_index": 2,
-                    "action_type": ActionType.CLOSE_GATE_SIMULATED.value,
-                    "priority": 2,
-                    "title": "Mô phỏng đóng cống lấy nước",
-                    "instructions": "Chạy execution mô phỏng đóng cống cho cổng GATE-HOA-DINH.",
-                    "rationale": "Giảm lấy nước trong giai đoạn salinity cao sẽ giảm phơi nhiễm.",
-                    "simulated": True,
-                    "target_gate_code": "GATE-HOA-DINH",
-                },
-            ],
-            validation_result={"is_valid": True, "policy": "critical_alert_then_simulated_mitigation"},
-        )
-        session.add(plan)
-        await session.flush()
-
-        approval = Approval(
-            plan_id=plan.id,
-            decided_by_name="supervisor",
-            decision=ApprovalDecision.APPROVED,
-            comment="Phê duyệt seed cho luồng demo cục bộ.",
-            decided_at=now - timedelta(minutes=11),
-        )
-        session.add(approval)
-        await session.flush()
-
-        execution = ActionExecution(
-            plan_id=plan.id,
-            region_id=region.id,
-            action_type=ActionType.CLOSE_GATE,
-            status=ExecutionStatus.SUCCEEDED,
-            simulated=True,
-            step_index=2,
-            started_at=now - timedelta(minutes=10),
-            completed_at=now - timedelta(minutes=8),
-            result_summary="Đã mô phỏng đóng cống thành công.",
-            result_payload={"estimated_effect": "giảm nước mặn đi vào", "confidence": "medium"},
-            idempotency_key="seed-close-gate-001",
-            requested_by="supervisor",
-        )
-        session.add(execution)
-        await session.flush()
-
-        notification = Notification(
-            incident_id=incident.id,
-            execution_id=execution.id,
-            channel=NotificationChannel.DASHBOARD,
-            status=NotificationStatus.SENT,
-            recipient="dashboard",
-            subject="Phản ứng mặn nguy cấp đã được seed",
-            message="Thông báo dashboard mô phỏng cho plan phản ứng nguy cấp đã được seed.",
-            payload={"mock": True},
-            sent_at=now - timedelta(minutes=8),
-        )
-        session.add(notification)
-        await session.flush()
-
-        document = KnowledgeDocument(
+        base_document = KnowledgeDocument(
             title="Hướng dẫn phản ứng xâm nhập mặn Mekong",
             source_uri="mekong-salt://knowledge/guideline-001",
             document_type="guideline",
@@ -881,64 +778,23 @@ async def run_seed() -> None:
             tags=["salinity", "response", "irrigation"],
             metadata_payload={"language": "vi", "source": "internal-seed"},
         )
-        session.add(document)
+        session.add(base_document)
         await session.flush()
 
-        chunk = EmbeddedChunk(
-            document_id=document.id,
+        base_chunk = EmbeddedChunk(
+            document_id=base_document.id,
             chunk_index=0,
-            content_text=document.content_text,
+            content_text=base_document.content_text,
             token_count=29,
             embedding=[0.001] * 768,
             metadata_payload={"section": "overview"},
         )
-        session.add(chunk)
+        session.add(base_chunk)
         await session.flush()
 
-        reference_documents = [
-            {
-                "title": "Bộ tiêu chí ngưỡng salinity Mekong-SALT",
-                "source_uri": "mekong-salt://knowledge/threshold-matrix-002",
-                "document_type": "threshold",
-                "summary": "Tóm tắt ngưỡng band, fast-rise, và ngưỡng approval để dùng trong planning context.",
-                "content_text": (
-                    "Canonical storage and comparison unit is dS/m. Warning band starts at 1.0 dS/m, danger band starts at 2.5 dS/m, "
-                    "critical band starts at 4.0 dS/m, and a fast-rise modifier begins around 0.3 dS/m over the assessment window. "
-                    "For hackathon operations, the recommendation is to recheck every 20 minutes, keep HITL mandatory for danger or critical outcomes, "
-                    "and treat weather or tide as modifiers rather than overrides."
-                ),
-                "tags": ["salinity", "threshold", "policy", "planning"],
-                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "policy-summary"},
-            },
-            {
-                "title": "Ghi chú vận hành gió - triều cho quyết định mặn",
-                "source_uri": "mekong-salt://knowledge/guideline-002",
-                "document_type": "guideline",
-                "summary": "Quy tắc diễn giải gió và triều để hỗ trợ quan sát mặn.",
-                "content_text": (
-                    "Onshore wind and rising tide generally increase saline intrusion pressure near intake points. When tide is falling and salinity trend is stable or declining, "
-                    "the system may enter a candidate recovery window, but a one-cycle dip should not be treated as confirmed recovery. Every advisory should include a next review timestamp, "
-                    "and any outbound message must state whether the action is simulation-only. Local station anomalies always need sensor confidence checks."
-                ),
-                "tags": ["weather", "tide", "salinity", "operations"],
-                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "operational-guidance"},
-            },
-            {
-                "title": "Checklist đóng mở và phục hồi an toàn",
-                "source_uri": "mekong-salt://knowledge/sop-002",
-                "document_type": "sop",
-                "summary": "Checklist rút gọn cho đóng/mở mô phỏng và recovery window.",
-                "content_text": (
-                    "Before reopening intake, require three consecutive below-warning readings, no fast-rise signal in the latest window, and no adverse tide or wind trigger. "
-                    "Reopening should be staged: partial then full. After closure or reopening, continue stakeholder notifications until the trend stabilizes and capture a memory case for later retrieval. "
-                    "If provenance confidence is insufficient, reject execution and hold position for another reassessment cycle."
-                ),
-                "tags": ["sop", "closure", "recovery", "approval"],
-                "metadata_payload": {"language": "vi", "source": "internal-seed", "reference_kind": "closure-checklist"},
-            },
-        ]
+        sample_documents = _discover_sample_documents(backend_root=backend_root)
 
-        for index, item in enumerate(reference_documents, start=1):
+        for index, item in enumerate(sample_documents, start=1):
             reference_document = KnowledgeDocument(
                 title=item["title"],
                 source_uri=item["source_uri"],
@@ -946,7 +802,7 @@ async def run_seed() -> None:
                 summary=item["summary"],
                 content_text=item["content_text"],
                 tags=item["tags"],
-                metadata_payload=item["metadata_payload"],
+                metadata_payload=item["metadata"],
             )
             session.add(reference_document)
             await session.flush()
@@ -957,47 +813,18 @@ async def run_seed() -> None:
                 content_text=reference_document.content_text,
                 token_count=len(reference_document.content_text.split()),
                 embedding=[0.002 + (index * 0.001)] * 768,
-                metadata_payload={"section": "reference", "seed_source": "internal-seed"},
+                metadata_payload={
+                    "section": "reference",
+                    "seed_source": "rag_samples",
+                    "relative_path": item["relative_path"],
+                },
             )
             session.add(reference_chunk)
             await session.flush()
 
-        decision_log = DecisionLog(
-            region_id=region.id,
-            risk_assessment_id=risk.id,
-            action_plan_id=plan.id,
-            action_execution_id=execution.id,
-            logged_at=now - timedelta(minutes=7),
-            actor_type=DecisionActorType.SYSTEM,
-            actor_name="phase-2-seed",
-            summary="Seed gắn kết assessment, plan và execution mô phỏng.",
-            outcome="simulated-success",
-            details={
-                "alert_id": str(alert.id),
-                "document_id": str(document.id),
-                "notes": "Dùng cho môi trường local development và validation persistence.",
-            },
-            store_as_memory=False,
-        )
-        session.add(decision_log)
-
-        audit_log = AuditLog(
-            event_type=AuditEventType.EXECUTION,
-            actor_name="supervisor",
-            actor_role="supervisor",
-            region_id=region.id,
-            incident_id=incident.id,
-            action_plan_id=plan.id,
-            action_execution_id=execution.id,
-            occurred_at=now - timedelta(minutes=7),
-            summary="Seed plan đã được phê duyệt và execution mô phỏng.",
-            payload={"notification_id": str(notification.id), "approval_id": str(approval.id)},
-        )
-        session.add(audit_log)
-
         await session.commit()
 
-    logger.info("Đã hoàn tất seed demo với bộ dữ liệu trạm/cống thực tế hơn.")
+    logger.info("Đã hoàn tất seed baseline cho demo worker + simulator + active monitoring goal.")
     await close_database_engine()
 
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { AlertTriangle, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
 
-import { AISentinel } from "./AISentinel";
+import { PlanningTraceDetails } from "./PlanningTrace";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { type AgentRunRead } from "../../lib/api/strategy";
@@ -10,13 +10,14 @@ import { formatTime } from "../../lib/format";
 
 type StreamStatus = "connecting" | "connected" | "disconnected";
 
-interface AISentinelPanelProps {
+interface PlanningTracePanelProps {
   agentRun: AgentRunRead | null;
   streamStatus: StreamStatus;
   lastStreamAt: string | null;
+  executionGraph?: import("../../lib/api/graph").ExecutionGraphRead | null;
 }
 
-export function AISentinelPanel({ agentRun, streamStatus, lastStreamAt }: AISentinelPanelProps) {
+export function PlanningTracePanel({ agentRun, streamStatus, lastStreamAt, executionGraph }: PlanningTracePanelProps) {
   const [showDetails, setShowDetails] = useState(false);
 
   const decisionTone = useMemo(() => {
@@ -50,7 +51,7 @@ export function AISentinelPanel({ agentRun, streamStatus, lastStreamAt }: AISent
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <p className="text-lg font-black text-white">AI Sentinel</p>
+            <p className="text-lg font-black text-white">Planning Trace</p>
             <Badge variant={decisionTone as "critical" | "warning" | "optimal" | "neutral"} className="text-[9px] py-0.5 px-2 font-bold">
               {agentRun?.status ?? "no run"}
             </Badge>
@@ -76,7 +77,7 @@ export function AISentinelPanel({ agentRun, streamStatus, lastStreamAt }: AISent
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-5 space-y-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Trạng thái</p>
           <p className="mt-2 text-sm font-black text-white">{agentRun?.status ?? "Chưa có run"}</p>
@@ -99,9 +100,14 @@ export function AISentinelPanel({ agentRun, streamStatus, lastStreamAt }: AISent
           </div>
           <div className="rounded-2xl border border-amber-200/20 bg-amber-100/10 px-4 py-3 text-[12px] leading-relaxed text-amber-100">
             <AlertTriangle size={14} className="mb-1 inline-block mr-2 align-text-bottom" />
-            Khối này chỉ nên mở khi operator cần đọc sâu. Nếu trace cũ có dữ liệu lệch shape, panel vẫn tách biệt với phần còn lại của orchestration.
+            Chỉ mở khi cần đọc sâu. Phần bên dưới vẫn tách riêng để không làm rối màn tổng quan.
           </div>
-          <AISentinel agentRun={agentRun} streamStatus={streamStatus} lastStreamAt={lastStreamAt} />
+          <PlanningTraceDetails
+            agentRun={agentRun}
+            streamStatus={streamStatus}
+            lastStreamAt={lastStreamAt}
+            executionGraph={executionGraph}
+          />
         </div>
       ) : null}
     </Card>

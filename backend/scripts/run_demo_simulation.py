@@ -58,6 +58,7 @@ class SensorScenarioProfile:
 class SimulationRuntimeConfig:
     """Transport configuration for sensor emission."""
 
+    ingest_mode: str = "auto"
     mqtt_broker_url: str = "localhost"
     mqtt_broker_port: int = 1883
     mqtt_topic_sensor_readings: str = "mekong/sensors/readings"
@@ -81,11 +82,12 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
             SensorFrame("5.15", "1.72", "29.70", "83.20", note="critical state sustained"),
         ),
         post_planning_frame=SensorFrame(
-            "5.30",
-            "1.76",
-            "29.82",
+            "1.80",
+            "1.60",
+            "29.60",
             "82.90",
-            note="follow-up pressure signal",
+            note="sharp salinity drop after simulated gate closure, entering warning band",
+            pause_seconds=60.0,
         ),
     ),
     "fast-approve-execute": SensorScenarioProfile(
@@ -106,6 +108,7 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
             "29.08",
             "88.05",
             note="post-plan follow-up pulse",
+            pause_seconds=60.0,
         ),
     ),
     "rag-provenance-drilldown": SensorScenarioProfile(
@@ -126,6 +129,7 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
             "29.04",
             "89.85",
             note="trace-preserving follow-up",
+            pause_seconds=60.0,
         ),
     ),
     "warning-observe-recover": SensorScenarioProfile(
@@ -148,6 +152,30 @@ SCENARIO_SENSOR_PROFILES: dict[str, SensorScenarioProfile] = {
             wind_speed_mps="4.30",
             wind_direction_deg=160,
             note="recovery window",
+            pause_seconds=60.0,
+        ),
+    ),
+    "salinity-falling-open-gate": SensorScenarioProfile(
+        key="salinity-falling-open-gate",
+        description="Start in the danger band, then trend downward while staying planable for a gate-open recovery.",
+        objective="Show a falling salinity window that should lead to an open-gate recovery plan.",
+        warning_threshold_dsm="2.50",
+        critical_threshold_dsm="4.00",
+        frames=(
+            SensorFrame("3.72", "1.28", "28.90", "90.10", wind_speed_mps="3.40", wind_direction_deg=148, note="danger baseline"),
+            SensorFrame("3.36", "1.26", "28.84", "89.90", wind_speed_mps="3.20", wind_direction_deg=150, note="falling but still danger"),
+            SensorFrame("3.02", "1.23", "28.78", "89.70", wind_speed_mps="3.00", wind_direction_deg=152, note="recovery trend continues"),
+            SensorFrame("2.70", "1.20", "28.72", "89.50", wind_speed_mps="2.80", wind_direction_deg=155, note="near reopening window"),
+        ),
+        post_planning_frame=SensorFrame(
+            "2.58",
+            "1.18",
+            "28.68",
+            "89.30",
+            wind_speed_mps="2.60",
+            wind_direction_deg=160,
+            note="follow-up recovery pulse",
+            pause_seconds=60.0,
         ),
     ),
 }
@@ -265,6 +293,21 @@ def _publish_sensor_reading_via_mqtt(
         )
 
 
+def _publish_sensor_reading_via_http(
+    *,
+    base_url: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist one sensor reading through the canonical HTTP ingest endpoint."""
+    return _http_json(
+        base_url=base_url,
+        method="POST",
+        path="/api/v1/sensors/ingest",
+        payload=payload,
+        timeout=30,
+    )
+
+
 def _build_sensor_frame_payload(
     *,
     profile: SensorScenarioProfile,
@@ -308,6 +351,8 @@ def _emit_sensor_frame(
     station_code: str,
     recorded_at: datetime,
     phase: str,
+    base_url: str,
+    ingest_mode: str,
     mqtt_client: Any,
     mqtt_lib: Any,
 ) -> dict[str, Any]:
@@ -319,20 +364,52 @@ def _emit_sensor_frame(
         recorded_at=recorded_at,
         phase=phase,
     )
-    _publish_sensor_reading_via_mqtt(mqtt_client=mqtt_client, mqtt_lib=mqtt_lib, payload=payload)
+
+    http_succeeded = False
+    if ingest_mode in {"http", "auto", "both"}:
+        try:
+            _publish_sensor_reading_via_http(base_url=base_url, payload=payload)
+            http_succeeded = True
+        except SimulationError as exc:
+            if ingest_mode == "http":
+                raise
+            print(f"[WARN] HTTP ingest fallback failed for frame {frame_index}: {exc}")
+
+    if ingest_mode == "auto" and http_succeeded:
+        return payload
+
+    if ingest_mode in {"mqtt", "both"} and mqtt_client is not None and mqtt_lib is not None:
+        _publish_sensor_reading_via_mqtt(mqtt_client=mqtt_client, mqtt_lib=mqtt_lib, payload=payload)
+    elif ingest_mode == "auto" and not http_succeeded:
+        fallback_client, fallback_mqtt_lib = _open_mqtt_client()
+        try:
+            _publish_sensor_reading_via_mqtt(
+                mqtt_client=fallback_client,
+                mqtt_lib=fallback_mqtt_lib,
+                payload=payload,
+            )
+        finally:
+            fallback_client.loop_stop()
+            fallback_client.disconnect()
+
     return payload
 
 
 def _emit_profile_via_mqtt(
     *,
+    base_url: str,
     profile: SensorScenarioProfile,
     station_code: str,
     frame_pause_seconds: float,
     inject_post_execute_reading: bool,
+    ingest_mode: str,
 ) -> list[dict[str, Any]]:
     base_time = datetime.now(UTC)
     emitted: list[dict[str, Any]] = []
-    mqtt_client, mqtt_lib = _open_mqtt_client()
+    mqtt_client: Any | None = None
+    mqtt_lib: Any | None = None
+    if ingest_mode in {"mqtt", "both"}:
+        mqtt_client, mqtt_lib = _open_mqtt_client()
 
     try:
         elapsed_seconds = 0.0
@@ -345,6 +422,8 @@ def _emit_profile_via_mqtt(
                 station_code=station_code,
                 recorded_at=recorded_at,
                 phase="primary",
+                base_url=base_url,
+                ingest_mode=ingest_mode,
                 mqtt_client=mqtt_client,
                 mqtt_lib=mqtt_lib,
             )
@@ -372,6 +451,8 @@ def _emit_profile_via_mqtt(
                 station_code=station_code,
                 recorded_at=recorded_at,
                 phase="post_planning",
+                base_url=base_url,
+                ingest_mode=ingest_mode,
                 mqtt_client=mqtt_client,
                 mqtt_lib=mqtt_lib,
             )
@@ -382,8 +463,9 @@ def _emit_profile_via_mqtt(
                 f"note={profile.post_planning_frame.note or '-'}"
             )
     finally:
-        mqtt_client.loop_stop()
-        mqtt_client.disconnect()
+        if mqtt_client is not None:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
 
     return emitted
 
@@ -402,9 +484,9 @@ def run_sensor_profile(
     close_open_incidents: bool = True,
     inject_post_execute_reading: bool = True,
 ) -> dict[str, Any]:
-    """Publish a scenario-specific sensor stream over MQTT only."""
+    """Publish a scenario-specific sensor stream through HTTP and/or MQTT."""
 
-    del base_url, timeout_seconds, close_open_incidents
+    del timeout_seconds, close_open_incidents
 
     profile = SCENARIO_SENSOR_PROFILES.get(scenario_key)
     if profile is None:
@@ -412,10 +494,12 @@ def run_sensor_profile(
 
     station = str(station_code or DEFAULT_STATION_CODE)
     emitted_frames = _emit_profile_via_mqtt(
+        base_url=base_url,
         profile=profile,
         station_code=station,
         frame_pause_seconds=frame_pause_seconds,
         inject_post_execute_reading=inject_post_execute_reading,
+        ingest_mode=RUNTIME_CONFIG.ingest_mode,
     )
     stream_name = _stream_name(profile.key, station)
 
@@ -424,7 +508,14 @@ def run_sensor_profile(
         "stream_name": stream_name,
         "goal_name": stream_name,
         "station_code": station,
-        "transport": "mqtt",
+        "transport": (
+            "http"
+            if RUNTIME_CONFIG.ingest_mode == "http"
+            else "mqtt"
+            if RUNTIME_CONFIG.ingest_mode == "mqtt"
+            else "hybrid"
+        ),
+        "ingest_mode": RUNTIME_CONFIG.ingest_mode,
         "mqtt_topic": RUNTIME_CONFIG.mqtt_topic_sensor_readings,
         "emitted_frame_count": len(emitted_frames),
         "emitted_frames": [
@@ -531,6 +622,27 @@ def scenario_warning_observe_recover(
     )
 
 
+def scenario_salinity_falling_open_gate(
+    base_url: str,
+    timeout_seconds: int,
+    *,
+    station_code: str | None = None,
+    frame_pause_seconds: float = DEFAULT_FRAME_PAUSE_SECONDS,
+    close_open_incidents: bool = True,
+    inject_post_execute_reading: bool = True,
+) -> dict[str, Any]:
+    print("\n[SCENARIO] salinity-falling-open-gate")
+    return run_sensor_profile(
+        base_url=base_url,
+        scenario_key="salinity-falling-open-gate",
+        timeout_seconds=timeout_seconds,
+        station_code=station_code,
+        frame_pause_seconds=frame_pause_seconds,
+        close_open_incidents=close_open_incidents,
+        inject_post_execute_reading=inject_post_execute_reading,
+    )
+
+
 ScenarioRunner = Callable[..., dict[str, Any]]
 
 SCENARIO_EXECUTORS: dict[str, ScenarioRunner] = {
@@ -538,6 +650,7 @@ SCENARIO_EXECUTORS: dict[str, ScenarioRunner] = {
     "fast-approve-execute": scenario_fast_approve_execute,
     "rag-provenance-drilldown": scenario_rag_provenance_drilldown,
     "warning-observe-recover": scenario_warning_observe_recover,
+    "salinity-falling-open-gate": scenario_salinity_falling_open_gate,
 }
 
 
@@ -649,6 +762,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="MQTT publish QoS for scenario frames.",
     )
     parser.add_argument(
+        "--ingest-mode",
+        default="auto",
+        choices=["auto", "mqtt", "http", "both"],
+        help="Choose transport for sensor frames: auto tries HTTP first, then MQTT.",
+    )
+    parser.add_argument(
         "--no-post-execute-reading",
         action="store_true",
         help="Disable the follow-up MQTT frame for scenarios that define one.",
@@ -678,11 +797,13 @@ def main() -> None:
     RUNTIME_CONFIG.mqtt_password = args.mqtt_password
     RUNTIME_CONFIG.mqtt_client_id = str(args.mqtt_client_id)
     RUNTIME_CONFIG.mqtt_qos = int(args.mqtt_qos)
+    RUNTIME_CONFIG.ingest_mode = str(args.ingest_mode)
 
     print(
         "[OK] MQTT demo configured "
         f"broker={RUNTIME_CONFIG.mqtt_broker_url}:{RUNTIME_CONFIG.mqtt_broker_port} "
-        f"topic={RUNTIME_CONFIG.mqtt_topic_sensor_readings} qos={RUNTIME_CONFIG.mqtt_qos}"
+        f"topic={RUNTIME_CONFIG.mqtt_topic_sensor_readings} qos={RUNTIME_CONFIG.mqtt_qos} "
+        f"ingest_mode={RUNTIME_CONFIG.ingest_mode}"
     )
 
     selected_keys = [args.scenario] if args.scenario != "all" else list(SCENARIO_EXECUTORS.keys())

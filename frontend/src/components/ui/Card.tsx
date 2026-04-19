@@ -26,7 +26,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       // Card tiêu chuẩn trên Dashboard
       white: 'bg-white border border-slate-100 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)]',
       
-      // Card cho AI Sentinel & Avoided Damages (Màu tối, sâu)
+      // Card cho planning trace & avoided damages (Màu tối, sâu)
       navy: 'bg-[#00203F] text-white border border-white/5 shadow-2xl overflow-hidden relative',
       
       // Card cho các lớp phủ trên bản đồ (Glassmorphism)

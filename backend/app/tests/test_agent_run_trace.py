@@ -47,6 +47,16 @@ def test_normalize_agent_run_trace_produces_stable_shape():
                         "score": "0.92",
                         "rank": 1,
                     },
+                    {
+                        "citation": "{'type': 'knowledge_document', 'source_uri': 'mekong-salt://samples/document/rag_samples/guideline/sensor_confidence_and_calibration_notes-md', 'document_id': 'b9c42c96-d4ab-4832-802c-9683d80a6b2d', 'chunk_id': '62746a65-cb40-45b1-ba22-6938b489726d', 'title': 'Sensor Confidence And Calibration Notes'}",
+                        "score": "7.65",
+                        "rank": 2,
+                    },
+                    {
+                        "citation": "{'type': 'memory_case', 'memory_case_id': 'd25f85d1-4f1a-4b1a-8ec8-3d4f9b8d0b11', 'incident_id': 'c2ef2caa-3cb2-4c0f-8d5d-7fe7b5f0b0aa', 'plan_id': '8f5a3c75-23c0-4da2-b5c6-77b9f8edab87', 'execution_id': None, 'occurred_at': '2026-04-19T04:21:28.394991Z'}",
+                        "score": "6.10",
+                        "rank": 3,
+                    },
                     "ignored-entry",
                 ],
             },
@@ -64,12 +74,99 @@ def test_normalize_agent_run_trace_produces_stable_shape():
     assert normalized["retrieval_trace"]["total_evidence"] == 4
     assert normalized["retrieval_trace"]["source_counts"] == {"rag": 3}
     assert normalized["retrieval_trace"]["top_citations"][0]["citation"] == "Doc A"
+    assert normalized["retrieval_trace"]["top_citations"][1]["citation"] == "Sensor Confidence And Calibration Notes"
+    assert normalized["retrieval_trace"]["top_citations"][1]["source"] == "knowledge_document"
+    assert normalized["retrieval_trace"]["top_citations"][1]["source_uri"] == "mekong-salt://samples/document/rag_samples/guideline/sensor_confidence_and_calibration_notes-md"
+    assert normalized["retrieval_trace"]["top_citations"][2]["source"] == "memory_case"
+    assert normalized["retrieval_trace"]["top_citations"][2]["memory_case_id"] == "d25f85d1-4f1a-4b1a-8ec8-3d4f9b8d0b11"
     assert normalized["planning_transition_log"][0]["node"] == "observe"
     assert normalized["operator_summary"] is not None
     assert normalized["execution_graph"]["graph_type"] == "planning"
     assert normalized["execution_graph"]["status"] == "pending"
     assert normalized["execution_graph"]["current_node"] == "assess_risk"
     assert normalized["execution_graph"]["nodes"][0]["id"] == "observe"
+
+
+def test_normalize_agent_run_trace_uses_latest_planning_summary():
+    normalized = normalize_agent_run_trace(
+        {
+            "planning_transition_log": [
+                {
+                    "node": "observe",
+                    "status": "completed",
+                    "details": {"objective": "Protect irrigation water quality"},
+                },
+                {
+                    "node": "assess_risk",
+                    "status": "completed",
+                    "details": {
+                        "risk_level": "warning",
+                        "summary": "Risk evaluation found elevated salinity pressure.",
+                    },
+                },
+            ],
+        }
+    )
+
+    assert normalized["execution_graph"]["summary"] == "Risk evaluation found elevated salinity pressure."
+    assert normalized["execution_graph"]["nodes"][1]["summary"] == "Risk evaluation found elevated salinity pressure."
+
+
+def test_normalize_agent_run_trace_builds_vietnamese_stage_summaries():
+    normalized = normalize_agent_run_trace(
+        {
+            "planning_transition_log": [
+                {
+                    "node": "observe",
+                    "status": "completed",
+                    "details": {
+                        "objective": "Bảo vệ chất lượng nước tưới tại cửa lấy nước Gò Công Đông.",
+                    },
+                },
+                {
+                    "node": "assess_risk",
+                    "status": "completed",
+                    "details": {
+                        "risk_level": "critical",
+                    },
+                },
+                {
+                    "node": "retrieve_context",
+                    "status": "completed",
+                    "details": {
+                        "gate_targets": 4,
+                        "evidence_count": 8,
+                        "retrieved_context_keys": ["assessment", "reading", "weather_snapshot"],
+                    },
+                },
+                {
+                    "node": "draft_plan",
+                    "status": "completed",
+                    "details": {
+                        "step_count": 4,
+                        "confidence_score": 1.0,
+                    },
+                },
+                {
+                    "node": "validate_plan",
+                    "status": "completed",
+                    "details": {
+                        "is_valid": True,
+                        "error_count": 0,
+                        "warning_count": 0,
+                    },
+                },
+            ],
+        }
+    )
+
+    nodes = normalized["execution_graph"]["nodes"]
+
+    assert nodes[0]["summary"] == "Quan sát bối cảnh đầu vào để bám mục tiêu: Bảo vệ chất lượng nước tưới tại cửa lấy nước Gò Công Đông."
+    assert nodes[1]["summary"] == "Rủi ro được đánh giá ở mức rất nguy cấp."
+    assert "Thu được 8 bằng chứng." in nodes[2]["summary"]
+    assert "Phác thảo 4 bước hành động." in nodes[3]["summary"]
+    assert "không phát hiện lỗi an toàn đáng chú ý" in nodes[4]["summary"]
 
 
 async def _persist_stub_weather_snapshot(

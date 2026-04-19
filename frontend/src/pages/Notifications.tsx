@@ -6,12 +6,10 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { readPageCache, writePageCache } from "../lib/cache/pageCache";
-import { NOTIFICATIONS_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { getApiErrorMessage } from "../lib/api/error";
 import { getNotifications, markNotificationRead, type NotificationRead } from "../lib/api/notifications";
 import { formatDateTime, formatTime } from "../lib/format";
-import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { useLivePageRefresh } from "../lib/hooks/useLivePageRefresh";
 
 type NotificationsState = {
   loading: boolean;
@@ -19,12 +17,6 @@ type NotificationsState = {
   items: NotificationRead[];
   lastRefreshAt: string | null;
 };
-
-type NotificationsCache = {
-  state: Pick<NotificationsState, "items" | "lastRefreshAt">;
-};
-
-const NOTIFICATIONS_CACHE_MAX_AGE_MS = 30_000;
 
 function isNotificationRead(notification: NotificationRead): boolean {
   return Boolean(notification.payload && typeof notification.payload.read === "boolean" && notification.payload.read);
@@ -73,23 +65,12 @@ function statusBadgeVariant(status: string): "optimal" | "warning" | "critical" 
 }
 
 export function Notifications() {
-  const cachedNotifications = useMemo(() => readPageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY), []);
   const [state, setState] = useState<NotificationsState>(() => {
-    const cachedState = cachedNotifications?.value.state;
-    if (!cachedState) {
-      return {
-        loading: true,
-        error: null,
-        items: [],
-        lastRefreshAt: null,
-      };
-    }
-
     return {
-      loading: false,
+      loading: true,
       error: null,
-      items: cachedState.items,
-      lastRefreshAt: cachedState.lastRefreshAt,
+      items: [],
+      lastRefreshAt: null,
     };
   });
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -111,12 +92,6 @@ export function Notifications() {
         items: response.items,
         lastRefreshAt: nextLastRefreshAt,
       });
-      writePageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY, {
-        state: {
-          items: response.items,
-          lastRefreshAt: nextLastRefreshAt,
-        },
-      });
     } catch (error) {
       if (signal?.aborted) {
         return;
@@ -129,11 +104,9 @@ export function Notifications() {
     }
   };
 
-  usePageCacheRefresh({
-    cacheEntry: cachedNotifications,
-    maxAgeMs: NOTIFICATIONS_CACHE_MAX_AGE_MS,
+  useLivePageRefresh({
     refresh: refreshData,
-    pollIntervalMs: 30_000,
+    pollIntervalMs: 10_000,
   });
 
   const totalCount = state.items.length;
@@ -157,12 +130,6 @@ export function Notifications() {
       const nextLastRefreshAt = new Date().toISOString();
       setState((previous) => {
         const nextItems = previous.items.map((item) => (item.id === updatedNotification.id ? updatedNotification : item));
-        writePageCache<NotificationsCache>(NOTIFICATIONS_CACHE_KEY, {
-          state: {
-            items: nextItems,
-            lastRefreshAt: nextLastRefreshAt,
-          },
-        });
         return {
           ...previous,
           items: nextItems,

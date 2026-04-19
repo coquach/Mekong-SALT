@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -16,17 +16,14 @@ import {
 import { Link } from "react-router-dom";
 
 import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
-import { AISentinelPanel } from "../components/dashboard/AISentinelPanel";
 import { ExecutionGraphViewer } from "../components/graph/ExecutionGraphViewer";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { readPageCache, writePageCache } from "../lib/cache/pageCache";
-import { STRATEGY_CACHE_KEY, invalidateOperationalPageCaches } from "../lib/cache/pageCacheKeys";
-import { getApiBaseUrl } from "../lib/api/http";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
-import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { type ExecutionGraphRead } from "../lib/api/graph";
+import { useLivePageRefresh } from "../lib/hooks/useLivePageRefresh";
 import {
   decidePlan,
   getAgentRuns,
@@ -53,15 +50,6 @@ type StrategyState = {
   approvalsLastRefreshAt: string | null;
   lastRefreshAt: string | null;
 };
-
-type StrategyCache = {
-  state: Pick<
-    StrategyState,
-    "goals" | "plans" | "runs" | "selectedPlanId" | "approvals" | "approvalsLastRefreshAt" | "lastRefreshAt"
-  >;
-};
-
-const STRATEGY_CACHE_MAX_AGE_MS = 0;
 
 function parseApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -137,7 +125,31 @@ function buildRunMessage(run: AgentRunRead): string {
   if (run.error_message) {
     return run.error_message;
   }
-  return JSON.stringify(run.payload).slice(0, 160);
+  if (run.payload && typeof run.payload === "object" && !Array.isArray(run.payload)) {
+    const payload = run.payload as Record<string, unknown>;
+    const request = payload.request;
+    if (request && typeof request === "object" && !Array.isArray(request)) {
+      const objective = (request as Record<string, unknown>).objective;
+      if (typeof objective === "string" && objective.trim().length > 0) {
+        return objective;
+      }
+    }
+  }
+  return "Run này chưa có mô tả nổi bật để hiển thị.";
+}
+
+function buildRunSummary(run: AgentRunRead, trace: ReturnType<typeof getPlanningTrace>): string {
+  const traceParts = [
+    trace?.plan_decision?.reason,
+    trace?.incident_decision?.reason,
+    run.error_message,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  if (traceParts.length > 0) {
+    return traceParts.join(" · ");
+  }
+
+  return buildRunMessage(run);
 }
 
 function getPlanningTrace(run: AgentRunRead | null): {
@@ -197,41 +209,23 @@ function toRecordList(value: unknown): Record<string, unknown>[] {
 }
 
 export function StrategyOrchestration() {
-  const cachedStrategy = useMemo(() => readPageCache<StrategyCache>(STRATEGY_CACHE_KEY), []);
-  const [state, setState] = useState<StrategyState>(() => {
-    const cachedState = cachedStrategy?.value.state;
-    if (!cachedState) {
-      return {
-        loading: true,
-        error: null,
-        goals: [],
-        plans: [],
-        runs: [],
-        selectedPlanId: null,
-        approvals: [],
-        approvalsLoading: false,
-        approvalsError: null,
-        approvalsLastRefreshAt: null,
-        lastRefreshAt: null,
-      };
-    }
-
-    return {
-      loading: false,
-      error: null,
-      goals: cachedState.goals,
-      plans: cachedState.plans,
-      runs: cachedState.runs,
-      selectedPlanId: cachedState.selectedPlanId,
-      approvals: cachedState.approvals ?? [],
-      approvalsLoading: false,
-      approvalsError: null,
-      approvalsLastRefreshAt: cachedState.approvalsLastRefreshAt ?? null,
-      lastRefreshAt: cachedState.lastRefreshAt,
-    };
-  });
+  const [state, setState] = useState<StrategyState>(() => ({
+    loading: true,
+    error: null,
+    goals: [],
+    plans: [],
+    runs: [],
+    selectedPlanId: null,
+    approvals: [],
+    approvalsLoading: false,
+    approvalsError: null,
+    approvalsLastRefreshAt: null,
+    lastRefreshAt: null,
+  }));
   const [decisionBusy, setDecisionBusy] = useState<"approved" | "rejected" | null>(null);
   const [goalBusyId, setGoalBusyId] = useState<string | null>(null);
+  const [livePlanningGraph, setLivePlanningGraph] = useState<ExecutionGraphRead | null>(null);
+  const [livePlanningRunId, setLivePlanningRunId] = useState<string | null>(null);
   const selectedPlanIdRef = useRef<string | null>(state.selectedPlanId);
   const approvalRequestIdRef = useRef(0);
 
@@ -268,25 +262,13 @@ export function StrategyOrchestration() {
 
         const refreshedAt = new Date().toISOString();
         setState((previous) => {
-          const nextState = {
+          return {
             ...previous,
             approvals: response.items,
             approvalsLoading: false,
             approvalsError: null,
             approvalsLastRefreshAt: refreshedAt,
           };
-          writePageCache<StrategyCache>(STRATEGY_CACHE_KEY, {
-            state: {
-              goals: nextState.goals,
-              plans: nextState.plans,
-              runs: nextState.runs,
-              selectedPlanId: nextState.selectedPlanId,
-              approvals: nextState.approvals,
-              approvalsLastRefreshAt: nextState.approvalsLastRefreshAt,
-              lastRefreshAt: nextState.lastRefreshAt,
-            },
-          });
-          return nextState;
         });
       } catch (error) {
         if (signal?.aborted || requestId !== approvalRequestIdRef.current) {
@@ -315,44 +297,28 @@ export function StrategyOrchestration() {
         getAgentRuns({ limit: 30 }, signal),
       ]);
 
-      setState((previous) => {
-        const reviewablePlans = plans.filter((plan) => plan.status === "pending_approval");
-        const selectedPlan =
-          reviewablePlans.find((plan) => plan.id === previous.selectedPlanId) ??
-          reviewablePlans[0] ??
-          null;
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: null,
+        goals: goals.items,
+        plans,
+        runs: runs.items,
+        lastRefreshAt: new Date().toISOString(),
+      }));
 
-        return {
-          ...previous,
-          loading: false,
-          error: null,
-          goals: goals.items,
-          plans,
-          runs: runs.items,
-          selectedPlanId: selectedPlan?.id ?? null,
-          approvals: [],
-          approvalsLoading: false,
-          approvalsError: null,
-          approvalsLastRefreshAt: null,
-          lastRefreshAt: new Date().toISOString(),
-        };
-      });
-
-      const nextLastRefreshAt = new Date().toISOString();
       const reviewablePlans = plans.filter((plan) => plan.status === "pending_approval");
       const nextSelectedPlan =
         reviewablePlans.find((plan) => plan.id === selectedPlanIdRef.current) ?? reviewablePlans[0] ?? null;
-      writePageCache<StrategyCache>(STRATEGY_CACHE_KEY, {
-        state: {
-          goals: goals.items,
-          plans,
-          runs: runs.items,
-          selectedPlanId: nextSelectedPlan?.id ?? null,
-          approvals: [],
-          approvalsLastRefreshAt: null,
-          lastRefreshAt: nextLastRefreshAt,
-        },
-      });
+
+      setState((previous) => ({
+        ...previous,
+        selectedPlanId: nextSelectedPlan?.id ?? null,
+        approvals: [],
+        approvalsLoading: false,
+        approvalsError: null,
+        approvalsLastRefreshAt: null,
+      }));
 
       void refreshApprovalHistory(nextSelectedPlan?.id ?? null, {
         signal,
@@ -370,9 +336,7 @@ export function StrategyOrchestration() {
     }
   }, [refreshApprovalHistory]);
 
-  usePageCacheRefresh({
-    cacheEntry: cachedStrategy,
-    maxAgeMs: STRATEGY_CACHE_MAX_AGE_MS,
+  useLivePageRefresh({
     refresh: refreshData,
     pollIntervalMs: 15_000,
   });
@@ -411,11 +375,28 @@ export function StrategyOrchestration() {
         : null) ?? sortedRuns.find((run) => run.run_type === "plan_generation") ?? latestRuns[0] ?? null,
     [latestRuns, selectedPlan, sortedRuns],
   );
-  const reasoningStreamStatus = state.loading ? "connecting" : "connected";
+  useEffect(() => {
+    const nextRunId = latestPlanningRun?.id ?? null;
+    if (!nextRunId) {
+      if (livePlanningRunId === null && livePlanningGraph !== null) {
+        setLivePlanningGraph(null);
+      }
+      return;
+    }
+
+    if (nextRunId !== livePlanningRunId) {
+      setLivePlanningRunId(nextRunId);
+      setLivePlanningGraph(latestPlanningRun?.execution_graph ?? null);
+      return;
+    }
+
+    if (livePlanningGraph === null && latestPlanningRun?.execution_graph !== null) {
+      setLivePlanningGraph(latestPlanningRun.execution_graph ?? null);
+    }
+  }, [latestPlanningRun?.execution_graph, latestPlanningRun?.id, livePlanningGraph, livePlanningRunId]);
+
   const planningTrace = useMemo(() => getPlanningTrace(latestPlanningRun), [latestPlanningRun]);
-  const latestExecutionGraph = latestPlanningRun?.execution_graph ?? null;
-  const backendBaseUrl = getApiBaseUrl();
-  const latestPlanningRunApiUrl = latestPlanningRun ? `${backendBaseUrl}/agent/runs/${latestPlanningRun.id}` : null;
+  const latestExecutionGraph = livePlanningGraph ?? latestPlanningRun?.execution_graph ?? null;
   const observationSnapshot = useMemo(() => {
     const payload = latestPlanningRun?.observation_snapshot?.payload;
     return isRecord(payload) ? payload : null;
@@ -447,6 +428,28 @@ export function StrategyOrchestration() {
       )
     : 0;
   const isPlanValid = getBoolean(validationResult?.is_valid);
+  const topCitationPreview = topCitations.slice(0, 2);
+  const primaryAttentionMessage =
+    validationErrors[0] ?? validationWarnings[0] ?? (isPlanValid === false ? "Kế hoạch chưa qua kiểm tra an toàn." : "Không có cảnh báo nổi bật.");
+  const attentionTone = validationErrors.length > 0 ? "critical" : validationWarnings.length > 0 ? "warning" : "optimal";
+  const attentionLabel =
+    validationErrors.length > 0
+      ? `${validationErrors.length} lỗi`
+      : validationWarnings.length > 0
+        ? `${validationWarnings.length} cảnh báo`
+        : isPlanValid === false
+          ? "Chưa hợp lệ"
+          : "Ổn để xem";
+  const planStepPreview = planSteps.slice(0, 3);
+  const latestApproval = useMemo(
+    () =>
+      [...state.approvals].sort((left, right) => {
+        const leftTime = new Date(left.decided_at).getTime();
+        const rightTime = new Date(right.decided_at).getTime();
+        return rightTime - leftTime;
+      })[0] ?? null,
+    [state.approvals],
+  );
   const decisionStance = useMemo(() => {
     if (!selectedPlan) {
       return {
@@ -494,7 +497,6 @@ export function StrategyOrchestration() {
         decision,
         comment: decision === "approved" ? "Approved from FE strategy page." : "Rejected from FE strategy page.",
       });
-      invalidateOperationalPageCaches();
       await refreshData();
     } catch (error) {
       setState((previous) => ({ ...previous, error: parseApiError(error) }));
@@ -504,14 +506,13 @@ export function StrategyOrchestration() {
   };
 
   const handleToggleGoal = async (goal: MonitoringGoalRead) => {
-    setGoalBusyId(goal.id);
-    try {
-      const updatedGoal = await updateGoal(goal.id, { is_active: !goal.is_active });
-      invalidateOperationalPageCaches();
-      setState((previous) => ({
-        ...previous,
-        goals: previous.goals.map((item) => (item.id === goal.id ? updatedGoal : item)),
-        error: null,
+      setGoalBusyId(goal.id);
+      try {
+        const updatedGoal = await updateGoal(goal.id, { is_active: !goal.is_active });
+        setState((previous) => ({
+          ...previous,
+          goals: previous.goals.map((item) => (item.id === goal.id ? updatedGoal : item)),
+          error: null,
       }));
     } catch (error) {
       setState((previous) => ({ ...previous, error: parseApiError(error) }));
@@ -552,75 +553,26 @@ export function StrategyOrchestration() {
 
       {isBootstrapping ? <SkeletonCards count={3} /> : null}
 
-      <div className={`${isBootstrapping ? "hidden" : ""}`}>
-        <AISentinelPanel
+     
+
+      <div className="space-y-6">
+        {/* <PlanningTracePanel
           agentRun={latestPlanningRun}
           streamStatus={reasoningStreamStatus}
-          lastStreamAt={state.lastRefreshAt}
-        />
-      </div>
+          lastStreamAt={planningGraphStream.lastStreamAt ?? state.lastRefreshAt}
+          executionGraph={latestExecutionGraph}
+        /> */}
 
-      <div className={`${isBootstrapping ? "hidden" : ""}`}>
         <ExecutionGraphViewer
           graph={latestExecutionGraph}
           title="Planning Execution Graph"
           subtitle="Graph snapshot của run gần nhất"
           emptyTitle="Chưa có execution graph"
-          emptyDescription="Khi backend trả về execution_graph cho run kế hoạch, biểu đồ node/edge sẽ hiện ở đây."
+          emptyDescription="Đang chờ dữ liệu để hiển thị biểu đồ."
         />
       </div>
 
-      <Card variant="white" className={`rounded-4xl border border-slate-200 p-5 shadow-soft ${isBootstrapping ? "hidden" : ""}`}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-mekong-cyan">Backend source</p>
-            <p className="text-sm font-semibold text-slate-700">
-              Graph phía FE này lấy trực tiếp từ field execution_graph của agent run detail ở backend.
-            </p>
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-              GET {latestPlanningRunApiUrl ?? "--"}
-            </p>
-          </div>
-          {latestPlanningRunApiUrl ? (
-            <a
-              href={latestPlanningRunApiUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-xl border border-mekong-cyan/20 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-mekong-navy transition-all hover:border-mekong-cyan/40 hover:text-mekong-teal"
-            >
-              Mở JSON backend
-            </a>
-          ) : null}
-        </div>
-      </Card>
-
-      <Card variant="white" className={`rounded-4xl border border-slate-200 p-6 shadow-soft ${isBootstrapping ? "hidden" : ""}`}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2 max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cách đọc nhanh</p>
-            <h3 className="text-xl font-black text-mekong-navy">Màn này cho biết hệ thống đang đề xuất gì và vì sao bạn nên duyệt hoặc từ chối.</h3>
-            <p className="text-sm font-semibold leading-relaxed text-slate-600">
-              Chọn một kế hoạch đang chờ duyệt, đọc phần rủi ro và bằng chứng tham chiếu, rồi xem các bước mà hệ thống sẽ thực hiện nếu được chấp thuận.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:w-md">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">1. Chọn kế hoạch</p>
-              <p className="mt-1 text-sm font-semibold text-slate-700">Xem kế hoạch nào đang chờ bạn quyết định.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">2. Đọc lý do</p>
-              <p className="mt-1 text-sm font-semibold text-slate-700">Xem rủi ro, bằng chứng và cảnh báo.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">3. Quyết định</p>
-              <p className="mt-1 text-sm font-semibold text-slate-700">Phê duyệt hoặc từ chối trước khi chạy mô phỏng.</p>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className={`grid grid-cols-12 gap-6 ${isBootstrapping ? "hidden" : ""}`}>
+      <div className="space-y-6">
         <div className="col-span-12 xl:col-span-6">
           <Card variant="white" padding="lg" className="rounded-4xl shadow-soft border border-slate-200 h-full">
             <div className="flex items-center justify-between gap-3 mb-6">
@@ -724,7 +676,7 @@ export function StrategyOrchestration() {
                         <h4 className="text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
                           {selectedPlan.objective}
                         </h4>
-                        <p className="text-sm font-semibold text-slate-600 leading-relaxed">
+                        <p className="text-sm font-semibold text-slate-600 leading-relaxed whitespace-pre-wrap wrap-break-word">
                           {selectedPlan.summary}
                         </p>
                       </div>
@@ -737,7 +689,7 @@ export function StrategyOrchestration() {
                       Bước: {planSteps.length} • Tạo lúc: {formatDatetime(selectedPlan.created_at)}
                     </p>
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="space-y-3">
                       <div className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Rủi ro hiện tại</p>
                         <p className="mt-2 text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
@@ -789,25 +741,27 @@ export function StrategyOrchestration() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3">
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <Quote size={14} />
                           <p className="text-[10px] font-black uppercase tracking-[0.16em]">Vì sao hệ thống đề xuất</p>
                         </div>
-                        <p className="text-[13px] font-semibold leading-relaxed text-slate-700">
+                        <p className="text-[13px] font-semibold leading-relaxed text-slate-700 line-clamp-3">
                           {getString(selectedPlan.approval_explanation) ?? getString(observationAssessment?.rationale) ?? selectedPlan.summary}
                         </p>
-                        <p className="text-[12px] font-semibold leading-relaxed text-slate-500">
-                          {getString(observationWeather?.condition_summary)
-                            ? `Điều kiện thời tiết: ${getString(observationWeather?.condition_summary)}`
-                            : "Chưa có weather snapshot bổ sung."}
-                        </p>
-                        <p className="text-[12px] font-semibold leading-relaxed text-slate-500">
-                          {observationReading
-                            ? `Reading ${getString(observationReading.station_code) ?? "--"} • salinity ${getString(observationReading.salinity_dsm) ?? "--"} dS/m • water level ${getString(observationReading.water_level_m) ?? "--"} m`
-                            : "Chưa có reading snapshot để đối chiếu."}
-                        </p>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {getString(observationWeather?.condition_summary) ? (
+                            <Badge variant="neutral" className="text-[8px] uppercase">
+                              {getString(observationWeather?.condition_summary)}
+                            </Badge>
+                          ) : null}
+                          {observationReading ? (
+                            <Badge variant="neutral" className="text-[8px] uppercase">
+                              {`Reading ${getString(observationReading.station_code) ?? "--"} • mực nước ${getString(observationReading.water_level_m) ?? "--"} m`}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
@@ -815,9 +769,9 @@ export function StrategyOrchestration() {
                           <MapPinned size={14} />
                           <p className="text-[10px] font-black uppercase tracking-[0.16em]">Dữ liệu tham chiếu</p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {topCitations.length > 0 ? (
-                            topCitations.map((citation, index) => (
+                        {topCitationPreview.length > 0 ? (
+                          <div className="space-y-2">
+                            {topCitationPreview.map((citation, index) => (
                               <div
                                 key={`${getString(citation.citation) ?? index}-${index}`}
                                 className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600"
@@ -827,13 +781,15 @@ export function StrategyOrchestration() {
                                 </p>
                                 <p className="mt-1 line-clamp-2">{getString(citation.citation) ?? "Không có trích dẫn"}</p>
                               </div>
-                            ))
-                          ) : (
+                            ))}
+                          </div>
+                        ) : (
+                          <div>
                             <p className="text-[12px] font-semibold text-slate-500">
                               Chưa có citations nổi bật trong trace.
                             </p>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -847,82 +803,73 @@ export function StrategyOrchestration() {
                           {state.approvals.length} lần
                         </Badge>
                       </div>
-
-                      <div className="mt-3 space-y-2">
-                        {state.approvalsLoading ? (
-                          <div className="space-y-2">
-                            <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
-                            <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
-                          </div>
-                        ) : state.approvalsError ? (
-                          <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-[12px] font-semibold text-red-800">
-                            {state.approvalsError}
-                          </div>
-                        ) : state.approvals.length > 0 ? (
-                          state.approvals.map((approval) => (
-                            <div key={approval.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <Badge
-                                    variant={approval.decision === "approved" ? "optimal" : "critical"}
-                                    className="text-[8px] uppercase"
-                                  >
-                                    {approval.decision === "approved" ? "Đã duyệt" : "Đã từ chối"}
-                                  </Badge>
-                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-mekong-navy">
-                                    {approval.decided_by_name}
-                                  </p>
-                                </div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                                  {formatDatetime(approval.decided_at)}
-                                </p>
-                              </div>
-                              {approval.comment ? (
-                                <p className="mt-2 text-[12px] font-semibold leading-relaxed text-slate-600">
-                                  {approval.comment}
-                                </p>
-                              ) : null}
+                      {state.approvalsLoading ? (
+                        <div className="mt-3 space-y-2">
+                          <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                          <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                        </div>
+                      ) : state.approvalsError ? (
+                        <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-[12px] font-semibold text-red-800">
+                          {state.approvalsError}
+                        </div>
+                      ) : latestApproval ? (
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant={latestApproval.decision === "approved" ? "optimal" : "critical"}
+                                className="text-[8px] uppercase"
+                              >
+                                {latestApproval.decision === "approved" ? "Đã duyệt" : "Đã từ chối"}
+                              </Badge>
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-mekong-navy">
+                                {latestApproval.decided_by_name}
+                              </p>
                             </div>
-                          ))
-                        ) : (
-                          <EmptyState
-                            title="Chưa có lịch sử duyệt"
-                            description="Khi plan này được duyệt hoặc từ chối, lịch sử sẽ hiển thị tại đây."
-                          />
-                        )}
-                      </div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                              {formatDatetime(latestApproval.decided_at)}
+                            </p>
+                          </div>
+                          {latestApproval.comment ? (
+                            <p className="mt-2 text-[12px] font-semibold leading-relaxed text-slate-600 line-clamp-3">
+                              {latestApproval.comment}
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-[12px] font-semibold leading-relaxed text-slate-500">
+                              Không có ghi chú bổ sung.
+                            </p>
+                          )}
+                          {state.approvals.length > 1 ? (
+                            <p className="mt-2 text-[11px] font-semibold text-slate-500">
+                              {state.approvals.length - 1} lần duyệt cũ hơn được giữ lại trong lịch sử backend.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <EmptyState
+                          title="Chưa có lịch sử duyệt"
+                          description="Khi plan này được duyệt hoặc từ chối, lịch sử sẽ hiển thị tại đây."
+                        />
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3">
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                         <div className="flex items-center gap-2 text-mekong-navy">
                           <AlertTriangle size={14} />
                           <p className="text-[10px] font-black uppercase tracking-[0.16em]">Điểm cần chú ý</p>
                         </div>
-                        <div className="space-y-2">
-                          {validationErrors.length > 0 ? (
-                            validationErrors.map((error, index) => (
-                              <div
-                                key={`${error}-${index}`}
-                                className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-800"
-                              >
-                                {error}
-                              </div>
-                            ))
-                          ) : validationWarnings.length > 0 ? (
-                            validationWarnings.map((warning, index) => (
-                              <div
-                                key={`${warning}-${index}`}
-                                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-900"
-                              >
-                                {warning}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-semibold text-emerald-900">
-                              Không có lỗi guard; chỉ còn quyết định vận hành của người điều hành.
-                            </div>
-                          )}
+                        <div
+                          className={`rounded-xl border px-3 py-2 text-[12px] font-semibold ${
+                            attentionTone === "critical"
+                              ? "border-red-200 bg-red-50 text-red-800"
+                              : attentionTone === "warning"
+                                ? "border-amber-200 bg-amber-50 text-amber-900"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                          }`}
+                        >
+                          <p className="font-black uppercase tracking-[0.12em]">{attentionLabel}</p>
+                          <p className="mt-1 leading-relaxed line-clamp-2">{primaryAttentionMessage}</p>
                         </div>
                         {assumptionItems.length > 0 ? (
                           <div className="pt-1">
@@ -930,7 +877,7 @@ export function StrategyOrchestration() {
                               Giả định chính
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2">
-                              {assumptionItems.map((assumption, index) => (
+                              {assumptionItems.slice(0, 3).map((assumption, index) => (
                                 <span
                                   key={`${assumption}-${index}`}
                                   className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600"
@@ -938,6 +885,11 @@ export function StrategyOrchestration() {
                                   {assumption}
                                 </span>
                               ))}
+                              {assumptionItems.length > 3 ? (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                                  +{assumptionItems.length - 3}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         ) : null}
@@ -949,7 +901,7 @@ export function StrategyOrchestration() {
                           <p className="text-[10px] font-black uppercase tracking-[0.16em]">Việc hệ thống sẽ làm</p>
                         </div>
                         <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
-                          {planSteps.slice(0, 4).map((step, index) => {
+                          {planStepPreview.map((step, index) => {
                             const stepIndex = typeof step.step_index === "number" ? step.step_index : index + 1;
                             return (
                               <div
@@ -967,11 +919,6 @@ export function StrategyOrchestration() {
                                 <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-600 line-clamp-3">
                                   {getString(step.instructions) ?? "Chưa có instructions."}
                                 </p>
-                                {getString(step.rationale) ? (
-                                  <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500 line-clamp-2">
-                                    {getString(step.rationale)}
-                                  </p>
-                                ) : null}
                               </div>
                             );
                           })}
@@ -987,7 +934,7 @@ export function StrategyOrchestration() {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <Button
                     variant="navy"
                     className="h-11 rounded-xl px-4"
@@ -1026,23 +973,51 @@ export function StrategyOrchestration() {
               <Badge className="bg-white/10 text-slate-200 border-white/10 text-[9px]">{latestRuns.length} runs</Badge>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
               {latestRuns.map((run) => (
                 <div key={run.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-mekong-cyan">
-                      {run.run_type}
-                    </p>
-                    <Badge className="bg-white/10 text-slate-200 border-white/10 text-[8px]">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-[0.15em] text-mekong-cyan">
+                        {run.run_type}
+                      </p>
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-white">
+                        {formatDatetime(run.started_at ?? run.created_at)}
+                      </p>
+                    </div>
+                    <Badge className="bg-white/10 text-slate-200 border-white/10 text-[8px] uppercase">
                       {run.status}
                     </Badge>
                   </div>
-                  <p className="mt-2 text-[12px] font-semibold leading-relaxed text-slate-200 line-clamp-4">
-                    {buildRunMessage(run)}
+                  <p className="mt-3 text-[13px] font-semibold leading-relaxed text-slate-200">
+                    {buildRunSummary(run, getPlanningTrace(run))}
                   </p>
-                  <div className="mt-3 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                    <span>{formatDatetime(run.started_at)}</span>
-                    <span>{run.id.slice(0, 8)}</span>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {(() => {
+                      const runTrace = getPlanningTrace(run);
+                      const evidenceCount = runTrace?.retrieval_trace?.total_evidence;
+                      const transitionCount = runTrace?.planning_transition_log?.length;
+                      return (
+                        <>
+                          {typeof evidenceCount === "number" ? (
+                            <Badge className="bg-white/10 text-slate-200 border-white/10 text-[8px] uppercase">
+                              {evidenceCount} evidence
+                            </Badge>
+                          ) : null}
+                          {typeof transitionCount === "number" ? (
+                            <Badge className="bg-white/10 text-slate-200 border-white/10 text-[8px] uppercase">
+                              {transitionCount} node transitions
+                            </Badge>
+                          ) : null}
+                          {run.error_message ? (
+                            <Badge className="bg-red-500/15 text-red-200 border-red-400/20 text-[8px] uppercase">
+                              Có lỗi run
+                            </Badge>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                   <Link
                     to={`/strategy/runs/${run.id}`}
@@ -1069,7 +1044,7 @@ export function StrategyOrchestration() {
           <HistoryIcon size={20} />
         <h3 className="text-sm font-black uppercase tracking-[0.18em]">Kế hoạch gần đây</h3>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-3">
           {state.plans.slice(0, 8).map((plan) => (
             <div key={plan.id} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
               <div className="flex items-center justify-between gap-2">

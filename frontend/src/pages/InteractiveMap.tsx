@@ -17,8 +17,6 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { readPageCache, writePageCache } from "../lib/cache/pageCache";
-import { INTERACTIVE_MAP_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { getLatestReadings, type SensorReading } from "../lib/api/dashboard";
 import {
   getIncidents,
@@ -28,10 +26,11 @@ import {
   type GateRead,
   type IncidentRead,
   type SensorStationRead,
+  updateGateStatus,
 } from "../lib/api/telemetry";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 import { formatNumber as formatNumberUtil, formatTime as formatTimeUtil, toNumber as toNumberUtil } from "../lib/format";
-import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { useLivePageRefresh } from "../lib/hooks/useLivePageRefresh";
 
 type RiskFilter = "all" | "critical" | "warning" | "safe";
 
@@ -46,19 +45,6 @@ type InteractiveMapState = {
   selectedRisk: Awaited<ReturnType<typeof getLatestRisk>> | null;
   lastRefreshAt: string | null;
 };
-
-type InteractiveMapCache = {
-  state: Pick<InteractiveMapState, "stations" | "gates" | "latestReadings" | "incidents" | "selectedStationId" | "selectedRisk" | "lastRefreshAt">;
-  layers: {
-    heatmap: boolean;
-    stations: boolean;
-    gates: boolean;
-    prediction: boolean;
-  };
-  riskFilter: RiskFilter;
-};
-
-const INTERACTIVE_MAP_CACHE_MAX_AGE_MS = 30_000;
 
 function parseApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -113,42 +99,24 @@ function deriveRiskLevel(salinityGl: number | null | undefined): "critical" | "w
 }
 
 export function InteractiveMap() {
-  const cachedInteractiveMap = useMemo(() => readPageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY), []);
-  const [layers, setLayers] = useState(() => cachedInteractiveMap?.value.layers ?? {
+  const [layers, setLayers] = useState(() => ({
     heatmap: true,
     stations: true,
     gates: true,
     prediction: true,
-  });
-  const [riskFilter, setRiskFilter] = useState<RiskFilter>(
-    () => cachedInteractiveMap?.value.riskFilter ?? "all",
-  );
+  }));
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [state, setState] = useState<InteractiveMapState>(() => {
-    const cachedState = cachedInteractiveMap?.value.state;
-    if (!cachedState) {
-      return {
-        loading: true,
-        error: null,
-        stations: [],
-        gates: [],
-        latestReadings: [],
-        incidents: [],
-        selectedStationId: null,
-        selectedRisk: null,
-        lastRefreshAt: null,
-      };
-    }
-
     return {
-      loading: false,
+      loading: true,
       error: null,
-      stations: cachedState.stations,
-      gates: cachedState.gates,
-      latestReadings: cachedState.latestReadings,
-      incidents: cachedState.incidents,
-      selectedStationId: cachedState.selectedStationId,
-      selectedRisk: cachedState.selectedRisk,
-      lastRefreshAt: cachedState.lastRefreshAt,
+      stations: [],
+      gates: [],
+      latestReadings: [],
+      incidents: [],
+      selectedStationId: null,
+      selectedRisk: null,
+      lastRefreshAt: null,
     };
   });
   const navigate = useNavigate();
@@ -156,6 +124,7 @@ export function InteractiveMap() {
   const riskAbortControllerRef = useRef<AbortController | null>(null);
   const selectedStationIdRef = useRef<string | null>(null);
   const selectedRiskRef = useRef<InteractiveMapState["selectedRisk"]>(null);
+  const [gateActionBusyId, setGateActionBusyId] = useState<string | null>(null);
   const isBootstrapping = state.loading && state.stations.length === 0 && state.gates.length === 0;
 
   useEffect(() => {
@@ -165,37 +134,6 @@ export function InteractiveMap() {
   useEffect(() => {
     selectedRiskRef.current = state.selectedRisk;
   }, [state.selectedRisk]);
-
-  useEffect(() => {
-    if (state.loading) {
-      return;
-    }
-
-    writePageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY, {
-      state: {
-        stations: state.stations,
-        gates: state.gates,
-        latestReadings: state.latestReadings,
-        incidents: state.incidents,
-        selectedStationId: state.selectedStationId,
-        selectedRisk: state.selectedRisk,
-        lastRefreshAt: state.lastRefreshAt,
-      },
-      layers,
-      riskFilter,
-    });
-  }, [
-    layers,
-    riskFilter,
-    state.gates,
-    state.incidents,
-    state.lastRefreshAt,
-    state.latestReadings,
-    state.loading,
-    state.selectedRisk,
-    state.selectedStationId,
-    state.stations,
-  ]);
 
   const readingsByStationId = useMemo(() => {
     const map = new Map<string, SensorReading>();
@@ -312,11 +250,9 @@ export function InteractiveMap() {
     }
   }, [requestSelectedRisk]);
 
-  usePageCacheRefresh({
-    cacheEntry: cachedInteractiveMap,
-    maxAgeMs: INTERACTIVE_MAP_CACHE_MAX_AGE_MS,
+  useLivePageRefresh({
     refresh: refreshData,
-    pollIntervalMs: 30_000,
+    pollIntervalMs: 10_000,
   });
 
   const mapStations = useMemo<MapStation[]>(
@@ -422,6 +358,24 @@ export function InteractiveMap() {
     void requestSelectedRisk(station.code);
   };
 
+  const handleGateStatusChange = useCallback(
+    async (gate: MapGate, nextStatus: GateRead["status"]) => {
+      setGateActionBusyId(gate.id);
+      try {
+        await updateGateStatus(gate.id, nextStatus);
+        await refreshData({ showLoading: false });
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          error: parseApiError(error),
+        }));
+      } finally {
+        setGateActionBusyId(null);
+      }
+    },
+    [refreshData],
+  );
+
   const criticalIncidents = useMemo(
     () => state.incidents.filter((item) => item.severity === "critical" && item.status !== "closed"),
     [state.incidents],
@@ -462,6 +416,10 @@ export function InteractiveMap() {
           onSelectStation={(stationId) => {
             void handleSelectStation(stationId);
           }}
+          onToggleGateStatus={(gate, nextStatus) => {
+            void handleGateStatusChange(gate, nextStatus);
+          }}
+          gateActionBusyId={gateActionBusyId}
         />
 
         {isBootstrapping ? (

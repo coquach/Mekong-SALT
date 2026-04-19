@@ -1,4 +1,4 @@
-import { apiGet } from "./http";
+import { apiGet, apiPatch } from "./http";
 import type { RiskLatestResponse, SensorReadingCollection } from "./dashboard";
 
 export interface StationMarkerMetadata {
@@ -157,6 +157,14 @@ export function getGates(
   signal?: AbortSignal,
 ): Promise<GateCollection> {
   return apiGet<GateCollection>("/gates", { query, signal });
+}
+
+export function updateGateStatus(
+  gateId: string,
+  status: GateRead["status"],
+  signal?: AbortSignal,
+): Promise<GateRead> {
+  return apiPatch<GateRead>(`/gates/${gateId}`, { status }, { signal });
 }
 
 export function getReadingHistory(

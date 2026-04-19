@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Bell,
@@ -9,16 +9,14 @@ import {
   Waves,
 } from "lucide-react";
 
-import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
+import { EmptyState, InlineError, SkeletonBlock, SkeletonCards } from "../components/ui/AsyncState";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { readPageCache, writePageCache } from "../lib/cache/pageCache";
-import { HISTORY_CACHE_KEY } from "../lib/cache/pageCacheKeys";
 import { type RiskLatestResponse, type SensorReading } from "../lib/api/dashboard";
 import { getApiErrorMessage } from "../lib/api/error";
-import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { useLivePageRefresh } from "../lib/hooks/useLivePageRefresh";
 import {
   getAuditLogs,
   getIncidents,
@@ -44,12 +42,6 @@ type HistoryState = {
   auditLogs: AuditLogRead[];
   lastRefreshAt: string | null;
 };
-
-type HistoryCache = {
-  state: Pick<HistoryState, "stations" | "selectedStationId" | "readings" | "risk" | "incidents" | "auditLogs" | "lastRefreshAt">;
-};
-
-const HISTORY_CACHE_MAX_AGE_MS = 30_000;
 
 async function loadStationContext(
   stationCode: string,
@@ -77,35 +69,18 @@ async function loadStationContext(
 }
 
 export function History() {
-  const cachedHistory = useMemo(() => readPageCache<HistoryCache>(HISTORY_CACHE_KEY), []);
   const [state, setState] = useState<HistoryState>(() => {
-    const cachedState = cachedHistory?.value.state;
-    if (!cachedState) {
-      return {
-        loading: true,
-        stationLoading: false,
-        error: null,
-        stations: [],
-        selectedStationId: null,
-        readings: [],
-        risk: null,
-        incidents: [],
-        auditLogs: [],
-        lastRefreshAt: null,
-      };
-    }
-
     return {
-      loading: false,
+      loading: true,
       stationLoading: false,
       error: null,
-      stations: cachedState.stations,
-      selectedStationId: cachedState.selectedStationId,
-      readings: cachedState.readings,
-      risk: cachedState.risk,
-      incidents: cachedState.incidents,
-      auditLogs: cachedState.auditLogs,
-      lastRefreshAt: cachedState.lastRefreshAt,
+      stations: [],
+      selectedStationId: null,
+      readings: [],
+      risk: null,
+      incidents: [],
+      auditLogs: [],
+      lastRefreshAt: null,
     };
   });
   const stationContextRequestIdRef = useRef(0);
@@ -119,7 +94,7 @@ export function History() {
       showLoading?: boolean;
     },
   ) => {
-    const selectedStationId = params?.selectedStationId ?? null;
+    const selectedStationId = params?.selectedStationId ?? state.selectedStationId ?? null;
     const signal = params?.signal;
     const showLoading = params?.showLoading ?? false;
     const requestId = ++pageLoadRequestIdRef.current;
@@ -169,17 +144,6 @@ export function History() {
         lastRefreshAt: new Date().toISOString(),
       }));
 
-      writePageCache<HistoryCache>(HISTORY_CACHE_KEY, {
-        state: {
-          stations,
-          selectedStationId: selectedStation?.id ?? null,
-          readings,
-          risk,
-          incidents: incidentsResponse.items,
-          auditLogs: auditResponse.items,
-          lastRefreshAt: new Date().toISOString(),
-        },
-      });
     } catch (error) {
       if (signal?.aborted || requestId !== pageLoadRequestIdRef.current) {
         return;
@@ -193,11 +157,9 @@ export function History() {
     }
   };
 
-  usePageCacheRefresh({
-    cacheEntry: cachedHistory,
-    maxAgeMs: HISTORY_CACHE_MAX_AGE_MS,
+  useLivePageRefresh({
     refresh: loadPageData,
-    pollIntervalMs: 60_000,
+    pollIntervalMs: 15_000,
   });
 
   const selectedStation = useMemo(
@@ -247,34 +209,6 @@ export function History() {
       ),
     [state.incidents],
   );
-
-  useEffect(() => {
-    if (state.loading || state.stationLoading) {
-      return;
-    }
-
-    writePageCache<HistoryCache>(HISTORY_CACHE_KEY, {
-      state: {
-        stations: state.stations,
-        selectedStationId: state.selectedStationId,
-        readings: state.readings,
-        risk: state.risk,
-        incidents: state.incidents,
-        auditLogs: state.auditLogs,
-        lastRefreshAt: state.lastRefreshAt,
-      },
-    });
-  }, [
-    state.auditLogs,
-    state.incidents,
-    state.lastRefreshAt,
-    state.loading,
-    state.readings,
-    state.risk,
-    state.selectedStationId,
-    state.stationLoading,
-    state.stations,
-  ]);
 
   const handleStationChange = async (stationId: string) => {
     if (stationId === state.selectedStationId) {
@@ -428,9 +362,9 @@ export function History() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
               Ghi nhận: {formatDateTimeUtil(latestReading?.recorded_at ?? null)}
             </p>
-            {/* <Badge variant="warning" className="uppercase text-[10px]">
+             <Badge variant="warning" className="uppercase text-[10px]">
               Rủi ro: {state.risk?.assessment.risk_level ?? "unknown"}
-            </Badge> */}
+            </Badge>
           </div>
         </Card>
 
@@ -464,22 +398,64 @@ export function History() {
             <AlertCircle size={18} className="text-mekong-critical" />
             <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">Ngữ cảnh sự cố</h3>
           </div>
-          <div className="space-y-3 text-[13px] font-semibold text-slate-600">
-            <div className="flex justify-between">
-              <span>Sự cố đang mở</span>
-              <span className="font-black text-mekong-critical">{openIncidents.length}</span>
+          <div className="space-y-4 text-[13px] font-semibold text-slate-600">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-slate-50/70 border border-slate-100 p-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Sự cố đang mở</p>
+                <p className="mt-1 text-lg font-black text-mekong-critical">{openIncidents.length}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50/70 border border-slate-100 p-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Tổng sự cố</p>
+                <p className="mt-1 text-lg font-black text-mekong-navy">{state.incidents.length}</p>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Tổng sự cố</span>
-              <span className="font-black text-mekong-navy">{state.incidents.length}</span>
+
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Đánh giá rủi ro gần nhất</p>
+                <Badge variant={state.stationLoading ? "warning" : "optimal"} className="text-[9px] uppercase">
+                  {state.stationLoading ? "Đang đánh giá..." : "Đã đồng bộ"}
+                </Badge>
+              </div>
+
+              {state.stationLoading ? (
+                <div className="mt-4 space-y-3">
+                  <SkeletonBlock className="h-5 w-32" />
+                  <SkeletonBlock className="h-4 w-full" />
+                  <SkeletonBlock className="h-4 w-5/6" />
+                  <SkeletonBlock className="h-4 w-3/4" />
+                </div>
+              ) : state.risk?.assessment ? (
+                <div className="mt-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="warning" className="text-[9px] uppercase">
+                      {state.risk.assessment.risk_level}
+                    </Badge>
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                      {formatDateTimeUtil(state.risk.assessment.assessed_at)}
+                    </span>
+                  </div>
+                  <p className="text-sm font-black text-mekong-navy uppercase tracking-[0.08em]">
+                    {state.risk.assessment.summary}
+                  </p>
+                </div>
+              ) : (
+                <EmptyState
+                  title="Chưa có đánh giá rủi ro"
+                  description="Chọn trạm hoặc chờ backend tạo assessment mới để xem summary đầy đủ ở đây."
+                />
+              )}
             </div>
-            <div className="flex justify-between">
-              <span>Nhật ký audit</span>
-              <span className="font-black text-mekong-navy">{state.auditLogs.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Trạng thái trạm</span>
-              <span className="font-black text-mekong-navy">{selectedStation?.status ?? "--"}</span>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-slate-50/70 border border-slate-100 p-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Nhật ký audit</p>
+                <p className="mt-1 text-lg font-black text-mekong-navy">{state.auditLogs.length}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50/70 border border-slate-100 p-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Trạng thái trạm</p>
+                <p className="mt-1 text-lg font-black text-mekong-navy">{selectedStation?.status ?? "--"}</p>
+              </div>
             </div>
           </div>
         </Card>

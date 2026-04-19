@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.approval import Approval
 from app.models.decision import DecisionLog
@@ -77,10 +78,12 @@ class MonitoringLifecycleWorkflow:
         *,
         session: AsyncSession,
         settings: Settings,
+        redis_manager: RedisManager | None = None,
     ) -> None:
         self._services = LifecycleNodeServices(
             session=session,
             settings=settings,
+            redis_manager=redis_manager,
         )
         self._graph = self._build_graph().compile()
 
@@ -109,7 +112,7 @@ class MonitoringLifecycleWorkflow:
         return graph
 
     async def _classify_risk(self, state: LifecycleState) -> LifecycleState:
-        return await classify_risk_node(state)
+        return await classify_risk_node(state, services=self._services)
 
     async def _approval_gate(self, state: LifecycleState) -> LifecycleState:
         return await approval_gate_node(state, services=self._services)
@@ -118,7 +121,7 @@ class MonitoringLifecycleWorkflow:
         return await execute_node(state, services=self._services)
 
     async def _feedback(self, state: LifecycleState) -> LifecycleState:
-        return await feedback_node(state)
+        return await feedback_node(state, services=self._services)
 
     async def _memory_write(self, state: LifecycleState) -> LifecycleState:
         return await memory_write_node(state, services=self._services)
@@ -129,6 +132,7 @@ async def advance_plan_with_lifecycle_graph(
     *,
     plan: ActionPlan,
     settings: Settings,
+    redis_manager: RedisManager | None = None,
 ) -> LifecycleAdvanceResult:
     """Run lifecycle graph and normalize result for monitoring service integration."""
     loaded_plan = await ActionPlanRepository(session).get_with_assessment(plan.id)
@@ -137,6 +141,7 @@ async def advance_plan_with_lifecycle_graph(
     workflow = MonitoringLifecycleWorkflow(
         session=session,
         settings=settings,
+        redis_manager=redis_manager,
     )
     state = await workflow.run(resolved_input_plan)
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -8,7 +8,6 @@ import {
   Database,
   Droplets,
   ExternalLink,
-  TrendingUp,
   Waves,
   Wind,
   Zap,
@@ -21,25 +20,28 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
-import { readPageCache, writePageCache } from "../lib/cache/pageCache";
-import { DASHBOARD_CACHE_KEY } from "../lib/cache/pageCacheKeys";
-import { invalidateOperationalPageCaches } from "../lib/cache/pageCacheKeys";
 import { getApiBaseUrl } from "../lib/api/http";
-import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { useLivePageRefresh } from "../lib/hooks/useLivePageRefresh";
 import {
   getActionLogs,
   getDashboardSummary,
   getDashboardTimeline,
   getLatestReadings,
   getLatestRisk,
+  fetchOpenMeteoWeatherSnapshot,
   type ActionLogEntry,
   type DashboardSummary,
-  fetchOpenMeteoWeatherSnapshot,
+  type OpenMeteoWeatherSnapshot,
   type RiskLatestResponse,
   type SensorReading,
-  type OpenMeteoWeatherSnapshot,
 } from "../lib/api/dashboard";
-import { getGates, getStations, type GateRead, type SensorStationRead } from "../lib/api/telemetry";
+import {
+  getGates,
+  getStations,
+  updateGateStatus,
+  type GateRead,
+  type SensorStationRead,
+} from "../lib/api/telemetry";
 import {
   decidePlan,
   getAgentRuns,
@@ -105,34 +107,7 @@ type DashboardStreamDomainEventPayload = {
   cursor?: number;
 };
 
-type DashboardPersistedState = Pick<
-  DashboardState,
-  | "summary"
-  | "risk"
-  | "latestReading"
-  | "latestReadings"
-  | "stations"
-  | "gates"
-  | "plans"
-  | "recentActions"
-  | "agentRuns"
-  | "liveEvents"
-  | "timelineCount"
-  | "streamStatus"
-  | "lastStreamAt"
-> & {
-  weatherSnapshot: OpenMeteoWeatherSnapshot | null;
-};
-
-type DashboardCache = {
-  state: DashboardPersistedState;
-  activityFilter: LiveActivityFilter;
-  selectedStationId: string | null;
-};
-
 const DASHBOARD_STREAM_CURSOR_KEY = "mekong.dashboard.stream.cursor";
-const DASHBOARD_ACTIVITY_FILTER_KEY = "mekong.dashboard.activity-filter";
-const DASHBOARD_CACHE_MAX_AGE_MS = 30_000;
 
 const LazySatelliteMap = lazy(() =>
   import("../components/dashboard/SatelliteMap").then((module) => ({
@@ -157,28 +132,6 @@ function createDashboardInitialState(): DashboardState {
     timelineCount: 0,
     streamStatus: "connecting",
     lastStreamAt: null,
-  };
-}
-
-function createDashboardPersistedState(
-  state: DashboardState,
-  weatherSnapshot: OpenMeteoWeatherSnapshot | null,
-): DashboardPersistedState {
-  return {
-    summary: state.summary,
-    risk: state.risk,
-    latestReading: state.latestReading,
-    latestReadings: state.latestReadings,
-    stations: state.stations,
-    gates: state.gates,
-    plans: state.plans,
-    recentActions: state.recentActions,
-    agentRuns: state.agentRuns,
-    liveEvents: state.liveEvents,
-    timelineCount: state.timelineCount,
-    streamStatus: state.streamStatus,
-    lastStreamAt: state.lastStreamAt,
-    weatherSnapshot,
   };
 }
 
@@ -399,6 +352,24 @@ function sortLiveEvents(entries: LiveActivityEntry[]): LiveActivityEntry[] {
   });
 }
 
+function pickMostRecentReading(...readings: Array<SensorReading | null | undefined>): SensorReading | null {
+  let latestReading: SensorReading | null = null;
+  let latestTimestamp = -Infinity;
+
+  for (const reading of readings) {
+    if (!reading) {
+      continue;
+    }
+    const timestamp = new Date(reading.recorded_at).getTime();
+    if (Number.isFinite(timestamp) && timestamp >= latestTimestamp) {
+      latestReading = reading;
+      latestTimestamp = timestamp;
+    }
+  }
+
+  return latestReading;
+}
+
 function buildSeedLiveEvents(snapshot: DashboardSnapshot): LiveActivityEntry[] {
   const entries: LiveActivityEntry[] = [];
   const latestAgentRun = getLatestPlanningRun(snapshot.agentRuns);
@@ -513,7 +484,7 @@ async function fetchDashboardSnapshot(signal?: AbortSignal): Promise<DashboardSn
   return {
     summary,
     risk,
-    latestReading: risk?.reading ?? readings.items[0] ?? null,
+    latestReading: pickMostRecentReading(risk?.reading, readings.items[0] ?? null),
     latestReadings: readings.items,
     stations: stations.items,
     gates: gates.items,
@@ -565,7 +536,7 @@ function getStreamStatusClass(status: StreamStatus): string {
 
 function DashboardMapFallback() {
   return (
-    <div className="flex h-full min-h-[24rem] items-center justify-center bg-slate-950/90">
+    <div className="flex h-full min-h-96 items-center justify-center bg-slate-950/90">
       <div className="max-w-sm rounded-3xl border border-white/10 bg-white/10 px-6 py-5 text-center text-white/80 backdrop-blur-md">
         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-mekong-cyan">
           Đang nạp bản đồ
@@ -580,126 +551,18 @@ function DashboardMapFallback() {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const cachedDashboard = useMemo(() => readPageCache<DashboardCache>(DASHBOARD_CACHE_KEY), []);
-  const [activityFilter, setActivityFilter] = useState<LiveActivityFilter>(() => {
-    if (cachedDashboard?.value.activityFilter) {
-      return cachedDashboard.value.activityFilter;
-    }
-    if (typeof window === "undefined") {
-      return "all";
-    }
-
-    const persistedFilter = window.localStorage.getItem(DASHBOARD_ACTIVITY_FILTER_KEY);
-    if (
-      persistedFilter === "all" ||
-      persistedFilter === "reading" ||
-      persistedFilter === "risk" ||
-      persistedFilter === "action" ||
-      persistedFilter === "agent" ||
-      persistedFilter === "stream"
-    ) {
-      return persistedFilter;
-    }
-
-    return "all";
-  });
+  const [activityFilter, setActivityFilter] = useState<LiveActivityFilter>("all");
   const [reloadVersion, setReloadVersion] = useState(0);
-  const [selectedStationId, setSelectedStationId] = useState<string | null>(
-    () => cachedDashboard?.value.selectedStationId ?? null,
-  );
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [plcBusy, setPlcBusy] = useState(false);
   const [plcStatusMessage, setPlcStatusMessage] = useState<string | null>(null);
-  const [weatherSnapshot, setWeatherSnapshot] = useState<OpenMeteoWeatherSnapshot | null>(
-    () => cachedDashboard?.value.state.weatherSnapshot ?? null,
-  );
-  const [state, setState] = useState<DashboardState>(() => {
-    const cachedState = cachedDashboard?.value.state;
-    if (!cachedState) {
-      return createDashboardInitialState();
-    }
+  const [gateActionBusyId, setGateActionBusyId] = useState<string | null>(null);
+  const [weatherSnapshot, setWeatherSnapshot] = useState<OpenMeteoWeatherSnapshot | null>(null);
+  const [state, setState] = useState<DashboardState>(() => createDashboardInitialState());
 
-    return {
-      loading: false,
-      error: null,
-      summary: cachedState.summary,
-      risk: cachedState.risk,
-      latestReading: cachedState.latestReading,
-      latestReadings: cachedState.latestReadings,
-      stations: cachedState.stations,
-      gates: cachedState.gates,
-      plans: cachedState.plans,
-      recentActions: cachedState.recentActions,
-      agentRuns: cachedState.agentRuns,
-      liveEvents: cachedState.liveEvents,
-      timelineCount: cachedState.timelineCount,
-      streamStatus: cachedState.streamStatus,
-      lastStreamAt: cachedState.lastStreamAt,
-    };
-  });
-  const weatherStationCode = state.latestReading?.station.code ?? state.summary?.latest_station_code ?? null;
-  const weatherStation = useMemo(
-    () => {
-      if (!weatherStationCode) {
-        return null;
-      }
-      return state.stations.find((station) => station.code === weatherStationCode) ?? null;
-    },
-    [state.stations, weatherStationCode],
-  );
-
-  useEffect(() => {
-    if (!weatherStation) {
-      setWeatherSnapshot(null);
-      return;
-    }
-
-    const latitude = toNumber(weatherStation.latitude);
-    const longitude = toNumber(weatherStation.longitude);
-    if (latitude === null || longitude === null) {
-      setWeatherSnapshot(null);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    void fetchOpenMeteoWeatherSnapshot({ latitude, longitude }, abortController.signal)
-      .then((snapshot) => {
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setWeatherSnapshot(snapshot);
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setWeatherSnapshot(null);
-      });
-
-    return () => abortController.abort();
-  }, [reloadVersion, weatherStation]);
-
-  useEffect(() => {
-    window.localStorage.setItem(DASHBOARD_ACTIVITY_FILTER_KEY, activityFilter);
-  }, [activityFilter]);
-
-  useEffect(() => {
-    if (state.loading) {
-      return;
-    }
-
-    writePageCache<DashboardCache>(DASHBOARD_CACHE_KEY, {
-      state: createDashboardPersistedState(state, weatherSnapshot),
-      activityFilter,
-      selectedStationId,
-    });
-  }, [activityFilter, selectedStationId, state, weatherSnapshot]);
-
-  usePageCacheRefresh({
-    cacheEntry: cachedDashboard,
-    maxAgeMs: DASHBOARD_CACHE_MAX_AGE_MS,
+  useLivePageRefresh({
     refreshToken: reloadVersion,
-    pollIntervalMs: 60_000,
+    pollIntervalMs: 10_000,
     refresh: async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
       const signal = options?.signal;
       const showLoading = options?.showLoading ?? false;
@@ -710,7 +573,6 @@ export function Dashboard() {
 
       try {
         const snapshot = await fetchDashboardSnapshot(signal);
-        setSelectedStationId(null);
         setState((previous) => ({
           ...previous,
           ...snapshot,
@@ -748,14 +610,13 @@ export function Dashboard() {
       if (refreshTimeoutId !== null) {
         return;
       }
-      refreshTimeoutId = window.setTimeout(() => {
+        refreshTimeoutId = window.setTimeout(() => {
         refreshTimeoutId = null;
         void fetchDashboardSnapshot()
           .then((snapshot) => {
             if (isDisposed) {
               return;
             }
-            setSelectedStationId(null);
             setState((previous) => ({
               ...previous,
               ...snapshot,
@@ -874,30 +735,16 @@ export function Dashboard() {
     };
   }, []);
 
-  const salinityGl = toNumber(
-    state.risk?.assessment.salinity_gl ?? state.latestReading?.salinity_gl,
-  );
-  const activeWeatherSnapshot = weatherSnapshot;
-  const waterLevel = toNumber(
-    activeWeatherSnapshot?.tide_level_m ?? state.latestReading?.water_level_m,
-  );
-  const windSpeed = toNumber(
-    activeWeatherSnapshot?.wind_speed_mps ?? state.latestReading?.wind_speed_mps,
-  );
-  const windDirection =
-    activeWeatherSnapshot?.wind_direction_deg ?? state.latestReading?.wind_direction_deg;
-  const weatherSourceLabel = activeWeatherSnapshot ? "Open-Meteo" : "Cảm biến";
-  const weatherObservedAt = activeWeatherSnapshot?.observed_at ?? state.latestReading?.recorded_at ?? null;
   const trendDeltaGl = toNumber(state.risk?.assessment.trend_delta_gl);
   const stationCode =
     state.latestReading?.station.code ??
     state.summary?.latest_station_code ??
     "--";
+  const latestReadingsByStationId = useMemo(
+    () => new Map(state.latestReadings.map((reading) => [reading.station_id, reading] as const)),
+    [state.latestReadings],
+  );
   const mapStations = useMemo<MapStation[]>(() => {
-    const readingsByStationId = new Map(
-      state.latestReadings.map((reading) => [reading.station_id, reading] as const),
-    );
-
     const mappedStations: Array<MapStation | null> = state.stations.map((station) => {
         const latitude = toNumber(station.latitude);
         const longitude = toNumber(station.longitude);
@@ -905,7 +752,7 @@ export function Dashboard() {
           return null;
         }
 
-        const reading = readingsByStationId.get(station.id);
+        const reading = latestReadingsByStationId.get(station.id);
         return {
           id: station.id,
           code: station.code,
@@ -927,7 +774,7 @@ export function Dashboard() {
       });
 
     return mappedStations.filter((station): station is MapStation => station !== null);
-  }, [state.latestReadings, state.stations, state.risk]);
+  }, [latestReadingsByStationId, state.stations, state.risk]);
 
   const selectedMapStationId = useMemo(() => {
     if (selectedStationId && mapStations.some((station) => station.id === selectedStationId)) {
@@ -946,10 +793,51 @@ export function Dashboard() {
       return null;
     }
     return (
-      state.latestReadings.find((reading) => reading.station_id === selectedMapStationId) ??
+      latestReadingsByStationId.get(selectedMapStationId) ??
       (state.latestReading?.station_id === selectedMapStationId ? state.latestReading : null)
     );
-  }, [selectedMapStationId, state.latestReadings, state.latestReading]);
+  }, [latestReadingsByStationId, selectedMapStationId, state.latestReading]);
+
+  useEffect(() => {
+    if (!selectedMapStation) {
+      setWeatherSnapshot(null);
+      return;
+    }
+
+    const latitude = toNumber(selectedMapStation.latitude);
+    const longitude = toNumber(selectedMapStation.longitude);
+    if (latitude === null || longitude === null) {
+      setWeatherSnapshot(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void fetchOpenMeteoWeatherSnapshot({ latitude, longitude }, abortController.signal)
+      .then((snapshot) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setWeatherSnapshot(snapshot);
+      })
+      .catch(() => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setWeatherSnapshot(null);
+      });
+
+    return () => abortController.abort();
+  }, [reloadVersion, selectedMapStation]);
+
+  const activeWeatherSnapshot = weatherSnapshot;
+  const weatherObservedAt = activeWeatherSnapshot?.observed_at ?? null;
+  const waterLevel =
+    activeWeatherSnapshot?.tide_level_m ?? selectedStationReading?.water_level_m ?? null;
+  const waterLevelSource =
+    activeWeatherSnapshot?.tide_level_m !== null && activeWeatherSnapshot?.tide_level_m !== undefined
+      ? "Open-Meteo"
+      : "Cảm biến";
 
   const mapGates = useMemo<MapGate[]>(() => {
     return state.gates.flatMap((gate) => {
@@ -1058,6 +946,24 @@ export function Dashboard() {
   );
   const isBootstrapping = state.loading && state.summary === null && state.latestReading === null;
 
+  const handleGateStatusChange = useCallback(
+    async (gate: MapGate, nextStatus: GateRead["status"]) => {
+      setGateActionBusyId(gate.id);
+      try {
+        await updateGateStatus(gate.id, nextStatus);
+        setReloadVersion((previous) => previous + 1);
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          error: parseApiErrorMessage(error),
+        }));
+      } finally {
+        setGateActionBusyId(null);
+      }
+    },
+    [],
+  );
+
   const handlePlcDemo = async () => {
     if (!controlPlan) {
       setPlcStatusMessage("Không có plan pending/approved để mô phỏng PLC.");
@@ -1077,14 +983,12 @@ export function Dashboard() {
           },
           { actorName: "dashboard-operator" },
         );
-        invalidateOperationalPageCaches();
       }
 
       await simulateExecutionBatch(controlPlan.id, {
         idempotency_key: `dashboard-plc:${controlPlan.id}:${Date.now()}`,
       });
 
-      invalidateOperationalPageCaches();
 
       setPlcStatusMessage(`Đã mô phỏng PLC cho plan ${formatCompactId(controlPlan.id)}.`);
       setReloadVersion((previous) => previous + 1);
@@ -1156,10 +1060,10 @@ export function Dashboard() {
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
-              <Button variant="cyan" size="sm" onClick={() => navigate("/map")}>
+              <Button variant="navy" size="sm" onClick={() => navigate("/map")}>
                 Bản đồ
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/strategy")}>
+              <Button variant="navy" size="sm" onClick={() => navigate("/strategy")}>
                 Điều phối
               </Button>
               <Button variant="navy" size="sm" onClick={() => navigate("/logs")}>
@@ -1200,94 +1104,143 @@ export function Dashboard() {
       </section>
 
       <div className={`grid grid-cols-12 gap-6 ${isBootstrapping ? "hidden" : ""}`}>
-        <Card isHoverable className="col-span-12 lg:col-span-4 p-8 border-none shadow-soft group relative overflow-hidden bg-white min-h-70 flex flex-col justify-between">
-          <div className="relative z-10 flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="bg-mekong-teal/10 p-3 rounded-2xl text-mekong-teal border border-mekong-teal/20 shadow-sm">
+        <Card isHoverable className="col-span-12 p-8 border-none shadow-soft group relative overflow-hidden bg-white min-h-70">
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-4 min-w-0">
+              <div className="bg-mekong-teal/10 p-3 rounded-2xl text-mekong-teal border border-mekong-teal/20 shadow-sm shrink-0">
                 <Droplets size={24} strokeWidth={2.5} />
               </div>
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Độ mặn trực tiếp</p>
-                <Badge variant="optimal" className="bg-mekong-mint/10 text-mekong-mint border-none px-2 py-0.5 text-[9px] font-bold">
-                  {stationCode}
-                </Badge>
+              <div className="min-w-0 space-y-1">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Chỉ số trạm</p>
+                <h3 className="text-sm font-black text-mekong-navy uppercase tracking-[0.15em]">
+                  Độ mặn, nước, gió theo trạm
+                </h3>
+                <p className="truncate text-[11px] font-semibold text-slate-500">
+                  {selectedMapStation?.code ?? stationCode} · {selectedMapStation?.name ?? "Trạm gần nhất"}
+                </p>
               </div>
             </div>
+
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                <Compass size={12} />
+                <span>Chọn trạm</span>
+              </div>
+              <div className="relative w-full min-w-70 sm:w-[320px]">
+                <select
+                  value={selectedStationId ?? ""}
+                  onChange={(event) => setSelectedStationId(event.target.value || null)}
+                  disabled={mapStations.length === 0}
+                  aria-label="Chọn trạm"
+                  className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3 pr-10 text-sm font-semibold text-mekong-navy outline-none transition-all focus:border-mekong-teal/30 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  <option value="">Trạm gần nhất</option>
+                  {mapStations.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.code} · {station.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronRight
+                  size={14}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 -rotate-90 text-slate-400"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStationId(null)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-mekong-navy transition-all hover:border-mekong-teal/30 hover:text-mekong-teal"
+              >
+                Quay về trạm gần nhất
+              </button>
+            </div>
           </div>
-          <div className="relative z-10 flex items-baseline gap-3">
-            <span className="text-7xl font-black text-mekong-navy tracking-tighter leading-none">
-              {formatNumber(salinityGl, 2)}
-            </span>
-            <span className="text-xl font-black text-slate-400 uppercase tracking-widest">g/L</span>
+
+          <div className="relative z-10 mt-6 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-3xl border border-slate-100 bg-slate-50/70 p-5 shadow-sm">
+              <div className="flex items-center gap-2 text-slate-400">
+                <Droplets size={16} strokeWidth={2.5} />
+                <span className="text-[9px] font-black uppercase tracking-[0.18em]">Độ mặn</span>
+              </div>
+              <div className="mt-4 flex items-end gap-2">
+                <span className="text-4xl font-black tracking-tighter text-mekong-navy">
+                  {selectedStationReading?.salinity_gl !== undefined && selectedStationReading?.salinity_gl !== null
+                    ? formatNumber(toNumber(selectedStationReading.salinity_gl), 2)
+                    : "--"}
+                </span>
+                <span className="pb-1 text-sm font-black uppercase tracking-widest text-slate-400">g/L</span>
+              </div>
+              <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-500">
+                {selectedMapStation?.code ?? stationCode}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                {formatTime(selectedStationReading?.recorded_at ?? null)}
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-slate-100 bg-slate-50/70 p-5 shadow-sm">
+              <div className="flex items-center gap-2 text-slate-400">
+                <Waves size={16} strokeWidth={2.5} />
+                <span className="text-[9px] font-black uppercase tracking-[0.18em]">Mực nước</span>
+              </div>
+              <div className="mt-4 flex items-end gap-2">
+                <span className="text-4xl font-black tracking-tighter text-mekong-navy">
+                  {waterLevel !== null
+                    ? formatNumber(toNumber(waterLevel), 2)
+                    : "--"}
+                </span>
+                <span className="pb-1 text-sm font-black uppercase tracking-widest text-slate-400">m</span>
+              </div>
+              <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-500">
+                {selectedMapStation?.code ?? stationCode}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                {waterLevelSource}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                {formatTime(weatherObservedAt)}
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-slate-100 bg-slate-50/70 p-5 shadow-sm">
+              <div className="flex items-center gap-2 text-slate-400">
+                <Wind size={16} strokeWidth={2.5} />
+                <span className="text-[9px] font-black uppercase tracking-[0.18em]">Gió</span>
+              </div>
+              <div className="mt-4 flex items-end gap-2">
+                <span className="text-4xl font-black tracking-tighter text-mekong-navy">
+                  {activeWeatherSnapshot?.wind_speed_mps !== undefined && activeWeatherSnapshot?.wind_speed_mps !== null
+                    ? formatNumber(toNumber(activeWeatherSnapshot.wind_speed_mps), 1)
+                    : "--"}
+                </span>
+                <span className="pb-1 text-sm font-black uppercase tracking-widest text-slate-400">m/s</span>
+              </div>
+              <p className="mt-2 text-[10px] font-semibold text-slate-400">
+                {activeWeatherSnapshot?.wind_direction_deg === null || activeWeatherSnapshot?.wind_direction_deg === undefined
+                  ? "--"
+                  : `${activeWeatherSnapshot.wind_direction_deg}°`}
+              </p>
+              <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-500">
+                {selectedMapStation?.code ?? stationCode}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                {formatTime(weatherObservedAt)}
+              </p>
+            </div>
           </div>
-          <div className="relative z-10 pt-6 border-t border-slate-50 flex justify-between items-center">
+
+          <div className="relative z-10 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-50 pt-5">
             <div className="flex items-center gap-2">
               <Activity size={14} className="text-mekong-teal" />
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{trendText}</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500">{trendText}</span>
             </div>
+            <Badge variant="optimal" className="bg-mekong-mint/10 text-mekong-mint border-none px-2 py-0.5 text-[9px] font-bold">
+              {selectedMapStation ? selectedMapStation.status ?? "unknown" : "n/a"}
+            </Badge>
           </div>
         </Card>
 
-        <Card isHoverable className="col-span-12 lg:col-span-4 p-8 border-none shadow-soft group bg-white min-h-70 flex flex-col justify-between border-t-4 border-t-mekong-critical/20">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="bg-slate-100 p-3 rounded-2xl text-mekong-navy border border-slate-200 shadow-sm">
-                <Waves size={24} strokeWidth={2.5} />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Mực nước thủy triều</p>
-                <Badge className="bg-slate-100 text-slate-500 border-none px-2 py-0.5 text-[9px] font-bold">{stationCode}</Badge>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-7xl font-black text-mekong-navy tracking-tighter leading-none">{formatNumber(waterLevel, 2)}</span>
-            <span className="text-xl font-black text-slate-400 uppercase tracking-widest">m</span>
-          </div>
-          <div className="pt-6 border-t border-slate-50">
-            <div className="flex items-center gap-2.5 px-3 py-2 bg-red-50 rounded-2xl border border-red-100/50 text-mekong-critical shadow-sm">
-              <TrendingUp size={16} strokeWidth={3} />
-              <div className="flex flex-col">
-                <span className="text-[11px] font-black uppercase tracking-widest leading-none">
-                  Dữ liệu mới nhất
-                </span>
-                <span className="text-[9px] font-bold opacity-70">
-                  {weatherSourceLabel} · {formatTime(weatherObservedAt)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card isHoverable className="col-span-12 lg:col-span-4 p-8 border-none shadow-soft group bg-white min-h-70 flex flex-col justify-between relative overflow-hidden">
-          <div className="relative z-10 flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="bg-slate-100 p-3 rounded-2xl text-mekong-navy border border-slate-200 shadow-sm">
-                <Wind size={24} strokeWidth={2.5} />
-              </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">Gió và tốc độ</p>
-            </div>
-          </div>
-          <div className="relative z-10 flex items-center gap-10">
-            <div className="flex items-baseline gap-2">
-              <span className="text-7xl font-black text-mekong-navy tracking-tighter leading-none">{formatNumber(windSpeed, 1)}</span>
-              <span className="text-sm font-black text-slate-400 uppercase">m/s</span>
-            </div>
-            <div className="h-14 w-px bg-slate-100" />
-            <div className="flex flex-col">
-              <span className="text-4xl font-black text-mekong-navy tracking-tighter">
-                {windDirection === null || windDirection === undefined ? "--" : `${windDirection}°`}
-              </span>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hướng gió</span>
-            </div>
-          </div>
-          <div className="relative z-10 pt-6 border-t border-slate-50 flex items-center gap-2">
-            <Compass size={14} strokeWidth={2.5} className="text-slate-400" />
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-              {weatherSourceLabel} · {formatTime(weatherObservedAt)}
-            </span>
-          </div>
-        </Card>
+       
       </div>
 
       <div className={`grid grid-cols-12 gap-6 items-start ${isBootstrapping ? "hidden" : ""}`}>
@@ -1307,6 +1260,10 @@ export function Dashboard() {
                 gates={mapGates}
                 selectedStationId={selectedMapStationId}
                 onSelectStation={setSelectedStationId}
+                onToggleGateStatus={(gate, nextStatus) => {
+                  void handleGateStatusChange(gate, nextStatus);
+                }}
+                gateActionBusyId={gateActionBusyId}
               />
             </Suspense>
             <button
@@ -1319,49 +1276,7 @@ export function Dashboard() {
         </div>
         <div className="col-span-12 xl:col-span-5">
           <div className="space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1 custom-scrollbar">
-            <Card variant="white" className="p-6 border-none shadow-soft rounded-4xl">
-              <div className="flex items-start justify-between gap-4 mb-5">
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.18em]">Điều phối nhanh</p>
-                  <h3 className="mt-1 text-sm font-black text-mekong-navy uppercase tracking-[0.15em]">
-                    Một chạm tới màn hình chính
-                  </h3>
-                </div>
-                <Badge className="bg-mekong-mint/10 text-mekong-mint border-none text-[9px] py-0.5 px-2 font-bold uppercase">
-                  Live
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="cyan" size="sm" onClick={() => navigate("/map")} className="justify-start h-11">
-                  Bản đồ
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate("/strategy")} className="justify-start h-11">
-                  Strategy
-                </Button>
-                <Button variant="navy" size="sm" onClick={() => navigate("/logs")} className="justify-start h-11">
-                  Nhật ký
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setReloadVersion((previous) => previous + 1)} className="justify-start h-11">
-                  Làm mới
-                </Button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Sự cố</p>
-                  <p className="mt-2 text-lg font-black text-mekong-critical">{state.summary?.open_incidents ?? 0}</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Chờ duyệt</p>
-                  <p className="mt-2 text-lg font-black text-mekong-navy">{state.summary?.pending_approvals ?? 0}</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50/80 border border-slate-100 p-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Mô phỏng</p>
-                  <p className="mt-2 text-lg font-black text-mekong-mint">{state.summary?.simulated_executions_today ?? 0}</p>
-                </div>
-              </div>
-            </Card>
+           
 
             <Card variant="white" className="p-6 border-none shadow-soft rounded-4xl">
               <div className="flex items-start justify-between gap-4">
@@ -1428,6 +1343,8 @@ export function Dashboard() {
                 </button>
               </div>
             </Card>
+
+          
 
             <Card variant="white" className="p-6 border-none shadow-soft rounded-4xl">
             <div className="flex items-start justify-between gap-4 mb-4">

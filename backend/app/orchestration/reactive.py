@@ -113,6 +113,7 @@ async def advance_plan_reactively(
             idempotency_key=f"reactive-monitoring:{approved_plan.id}",
         ),
         actor_name="reactive-monitoring",
+        redis_manager=None,
     )
     return ReactiveAdvanceResult(
         status="executed",

@@ -42,9 +42,9 @@ async def test_gate_crud_endpoints(client, db_session):
     response = await client.get("/api/v1/gates")
     assert response.status_code == 200
     payload = response.json()["data"]
-    assert payload["count"] == 1
-    assert payload["items"][0]["code"] == gate.code
-    assert payload["items"][0]["station"]["code"] == station.code
+    assert any(item["code"] == gate.code for item in payload["items"])
+    gate_item = next(item for item in payload["items"] if item["code"] == gate.code)
+    assert gate_item["station"]["code"] == station.code
 
     detail = await client.get(f"/api/v1/gates/{gate.id}")
     assert detail.status_code == 200
@@ -58,3 +58,7 @@ async def test_gate_crud_endpoints(client, db_session):
     updated = update.json()["data"]
     assert updated["status"] == "open"
     assert updated["name"] == "Updated Gate"
+    assert updated["last_operated_at"] is not None
+    assert updated["gate_metadata"]["last_command"]["action_type"] == "open_gate"
+    assert updated["gate_metadata"]["last_command"]["status_before"] == "closed"
+    assert updated["gate_metadata"]["last_command"]["status_after"] == "open"

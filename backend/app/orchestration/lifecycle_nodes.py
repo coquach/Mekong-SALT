@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.execution_policy import is_auto_execution_eligible
 from app.core.config import Settings
+from app.db.redis import RedisManager
 from app.models.action import ActionPlan
 from app.models.approval import Approval
 from app.models.decision import DecisionLog
@@ -21,6 +22,7 @@ from app.schemas.graph import build_execution_graph_from_trace
 from app.services.approval import resolve_approval_gate_policy
 from app.services.execution import SimulatedExecutionBundle, execute_simulated_plan
 from app.services.approval import decide_plan
+from app.services.graph_stream_service import publish_graph_transition
 
 
 @dataclass(slots=True)
@@ -29,6 +31,7 @@ class LifecycleNodeServices:
 
     session: AsyncSession
     settings: Settings
+    redis_manager: RedisManager | None = None
 
 
 def _append_transition(
@@ -50,27 +53,87 @@ def _append_transition(
     return transitions
 
 
-async def classify_risk_node(state: Mapping[str, Any]) -> dict[str, Any]:
+async def _emit_transition(
+    state: Mapping[str, Any],
+    *,
+    services: LifecycleNodeServices | None,
+    node: str,
+    status: str,
+    details: dict[str, Any] | None,
+    transitions: list[dict[str, Any]],
+) -> None:
+    redis_manager = services.redis_manager if services is not None else None
+    if redis_manager is None:
+        return
+
+    graph_snapshot = build_execution_graph_from_trace(
+        {
+            "approval_status": state.get("approval_status"),
+            "execution_status": state.get("execution_status"),
+            "feedback_status": state.get("feedback_status"),
+            "feedback_summary": state.get("feedback_summary"),
+            "memory_write_status": state.get("memory_write_status"),
+            "reason": state.get("reason"),
+            "transition_log": transitions,
+        },
+        metadata={
+            "action_plan_id": str(state["plan"].id),
+            "region_id": str(state["plan"].region_id),
+            "risk_assessment_id": str(state["plan"].risk_assessment_id),
+        },
+    )
+    await publish_graph_transition(
+        redis_manager,
+        graph_type="lifecycle",
+        node=node,
+        status=status,
+        details=details,
+        summary=(details or {}).get("reason") or (details or {}).get("summary"),
+        plan_id=state["plan"].id,
+        incident_id=state["plan"].incident_id,
+        graph_snapshot=graph_snapshot,
+    )
+
+
+async def classify_risk_node(
+    state: Mapping[str, Any],
+    *,
+    services: LifecycleNodeServices | None = None,
+) -> dict[str, Any]:
     """Classify risk to drive downstream approval and execution policy."""
     plan: ActionPlan = state["plan"]
     risk_level = plan.risk_assessment.risk_level if plan.risk_assessment is not None else None
     policy = resolve_approval_gate_policy(risk_level)
+    transitions = _append_transition(
+        state,
+        node="classify_risk",
+        status="classified",
+        details={
+            "risk_level": risk_level.value if risk_level is not None else None,
+            "risk_classification": policy.risk_classification,
+            "requires_human_approval": policy.requires_human_approval,
+            "policy_reason": policy.reason,
+        },
+    )
+    await _emit_transition(
+        state,
+        services=services,
+        node="classify_risk",
+        status="classified",
+        details={
+            "risk_level": risk_level.value if risk_level is not None else None,
+            "risk_classification": policy.risk_classification,
+            "requires_human_approval": policy.requires_human_approval,
+            "policy_reason": policy.reason,
+        },
+        transitions=transitions,
+    )
 
     return {
         "risk_level": risk_level,
         "risk_classification": policy.risk_classification,
         "requires_human_approval": policy.requires_human_approval,
-        "transition_log": _append_transition(
-            state,
-            node="classify_risk",
-            status="classified",
-            details={
-                "risk_level": risk_level.value if risk_level is not None else None,
-                "risk_classification": policy.risk_classification,
-                "requires_human_approval": policy.requires_human_approval,
-                "policy_reason": policy.reason,
-            },
-        ),
+        "transition_log": transitions,
     }
 
 
@@ -84,30 +147,48 @@ async def approval_gate_node(
 
     if plan.status != ActionPlanStatus.PENDING_APPROVAL:
         reason = f"Plan status is {plan.status.value}; approval gate skipped."
+        transitions = _append_transition(
+            state,
+            node="approval_gate",
+            status="skipped_not_pending",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="approval_gate",
+            status="skipped_not_pending",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "approved_plan": plan,
             "approval_status": "skipped_not_pending",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="approval_gate",
-                status="skipped_not_pending",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     if state.get("requires_human_approval", True):
         reason = "Risk classification requires human approval."
+        transitions = _append_transition(
+            state,
+            node="approval_gate",
+            status="awaiting_human_approval",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="approval_gate",
+            status="awaiting_human_approval",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "approved_plan": plan,
             "approval_status": "awaiting_human_approval",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="approval_gate",
-                status="awaiting_human_approval",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     approval, approved_plan = await decide_plan(
@@ -119,16 +200,25 @@ async def approval_gate_node(
         ),
         actor_name="lifecycle-orchestrator",
     )
+    transitions = _append_transition(
+        state,
+        node="approval_gate",
+        status="approved",
+        details={"approval_id": str(approval.id)},
+    )
+    await _emit_transition(
+        state,
+        services=services,
+        node="approval_gate",
+        status="approved",
+        details={"approval_id": str(approval.id)},
+        transitions=transitions,
+    )
     return {
         "approval": approval,
         "approved_plan": approved_plan,
         "approval_status": "approved",
-        "transition_log": _append_transition(
-            state,
-            node="approval_gate",
-            status="approved",
-            details={"approval_id": str(approval.id)},
-        ),
+        "transition_log": transitions,
     }
 
 
@@ -142,45 +232,72 @@ async def execute_node(
 
     if plan.status != ActionPlanStatus.APPROVED:
         reason = f"Plan status is {plan.status.value}; execution skipped."
+        transitions = _append_transition(
+            state,
+            node="execute",
+            status="skipped_not_approved",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="execute",
+            status="skipped_not_approved",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "executed_plan": plan,
             "execution_status": "skipped_not_approved",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="execute",
-                status="skipped_not_approved",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     if not services.settings.reactive_auto_execute_enabled:
         reason = "Reactive auto-execution is disabled."
+        transitions = _append_transition(
+            state,
+            node="execute",
+            status="skipped_auto_execute_disabled",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="execute",
+            status="skipped_auto_execute_disabled",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "executed_plan": plan,
             "execution_status": "skipped_auto_execute_disabled",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="execute",
-                status="skipped_auto_execute_disabled",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     risk_level: RiskLevel | None = state.get("risk_level")
     if risk_level is None:
         reason = "Risk level missing; execution requires explicit review."
+        transitions = _append_transition(
+            state,
+            node="execute",
+            status="skipped_missing_risk_level",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="execute",
+            status="skipped_missing_risk_level",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "executed_plan": plan,
             "execution_status": "skipped_missing_risk_level",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="execute",
-                status="skipped_missing_risk_level",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     eligible, reason = is_auto_execution_eligible(
@@ -188,16 +305,25 @@ async def execute_node(
         risk_level=risk_level,
     )
     if not eligible:
+        transitions = _append_transition(
+            state,
+            node="execute",
+            status="skipped_policy",
+            details={"reason": reason},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="execute",
+            status="skipped_policy",
+            details={"reason": reason},
+            transitions=transitions,
+        )
         return {
             "executed_plan": plan,
             "execution_status": "skipped_policy",
             "reason": reason,
-            "transition_log": _append_transition(
-                state,
-                node="execute",
-                status="skipped_policy",
-                details={"reason": reason},
-            ),
+            "transition_log": transitions,
         }
 
     execution_bundle = await execute_simulated_plan(
@@ -207,51 +333,87 @@ async def execute_node(
             idempotency_key=f"lifecycle-graph:{plan.id}",
         ),
         actor_name="lifecycle-orchestrator",
+        redis_manager=services.redis_manager,
+    )
+    transitions = _append_transition(
+        state,
+        node="execute",
+        status="executed",
+        details={"batch_id": str(execution_bundle.batch.id)},
+    )
+    await _emit_transition(
+        state,
+        services=services,
+        node="execute",
+        status="executed",
+        details={"batch_id": str(execution_bundle.batch.id)},
+        transitions=transitions,
     )
     return {
         "execution_bundle": execution_bundle,
         "executed_plan": execution_bundle.plan,
         "execution_status": "executed",
-        "transition_log": _append_transition(
-            state,
-            node="execute",
-            status="executed",
-            details={"batch_id": str(execution_bundle.batch.id)},
-        ),
+        "transition_log": transitions,
     }
 
 
-async def feedback_node(state: Mapping[str, Any]) -> dict[str, Any]:
+async def feedback_node(
+    state: Mapping[str, Any],
+    *,
+    services: LifecycleNodeServices | None = None,
+) -> dict[str, Any]:
     """Extract normalized feedback state from execution output."""
     execution_bundle: SimulatedExecutionBundle | None = state.get("execution_bundle")
     if execution_bundle is None:
+        transitions = _append_transition(
+            state,
+            node="feedback",
+            status="not_available",
+            details={"reason": "execution_bundle_missing"},
+        )
+        await _emit_transition(
+            state,
+            services=services,
+            node="feedback",
+            status="not_available",
+            details={"reason": "execution_bundle_missing"},
+            transitions=transitions,
+        )
         return {
             "feedback_status": "not_available",
             "feedback_summary": "No execution was run; feedback is not available.",
-            "transition_log": _append_transition(
-                state,
-                node="feedback",
-                status="not_available",
-                details={"reason": "execution_bundle_missing"},
-            ),
+            "transition_log": transitions,
         }
 
     feedback = execution_bundle.feedback
+    transitions = _append_transition(
+        state,
+        node="feedback",
+        status=feedback.outcome_class,
+        details={
+            "summary": feedback.summary,
+            "replan_recommended": feedback.replan_recommended,
+            "replan_reason": feedback.replan_reason,
+        },
+    )
+    await _emit_transition(
+        state,
+        services=services,
+        node="feedback",
+        status=feedback.outcome_class,
+        details={
+            "summary": feedback.summary,
+            "replan_recommended": feedback.replan_recommended,
+            "replan_reason": feedback.replan_reason,
+        },
+        transitions=transitions,
+    )
     return {
         "feedback_status": feedback.outcome_class,
         "feedback_summary": feedback.summary,
         "feedback_replan_recommended": feedback.replan_recommended,
         "feedback_replan_reason": feedback.replan_reason,
-        "transition_log": _append_transition(
-            state,
-            node="feedback",
-            status=feedback.outcome_class,
-            details={
-                "summary": feedback.summary,
-                "replan_recommended": feedback.replan_recommended,
-                "replan_reason": feedback.replan_reason,
-            },
-        ),
+        "transition_log": transitions,
     }
 
 
@@ -323,6 +485,14 @@ async def memory_write_node(
     await DecisionLogRepository(services.session).add(memory_log)
 
     final_transition_log[-1]["details"]["decision_log_id"] = str(memory_log.id)
+    await _emit_transition(
+        state,
+        services=services,
+        node="memory_write",
+        status="written",
+        details={"decision_log_id": str(memory_log.id)},
+        transitions=final_transition_log,
+    )
 
     return {
         "memory_log": memory_log,

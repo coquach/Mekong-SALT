@@ -38,6 +38,26 @@ async def test_mock_planner_includes_gate_target_code():
 
 
 @pytest.mark.asyncio
+async def test_mock_planner_prefers_open_gate_when_salinity_is_falling():
+    provider = MockProvider()
+    plan = await provider.generate_plan(
+        objective="Mở cống khi độ mặn giảm",
+        context={
+            "assessment": {
+                "risk_level": "danger",
+                "trend_direction": "falling",
+                "summary": "Salinity is decreasing but still in a planable band.",
+            },
+            "recommended_gate_target_code": "GATE-RECOVERY-01",
+        },
+    )
+
+    assert plan.steps[1].action_type == ActionType.OPEN_GATE
+    assert plan.steps[1].target_gate_code == "GATE-RECOVERY-01"
+    assert plan.steps[2].action_type == ActionType.WAIT_SAFE_WINDOW
+
+
+@pytest.mark.asyncio
 async def test_simulated_gate_driver_updates_gate_status(db_session):
     region = Region(
         code=f"TEST-GATE-DRIVER-{uuid4().hex[:8]}",

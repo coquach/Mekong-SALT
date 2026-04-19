@@ -317,6 +317,88 @@ async def test_reactive_execution_emits_replan_request_event_on_partial_success(
 
 
 @pytest.mark.asyncio
+async def test_approval_endpoint_advances_approved_plan_into_execution(
+    client,
+    db_session,
+    seeded_sensor_data,
+):
+    reading = seeded_sensor_data["reading_a_latest"]
+    station = seeded_sensor_data["station_a"]
+    region = seeded_sensor_data["region"]
+
+    assessment = RiskAssessment(
+        region_id=region.id,
+        station_id=station.id,
+        based_on_reading_id=reading.id,
+        based_on_weather_id=None,
+        assessed_at=datetime.now(UTC),
+        risk_level=RiskLevel.DANGER,
+        salinity_dsm=reading.salinity_dsm,
+        trend_direction=TrendDirection.RISING,
+        trend_delta_dsm=Decimal("0.60"),
+        rule_version="v1",
+        summary="Approval endpoint should advance into execution.",
+        rationale={"source": "test"},
+    )
+    db_session.add(assessment)
+    await db_session.commit()
+    await db_session.refresh(assessment)
+
+    plan = ActionPlan(
+        region_id=region.id,
+        risk_assessment_id=assessment.id,
+        incident_id=None,
+        status=ActionPlanStatus.PENDING_APPROVAL,
+        objective="Protect irrigation water quality",
+        generated_by="test-suite",
+        model_provider="mock",
+        summary="Plan approved through API should continue into simulated execution.",
+        assumptions={"items": ["Operators are available"]},
+        plan_steps=[
+            {
+                "step_index": 1,
+                "action_type": ActionType.NOTIFY_FARMERS.value,
+                "priority": 1,
+                "title": "Notify farmers",
+                "instructions": "Send advisory to avoid intake.",
+                "rationale": "Communication reduces exposure.",
+                "simulated": True,
+            },
+            {
+                "step_index": 2,
+                "action_type": ActionType.WAIT_SAFE_WINDOW.value,
+                "priority": 2,
+                "title": "Wait for safe intake window",
+                "instructions": "Delay intake until conditions are safer.",
+                "rationale": "Low-risk policy allows safe-window delay.",
+                "simulated": True,
+            },
+        ],
+        validation_result={"is_valid": True, "errors": [], "warnings": []},
+    )
+    db_session.add(plan)
+    await db_session.commit()
+    await db_session.refresh(plan)
+
+    response = await client.post(
+        f"/api/v1/approvals/plans/{plan.id}/decision",
+        json={"decision": "approved", "comment": "Approve and continue to execution."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["approval"]["decision"] == "approved"
+    assert body["plan"]["status"] == "simulated"
+
+    execution_batches = await client.get("/api/v1/execution-batches", params={"limit": 20})
+    assert execution_batches.status_code == 200
+    batches = execution_batches.json()["data"]["items"]
+    matching_batches = [item for item in batches if item["plan_id"] == str(plan.id)]
+    assert matching_batches
+    assert matching_batches[0]["step_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_execute_simulated_returns_batch_transaction_and_replays_idempotency(
     client,
     db_session,

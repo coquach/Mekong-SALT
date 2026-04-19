@@ -120,6 +120,23 @@ def test_external_context_does_not_override_safe_local_sensor_reading():
     assert result.rationale["policy"]["external_modifier_applied"] is False
 
 
+def test_evaluate_risk_builds_summary_for_sparse_context():
+    result = evaluate_risk(
+        RiskEvaluationInput(
+            salinity_dsm=Decimal("0.80"),
+            previous_salinity_dsm=None,
+            wind_speed_mps=None,
+            tide_level_m=None,
+        )
+    )
+
+    assert result.risk_level is RiskLevel.SAFE
+    assert result.summary.startswith("Rủi ro được đánh giá ở mức an toàn:")
+    assert "độ mặn hiện tại 0.80 dS/m" in result.summary
+    assert "xu hướng chưa xác định" in result.summary
+    assert "độ tin cậy" in result.summary
+
+
 def test_stale_history_prevents_trend_escalation():
     result = evaluate_risk(
         RiskEvaluationInput(

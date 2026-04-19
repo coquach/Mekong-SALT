@@ -167,6 +167,43 @@ SCENARIOS = {
             "The simulator now publishes only MQTT sensor frames.",
         ],
     },
+    "salinity-falling-open-gate": {
+        "title": "Falling Salinity -> Open Gate Recovery",
+        "objective": (
+            "Publish a danger-band stream that trends downward toward recovery so the planner can reopen the gate in simulation."
+        ),
+        "preconditions": [
+            "Backend API is running.",
+            "Seed/setup data is available.",
+        ],
+        "before_commands": [
+            {
+                "step": "Chuẩn bị state sạch trước khi chạy scenario mở cổng.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_setup.py --skip-migrations",
+                "expect": "Region demo, stations, gates, và RAG corpus đã sẵn sàng.",
+            },
+        ],
+        "steps": [
+            {
+                "step": "Publish a falling salinity stream that stays in the danger band long enough to trigger planning.",
+                "command": "./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario salinity-falling-open-gate",
+                "expect": "Backend ingests the frames and the planner should resolve toward an open-gate recovery plan.",
+            },
+        ],
+        "after_commands": [
+            {
+                "step": "Xem plan và execution mới nhất sau khi salinity giảm.",
+                "command": "curl http://localhost:8000/api/v1/plans?limit=10 && curl http://localhost:8000/api/v1/execution-batches?limit=10",
+                "expect": "Danh sách plan có nhánh open_gate khi planner chạy đúng trend giảm.",
+            },
+        ],
+        "highlights": [
+            "Risk must stay in a planable band while the trend is falling.",
+            "Mock planning now prefers open_gate for danger-level recovery windows.",
+            "The simulator still publishes only MQTT sensor frames.",
+            "Use this scenario to demo reopening intake after salinity improves.",
+        ],
+    },
 }
 
 

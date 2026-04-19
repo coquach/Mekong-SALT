@@ -105,6 +105,7 @@ async def generate_agent_plan(
         state = await workflow.run(
             payload,
             precomputed_risk_bundle=risk_bundle,
+            run_id=run.id,
         )
 
         resolved_risk_bundle = state["risk_bundle"]

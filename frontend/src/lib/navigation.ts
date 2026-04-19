@@ -64,6 +64,14 @@ export const APP_ROUTES: AppRouteMeta[] = [
     keyQuestion: "Vì sao sự kiện đã xảy ra và xu hướng đang đi đâu?",
     realtimeMode: "static",
   },
+  {
+    path: "/memory-cases",
+    navLabel: "Memory cases",
+    title: "Memory cases",
+    subtitle: "Xem lại memory case được trích từ retrieval trace và backend API",
+    keyQuestion: "Bài học nào đã được lưu lại để tái sử dụng?",
+    realtimeMode: "static",
+  },
 ];
 
 function normalizePath(pathname: string): string {

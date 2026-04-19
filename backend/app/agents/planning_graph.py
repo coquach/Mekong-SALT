@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any, TypedDict
+from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 
@@ -16,7 +17,9 @@ from app.orchestration.planning_nodes import (
     validate_plan_node,
 )
 from app.schemas.agent import AgentPlanRequest, GeneratedActionPlan, PlanValidationResult
+from app.schemas.graph import build_execution_graph_from_trace
 from app.schemas.risk import RiskEvaluationFilters
+from app.services.graph_stream_service import publish_graph_transition
 from app.services.risk_service import RiskEvaluationBundle
 
 
@@ -24,6 +27,7 @@ class PlanningState(TypedDict, total=False):
     """Mutable state carried through the LangGraph planning workflow."""
 
     request: AgentPlanRequest
+    run_id: UUID | None
     objective: str
     filters: RiskEvaluationFilters
     risk_bundle: RiskEvaluationBundle
@@ -49,11 +53,13 @@ class AgentPlanningWorkflow:
         request: AgentPlanRequest,
         *,
         precomputed_risk_bundle: RiskEvaluationBundle | None = None,
+        run_id: UUID | None = None,
     ) -> PlanningState:
         """Execute the planning workflow with an optional precomputed risk bundle."""
         initial_state: PlanningState = {
             "request": request,
             "transition_log": [],
+            "run_id": run_id,
         }
         if precomputed_risk_bundle is not None:
             initial_state["risk_bundle"] = precomputed_risk_bundle
@@ -76,17 +82,25 @@ class AgentPlanningWorkflow:
 
     async def _observe(self, state: PlanningState) -> PlanningState:
         updates = await observe_request_node(state)
-        updates["transition_log"] = self._append_transition(
+        transitions = self._append_transition(
             state,
             "observe",
             details={"objective": updates.get("objective")},
+        )
+        updates["transition_log"] = transitions
+        await self._emit_transition(
+            state,
+            node="observe",
+            status="completed",
+            details={"objective": updates.get("objective")},
+            transitions=transitions,
         )
         return updates
 
     async def _assess_risk(self, state: PlanningState) -> PlanningState:
         updates = await assess_risk_node(state, services=self._services)
         risk_bundle = updates.get("risk_bundle") or state.get("risk_bundle")
-        updates["transition_log"] = self._append_transition(
+        transitions = self._append_transition(
             state,
             "assess_risk",
             details={
@@ -102,12 +116,31 @@ class AgentPlanningWorkflow:
                 ),
             },
         )
+        updates["transition_log"] = transitions
+        await self._emit_transition(
+            state,
+            node="assess_risk",
+            status="completed",
+            details={
+                "risk_level": (
+                    risk_bundle.assessment.risk_level.value
+                    if risk_bundle is not None
+                    else None
+                ),
+                "summary": (
+                    risk_bundle.assessment.summary
+                    if risk_bundle is not None
+                    else None
+                ),
+            },
+            transitions=transitions,
+        )
         return updates
 
     async def _retrieve_context(self, state: PlanningState) -> PlanningState:
         updates = await retrieve_context_node(state, services=self._services)
         retrieved_context = updates.get("retrieved_context") or {}
-        updates["transition_log"] = self._append_transition(
+        transitions = self._append_transition(
             state,
             "retrieve_context",
             details={
@@ -120,12 +153,28 @@ class AgentPlanningWorkflow:
                 ),
             },
         )
+        updates["transition_log"] = transitions
+        await self._emit_transition(
+            state,
+            node="retrieve_context",
+            status="completed",
+            details={
+                "retrieved_context_keys": sorted(retrieved_context.keys()),
+                "gate_targets": len(retrieved_context.get("gate_targets") or []),
+                "evidence_count": (
+                    retrieved_context.get("retrieval_trace", {}).get("total_evidence")
+                    if isinstance(retrieved_context.get("retrieval_trace"), dict)
+                    else None
+                ),
+            },
+            transitions=transitions,
+        )
         return updates
 
     async def _draft_plan(self, state: PlanningState) -> PlanningState:
         updates = await draft_plan_node(state, services=self._services)
         draft_plan = updates.get("draft_plan")
-        updates["transition_log"] = self._append_transition(
+        transitions = self._append_transition(
             state,
             "draft_plan",
             details={
@@ -133,12 +182,23 @@ class AgentPlanningWorkflow:
                 "confidence_score": getattr(draft_plan, "confidence_score", None),
             },
         )
+        updates["transition_log"] = transitions
+        await self._emit_transition(
+            state,
+            node="draft_plan",
+            status="completed",
+            details={
+                "step_count": len(getattr(draft_plan, "steps", []) or []),
+                "confidence_score": getattr(draft_plan, "confidence_score", None),
+            },
+            transitions=transitions,
+        )
         return updates
 
     async def _validate_plan(self, state: PlanningState) -> PlanningState:
         updates = await validate_plan_node(state)
         validation_result = updates.get("validation_result")
-        updates["transition_log"] = self._append_transition(
+        transitions = self._append_transition(
             state,
             "validate_plan",
             details={
@@ -147,7 +207,44 @@ class AgentPlanningWorkflow:
                 "warning_count": len(getattr(validation_result, "warnings", []) or []),
             },
         )
+        updates["transition_log"] = transitions
+        await self._emit_transition(
+            state,
+            node="validate_plan",
+            status="completed",
+            details={
+                "is_valid": getattr(validation_result, "is_valid", None),
+                "error_count": len(getattr(validation_result, "errors", []) or []),
+                "warning_count": len(getattr(validation_result, "warnings", []) or []),
+            },
+            transitions=transitions,
+        )
         return updates
+
+    async def _emit_transition(
+        self,
+        state: PlanningState,
+        *,
+        node: str,
+        status: str,
+        details: dict[str, Any] | None,
+        transitions: list[dict[str, Any]],
+    ) -> None:
+        graph_snapshot = build_execution_graph_from_trace(
+            {
+                "planning_transition_log": transitions,
+            }
+        )
+        await publish_graph_transition(
+            self._services.redis_manager,
+            graph_type="planning",
+            node=node,
+            status=status,
+            details=details,
+            summary=details.get("summary") if details else None,
+            run_id=state.get("run_id"),
+            graph_snapshot=graph_snapshot,
+        )
 
     def _append_transition(
         self,

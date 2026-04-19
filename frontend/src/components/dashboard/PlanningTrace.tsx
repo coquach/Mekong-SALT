@@ -1,4 +1,4 @@
-import { BrainCircuit, CheckCircle2, Clock3, Loader2, Sparkles, Terminal } from "lucide-react";
+﻿import { BrainCircuit, CheckCircle2, Clock3, Loader2, Sparkles, Terminal } from "lucide-react";
 
 import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
@@ -82,6 +82,7 @@ interface AgentReasoningPanelProps {
   agentRun: AgentRunRead | null;
   streamStatus: StreamStatus;
   lastStreamAt: string | null;
+  executionGraph?: ExecutionGraphRead | null;
 }
 
 function formatTime(value: string | null): string {
@@ -101,12 +102,12 @@ function formatTime(value: string | null): string {
 
 function getStreamStatusText(status: StreamStatus): string {
   if (status === "connected") {
-    return "Realtime bật";
+    return "Đang nhận dữ liệu";
   }
   if (status === "connecting") {
     return "Đang kết nối";
   }
-  return "Realtime tắt";
+  return "Chưa kết nối";
 }
 
 function getStreamStatusClass(status: StreamStatus): string {
@@ -147,12 +148,7 @@ function getNodeLabel(node: string | undefined): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function formatCompactId(value: string | null | undefined): string {
-  if (!value) {
-    return "--";
-  }
-  return value.length > 10 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
-}
+
 
 function getString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
@@ -277,9 +273,9 @@ function getGraphStageState(status: string | undefined): PlanningStageState {
   return "pending";
 }
 
-export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReasoningPanelProps) => {
+export const PlanningTraceDetails = ({ agentRun, streamStatus, lastStreamAt, executionGraph: liveExecutionGraph }: AgentReasoningPanelProps) => {
   const trace = getPlanningTrace(agentRun);
-  const executionGraph = trace?.execution_graph ?? agentRun?.execution_graph ?? null;
+  const executionGraph = liveExecutionGraph ?? trace?.execution_graph ?? agentRun?.execution_graph ?? null;
   const transitions = Array.isArray(trace?.planning_transition_log) ? trace.planning_transition_log : [];
   const retrievalTrace = trace?.retrieval_trace;
   const evidenceCount = retrievalTrace?.total_evidence ?? 0;
@@ -324,9 +320,9 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
     decisionTone === "critical"
       ? "Policy guard hoặc trace mới đang báo rủi ro. Nên xem lại plan trước khi approve."
       : decisionTone === "warning"
-        ? "Plan đã hợp lệ một phần nhưng vẫn còn cảnh báo từ trace hoặc validation."
+        ? "Plan đã hợp lệ một phần nhưng vẫn còn cảnh báo từ trace hoặc Kiểm tra an toàn."
         : decisionTone === "optimal"
-          ? "Trace và validation đang nghiêng về trạng thái sẵn sàng duyệt."
+          ? "Trace và Kiểm tra an toàn đang nghiêng về trạng thái sẵn sàng duyệt."
           : "Chưa có đủ trace mới để kết luận rõ ràng.";
   const visualStages = PLANNING_STAGES.map((stage, index) => ({
     ...stage,
@@ -344,7 +340,7 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
             <BrainCircuit size={28} strokeWidth={2.5} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-black tracking-tight leading-none">AI Sentinel</h3>
+            <h3 className="text-lg font-black tracking-tight leading-none">Planning Trace</h3>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">
               Trace theo node, evidence và policy guard của run mới nhất
             </p>
@@ -379,7 +375,7 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="space-y-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Bước hoàn tất</p>
               <p className="mt-2 text-lg font-black text-white">
@@ -444,31 +440,31 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-3">
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Incident decision</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Quyết định sự cố</p>
             <p className="text-sm font-black text-white mt-2">{incidentDecision?.decision ?? "unknown"}</p>
             <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
               {incidentDecision?.reason ?? "Chưa có quyết định sự cố."}
             </p>
           </div>
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Plan decision</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Quyết định kế hoạch</p>
             <p className="text-sm font-black text-white mt-2">{planDecision?.decision ?? "pending"}</p>
             <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
               {planDecision?.reason ?? "Đang chờ agent tạo hoặc xác thực kế hoạch."}
             </p>
           </div>
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Validation</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Kiểm tra an toàn</p>
             <p className="text-sm font-black text-white mt-2">
               {validationErrors.length > 0
-                ? "failed"
+                ? "Không đạt"
                 : validationWarnings.length > 0
-                  ? "warning"
+                  ? "Có cảnh báo"
                   : planDecision?.validation?.is_valid === false
-                    ? "failed"
-                    : "passed"}
+                    ? "Không đạt"
+                    : "Đạt"}
             </p>
             <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
               {validationErrors[0] ?? validationWarnings[0] ?? "Policy guard không có lỗi nổi bật."}
@@ -564,24 +560,6 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Incident decision</p>
-            <p className="text-sm font-black text-white mt-2">{incidentDecision?.decision ?? "unknown"}</p>
-            <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
-              {incidentDecision?.reason ?? "Chưa có quyết định sự cố."}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Plan decision</p>
-            <p className="text-sm font-black text-white mt-2">
-              {planDecision?.decision ?? "pending"}
-            </p>
-            <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
-              {planDecision?.reason ?? "Đang chờ agent tạo hoặc xác thực kế hoạch."}
-            </p>
-          </div>
-        </div>
       </div>
 
       <div className="relative z-10 mt-6 pt-6 border-t border-white/10 flex justify-between items-center gap-4">
@@ -592,13 +570,15 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
             <div className="w-1 h-3 bg-mekong-teal/30 rounded-full animate-pulse delay-150" />
           </div>
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">
-            {agentRun ? `Run ${formatCompactId(agentRun.id)} · ${formatTime(runAt)}` : "Chưa có agent run mới"}
+            {agentRun ? `Run mới nhất · ${formatTime(runAt)}` : "Chưa có agent run mới"}
           </span>
         </div>
         <p className="text-[9px] font-bold text-slate-500 italic whitespace-nowrap">
-          live coordination panel
+          Bảng điều phối trực tiếp
         </p>
       </div>
     </Card>
   );
 };
+
+

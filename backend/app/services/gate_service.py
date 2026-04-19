@@ -1,12 +1,14 @@
 """Gate management services."""
 
 from http import HTTPStatus
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.models.gate import Gate
+from app.models.enums import GateStatus
 from app.repositories.gate import GateRepository
 from app.repositories.region import RegionRepository
 from app.repositories.sensor import SensorStationRepository
@@ -111,6 +113,7 @@ async def update_gate(session: AsyncSession, gate_id: UUID, payload: GateUpdate)
     """Apply a partial gate update."""
     gate = await get_gate(session, gate_id)
     updates = payload.model_dump(exclude_unset=True)
+    status_before_update = gate.status
 
     if "code" in updates and updates["code"] is not None:
         existing = await GateRepository(session).get_by_code(updates["code"])
@@ -138,6 +141,20 @@ async def update_gate(session: AsyncSession, gate_id: UUID, payload: GateUpdate)
 
     for field, value in updates.items():
         setattr(gate, field, value)
+
+    if "status" in updates and updates["status"] is not None and updates["status"] != status_before_update:
+        now = datetime.now(UTC)
+        gate.last_operated_at = now
+        metadata = dict(gate.gate_metadata or {})
+        metadata["last_command"] = {
+            "action_type": "open_gate" if updates["status"] == GateStatus.OPEN else "close_gate",
+            "actor_name": "operator",
+            "issued_at": now.isoformat(),
+            "source": "manual_hotspot",
+            "status_before": status_before_update.value,
+            "status_after": updates["status"].value,
+        }
+        gate.gate_metadata = metadata
 
     await session.commit()
     reloaded = await GateRepository(session).get_with_station(gate.id)

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   Bell,
+  BookOpen,
   BrainCircuit,
   Circle,
   ClipboardList,
@@ -37,6 +38,10 @@ function prefetchRoute(path: string): void {
   }
   if (path === "/history") {
     void import("../../pages/History");
+    return;
+  }
+  if (path === "/memory-cases") {
+    void import("../../pages/MemoryCases");
   }
 }
 
@@ -81,6 +86,7 @@ export const Sidebar = () => {
     "/logs": ClipboardList,
     "/notifications": Bell,
     "/history": History,
+    "/memory-cases": BookOpen,
   };
 
   const menuItems = APP_ROUTES.map((route) => ({

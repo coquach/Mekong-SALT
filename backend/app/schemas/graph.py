@@ -78,7 +78,11 @@ def build_execution_graph_from_trace(
             graph_type="planning",
             stage_definitions=_PLANNING_STAGES,
             transitions=planning_transitions,
-            summary=_as_string(trace.get("operator_summary") or plan_decision.get("reason")),
+            summary=_as_string(
+                trace.get("operator_summary")
+                or plan_decision.get("reason")
+                or _latest_transition_summary(planning_transitions)
+            ),
             metadata={**_graph_metadata(trace), **(metadata or {})},
         )
 
@@ -231,6 +235,13 @@ def _build_sequential_graph(
         detail_payload = details or {}
         summary_text = _as_string(
             detail_payload.get("reason") or detail_payload.get("summary") or detail_payload.get("policy_reason")
+            or _derive_stage_summary(
+                stage_id=stage_id,
+                label=_as_string(stage.get("label")),
+                kind=_as_string(stage.get("kind")),
+                details=detail_payload,
+                transition=transition,
+            )
         )
         started_at = _as_datetime((transition or {}).get("started_at") if isinstance(transition, Mapping) else None)
         completed_at = _as_datetime((transition or {}).get("at") if isinstance(transition, Mapping) else None)
@@ -375,6 +386,105 @@ def _as_transition_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return []
     return [item for item in value if isinstance(item, Mapping)]
+
+
+def _latest_transition_summary(transitions: Sequence[Mapping[str, Any]]) -> str | None:
+    for transition in reversed(transitions):
+        details = transition.get("details") if isinstance(transition.get("details"), Mapping) else None
+        if not isinstance(details, Mapping):
+            continue
+        summary = _as_string(details.get("summary") or details.get("reason") or details.get("policy_reason"))
+        if summary is not None:
+            return summary
+    return None
+
+
+def _derive_stage_summary(
+    *,
+    stage_id: str,
+    label: str | None,
+    kind: str | None,
+    details: Mapping[str, Any] | None,
+    transition: Mapping[str, Any] | None,
+) -> str | None:
+    stage_label = label or stage_id.replace("_", " ")
+    detail_map = details if isinstance(details, Mapping) else {}
+    status = _as_string(transition.get("status") if isinstance(transition, Mapping) else None)
+    if stage_id == "observe":
+        objective = _as_string(detail_map.get("objective") or detail_map.get("goal") or detail_map.get("summary"))
+        if objective is not None:
+            objective_text = objective.rstrip(".?!")
+            return f"Quan sát bối cảnh đầu vào để bám mục tiêu: {objective_text}."
+        return "Quan sát dữ liệu đầu vào và xác định bối cảnh ra quyết định."
+
+    if stage_id == "assess_risk":
+        risk_level = _as_string(detail_map.get("risk_level"))
+        risk_summary = _as_string(detail_map.get("summary") or detail_map.get("reason"))
+        risk_level_label = {
+            "safe": "an toàn",
+            "warning": "cảnh báo",
+            "danger": "nguy hiểm",
+            "critical": "rất nguy cấp",
+        }.get(risk_level, risk_level)
+        pieces: list[str] = []
+        if risk_level_label is not None:
+            pieces.append(f"Rủi ro được đánh giá ở mức {risk_level_label}.")
+        if risk_summary is not None:
+            pieces.append(risk_summary if risk_summary.endswith(".") else f"{risk_summary}.")
+        if pieces:
+            return " ".join(pieces)
+        return "Đánh giá rủi ro từ độ mặn, xu hướng và độ tin cậy của dữ liệu."
+
+    if stage_id == "retrieve_context":
+        evidence_count = _as_int(detail_map.get("evidence_count") or detail_map.get("total_evidence"))
+        gate_targets = _as_int(detail_map.get("gate_targets"))
+        retrieved_keys = detail_map.get("retrieved_context_keys")
+        key_count = len(retrieved_keys) if isinstance(retrieved_keys, Sequence) and not isinstance(retrieved_keys, (str, bytes, bytearray)) else None
+        pieces = ["Truy xuất ngữ cảnh hỗ trợ cho bước lập kế hoạch."]
+        if evidence_count is not None:
+            pieces.append(f"Thu được {evidence_count} bằng chứng.")
+        if gate_targets is not None:
+            pieces.append(f"Có {gate_targets} gate mục tiêu để cân nhắc.")
+        if key_count is not None:
+            pieces.append(f"{key_count} nhóm ngữ cảnh đã được kéo về.")
+        return " ".join(pieces)
+
+    if stage_id == "draft_plan":
+        step_count = _as_int(detail_map.get("step_count"))
+        confidence_score = detail_map.get("confidence_score")
+        pieces = ["Soạn kế hoạch dựa trên ngữ cảnh vừa truy xuất."]
+        if step_count is not None:
+            pieces.append(f"Phác thảo {step_count} bước hành động.")
+        if confidence_score is not None:
+            pieces.append(f"Độ tự tin của kế hoạch là {confidence_score}.")
+        return " ".join(pieces)
+
+    if stage_id == "validate_plan":
+        is_valid = detail_map.get("is_valid")
+        error_count = _as_int(detail_map.get("error_count") or detail_map.get("errors_count"))
+        warning_count = _as_int(detail_map.get("warning_count") or detail_map.get("warnings_count"))
+        if isinstance(is_valid, bool):
+            if is_valid:
+                return "Xác thực kế hoạch và không phát hiện lỗi an toàn đáng chú ý."
+            return "Xác thực kế hoạch và phát hiện vấn đề cần chỉnh sửa trước khi tiếp tục."
+        pieces = [f"Xác thực kế hoạch cho bước {stage_label.lower()}."]
+        if error_count is not None:
+            pieces.append(f"Có {error_count} lỗi.")
+        if warning_count is not None:
+            pieces.append(f"Có {warning_count} cảnh báo.")
+        return " ".join(pieces)
+
+    if label is not None:
+        if status == "completed":
+            return f"Đã hoàn tất bước {label.lower()}."
+        if status == "active":
+            return f"Đang xử lý bước {label.lower()}."
+        return f"Thực hiện bước {label.lower()} trong luồng suy luận."
+
+    if kind is not None:
+        return f"Đang xử lý {kind} của luồng suy luận."
+
+    return None
 
 
 def _as_json_safe_mapping(value: Any) -> dict[str, Any] | None:

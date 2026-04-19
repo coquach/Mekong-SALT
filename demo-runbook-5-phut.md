@@ -129,6 +129,7 @@ Seed sẽ:
 
 - Xoá dữ liệu demo cũ của region `TIEN-GIANG-GO-CONG`.
 - Tạo lại region, station, gate, reading, risk, incident, plan.
+- Tạo thêm monitoring goal active cho trạm `GOCONG-01` để active monitoring worker có thể trigger plan khi sensor stream mới đi vào band danger/critical.
 - Đồng bộ metadata trạm/cống để UI và simulator có dữ liệu thật để bám.
 
 Nếu bạn chỉ muốn seed lại dữ liệu và không chạy toàn bộ setup, dùng lệnh này là đủ.
@@ -200,6 +201,25 @@ Mỗi scenario hiện được chia thành 3 phần:
 | `warning-observe-recover` | Muốn thể hiện posture cảnh giác và phục hồi an toàn | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario warning-observe-recover --mqtt-broker-url localhost --mqtt-broker-port 1883 --frame-pause-seconds 10 --timeout-seconds 300` | Warning band, trend ổn định qua nhiều nhịp, recovery window |
 | `rag-provenance-drilldown` | Muốn soi trace truy hồi và nguồn tri thức | `./.venv/Scripts/python.exe scripts/run_demo_simulation.py --scenario rag-provenance-drilldown --json` | Citations, knowledge context, trace provenance, trend window đầy hơn |
 
+### 7.1 Kịch bản độ mặn chi tiết
+
+Nếu muốn trình bày theo chiều sâu của diễn biến độ mặn, dùng bảng này để đọc theo từng scenario. Mỗi scenario đều có chuỗi frame chính, một mốc hậu xử lý và ý nghĩa demo riêng.
+
+| Scenario | Dải salinity chính | Post-planning frame | Ý nghĩa trình bày |
+|---|---|---|---|
+| `fast-approve-execute` | `0.84 -> 1.26 -> 2.04 -> 3.38 dS/m` | `2.68 dS/m` sau khi plan được duyệt | Mở đầu bằng nền an toàn, sau đó đi vào warning rồi chạm critical để cho thấy flow duyệt nhanh và execution mô phỏng |
+| `critical-timeout-replan` | `3.90 -> 4.15 -> 4.45 -> 5.15 dS/m` | `1.80 dS/m` sau khi đóng cống mô phỏng | Dùng để kể câu chuyện escalation lên critical, plan bị timeout, rồi hệ thống tạo nhánh replan với tín hiệu salinity giảm mạnh |
+| `warning-observe-recover` | `1.92 -> 2.10 -> 2.18 -> 2.05 dS/m` | `0.92 dS/m` ở recovery window | Phù hợp khi muốn nhấn mạnh posture quan sát thận trọng, giữ warning band đủ lâu rồi mới phục hồi an toàn |
+| `rag-provenance-drilldown` | `2.60 -> 2.95 -> 3.20 -> 3.85 dS/m` | `3.92 dS/m` để giữ trace | Dùng để soi trace, citations và provenance khi độ mặn tiến dần tới critical, phù hợp phần giải thích reasoning |
+| `salinity-falling-open-gate` | `3.72 -> 3.36 -> 3.02 -> 2.70 dS/m` | `2.58 dS/m` | Kịch bản phục hồi: salinity vẫn ở danger band nhưng đang giảm dần, phù hợp để kể câu chuyện mở cống hồi phục thay vì chỉ đóng cống |
+
+Ghi chú trình bày:
+
+- `--frame-pause-seconds` mặc định nên để `10` giây để nhìn được nhịp ingest rõ trên UI.
+- `post_planning_frame` đã được đặt `pause_seconds=60.0`, nên reading hậu plan sẽ xuất hiện sau 1 phút để người xem kịp đọc plan trước khi hệ thống bơm nhịp tiếp theo.
+- Khi demo trên màn hình, nên nói rõ đơn vị salinity là `dS/m`; backend vẫn convert sang `g/L` ở phần hiển thị để người đọc dễ hiểu hơn.
+- Nếu muốn demo theo câu chuyện “mặn giảm thì mở cống”, ưu tiên `salinity-falling-open-gate` thay vì `critical-timeout-replan`.
+
 ## 8) Chạy simulate
 
 ### 8.1 Scenario khuyến nghị
@@ -233,6 +253,8 @@ Scenario này dùng để demo:
 - plan vào trạng thái `pending_approval`,
 - timeout tự chuyển sang reject,
 - hệ thống tạo plan mới cho nhịp tiếp theo.
+
+Lưu ý: scenario này chỉ trigger plan khi backend đang chạy với active monitoring worker, và seed đã tạo sẵn monitoring goal active cho `GOCONG-01`.
 
 ### 8.3 Scenario provenance / RAG
 

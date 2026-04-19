@@ -67,6 +67,46 @@ class MemoryCaseRepository(AsyncRepository[MemoryCase]):
         )
         return list(result.all())
 
+    async def list_recent(
+        self,
+        *,
+        limit: int = 50,
+        region_id: UUID | None = None,
+        station_id: UUID | None = None,
+        severity: str | None = None,
+        query: str | None = None,
+    ) -> list[MemoryCase]:
+        """Return recent memory cases with optional light filters for UI browsing."""
+        statement = select(MemoryCase)
+        if region_id is not None:
+            statement = statement.where(MemoryCase.region_id == region_id)
+        if station_id is not None:
+            statement = statement.where(MemoryCase.station_id == station_id)
+        if severity is not None:
+            statement = statement.where(MemoryCase.severity == severity)
+
+        if query is not None and query.strip():
+            term_predicates = []
+            for term in [part for part in query.split() if part.strip()]:
+                like = f"%{term}%"
+                term_predicates.append(
+                    or_(
+                        MemoryCase.objective.ilike(like),
+                        MemoryCase.summary.ilike(like),
+                        cast(MemoryCase.keywords, String).ilike(like),
+                        cast(MemoryCase.context_payload, String).ilike(like),
+                        cast(MemoryCase.action_payload, String).ilike(like),
+                        cast(MemoryCase.outcome_payload, String).ilike(like),
+                    )
+                )
+            if term_predicates:
+                statement = statement.where(or_(*term_predicates))
+
+        result = await self.session.scalars(
+            statement.order_by(desc(MemoryCase.occurred_at), desc(MemoryCase.created_at)).limit(limit)
+        )
+        return list(result.all())
+
     async def list_by_ids(self, case_ids: Sequence[UUID]) -> list[MemoryCase]:
         """Resolve memory cases by IDs for Vertex-neighbor hydration."""
         if not case_ids:

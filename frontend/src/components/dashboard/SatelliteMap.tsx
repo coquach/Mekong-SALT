@@ -61,6 +61,8 @@ interface SatelliteMapProps {
   gates?: MapGate[];
   selectedStationId?: string | null;
   onSelectStation?: (stationId: string) => void;
+  onToggleGateStatus?: (gate: MapGate, nextStatus: GateRead["status"]) => void;
+  gateActionBusyId?: string | null;
 }
 
 const createCustomIcon = (icon: ReactElement, bgColor: string, selected = false) => {
@@ -209,6 +211,27 @@ function resolveGateIcon(gate: MapGate): ReactElement {
   return gate.status === "open" ? <Unlock size={18} /> : <Lock size={18} />;
 }
 
+function resolveGateNextStatus(gate: MapGate): GateRead["status"] | null {
+  if (gate.status === "open") {
+    return "closed";
+  }
+  if (gate.status === "closed") {
+    return "open";
+  }
+  return null;
+}
+
+function resolveGateActionLabel(gate: MapGate): string {
+  const nextStatus = resolveGateNextStatus(gate);
+  if (nextStatus === "open") {
+    return "Mở cống";
+  }
+  if (nextStatus === "closed") {
+    return "Đóng cống";
+  }
+  return "Không thể điều khiển";
+}
+
 function formatGateStationLink(gate: MapGate): string {
   if (!gate.station) {
     return "--";
@@ -302,6 +325,8 @@ export function SatelliteMap({
   gates,
   selectedStationId = null,
   onSelectStation,
+  onToggleGateStatus,
+  gateActionBusyId,
 }: SatelliteMapProps) {
   const stationsToRender = stations ?? [];
   const gatesToRender = gates ?? [];
@@ -420,6 +445,34 @@ export function SatelliteMap({
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                       Lần vận hành gần nhất: {gate.lastOperatedAt ?? "--"}
                     </p>
+                    {onToggleGateStatus ? (
+                      <div className="pt-1">
+                        {resolveGateNextStatus(gate) !== null ? (
+                          <button
+                            type="button"
+                            disabled={gateActionBusyId === gate.id}
+                            onClick={() => {
+                              const nextStatus = resolveGateNextStatus(gate);
+                              if (nextStatus === null) {
+                                return;
+                              }
+                              onToggleGateStatus(gate, nextStatus);
+                            }}
+                            className={`inline-flex w-full items-center justify-center rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+                              resolveGateNextStatus(gate) === "open"
+                                ? "bg-mekong-teal text-white hover:bg-mekong-teal/90"
+                                : "bg-mekong-navy text-white hover:bg-mekong-navy/90"
+                            } disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500`}
+                          >
+                            {gateActionBusyId === gate.id ? "Đang xử lý..." : resolveGateActionLabel(gate)}
+                          </button>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                            Chỉ hỗ trợ mở/đóng khi cống ở trạng thái open/closed.
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </Popup>
               </Marker>

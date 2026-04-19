@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     domain_event_signal_channel: str = "domain-events:wake"
+    graph_stream_channel: str = "graph-events:stream"
     external_context_cache_ttl_seconds: int = 600
     weather_snapshot_freshness_minutes: int = 30
     risk_rule_version: str = "v1"
@@ -116,7 +117,7 @@ class Settings(BaseSettings):
 
     active_monitoring_enabled: bool = True
     active_monitoring_mode: Literal["active"] = "active"
-    active_monitoring_poll_seconds: int = 30
+    active_monitoring_poll_seconds: int = 20
     active_monitoring_lock_ttl_seconds: int = 300
     active_monitoring_batch_size: int = 50
     active_monitoring_approval_timeout_minutes: int = 60

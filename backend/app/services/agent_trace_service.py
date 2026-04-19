@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -94,6 +95,21 @@ def _normalize_transition_log(value: Any) -> list[dict[str, Any]]:
     return transitions
 
 
+def _parse_literal_mapping(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.startswith("{") or not stripped.endswith("}"):
+        return None
+    try:
+        parsed = ast.literal_eval(stripped)
+    except (ValueError, SyntaxError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _normalize_top_citations(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -102,10 +118,31 @@ def _normalize_top_citations(value: Any) -> list[dict[str, Any]]:
     for item in value:
         if not isinstance(item, dict):
             continue
+        raw_citation = item.get("citation")
+        parsed_citation = _parse_literal_mapping(raw_citation)
+        parsed_source = parsed_citation.get("evidence_source") if isinstance(parsed_citation, dict) else None
+        parsed_title = parsed_citation.get("title") if isinstance(parsed_citation, dict) else None
+        parsed_source_uri = parsed_citation.get("source_uri") if isinstance(parsed_citation, dict) else None
+        parsed_memory_case_id = parsed_citation.get("memory_case_id") if isinstance(parsed_citation, dict) else None
+        parsed_incident_id = parsed_citation.get("incident_id") if isinstance(parsed_citation, dict) else None
+        parsed_plan_id = parsed_citation.get("plan_id") if isinstance(parsed_citation, dict) else None
+        parsed_execution_id = parsed_citation.get("execution_id") if isinstance(parsed_citation, dict) else None
+        parsed_occurred_at = parsed_citation.get("occurred_at") if isinstance(parsed_citation, dict) else None
         citations.append(
             {
-                "citation": _as_string(item.get("citation")),
-                "source": _as_string(item.get("source")),
+                "citation": _as_string(item.get("citation"))
+                if not isinstance(parsed_citation, dict)
+                else _as_string(parsed_title or parsed_citation.get("citation") or parsed_citation.get("snippet") or raw_citation),
+                "title": _as_string(item.get("title") or parsed_title),
+                "source": _as_string(item.get("source") or item.get("evidence_source") or parsed_source or (parsed_citation.get("type") if isinstance(parsed_citation, dict) else None)),
+                "evidence_source": _as_string(item.get("evidence_source") or parsed_source),
+                "source_uri": _as_string(item.get("source_uri") or parsed_source_uri),
+                "memory_case_id": _as_string(item.get("memory_case_id") or parsed_memory_case_id),
+                "incident_id": _as_string(item.get("incident_id") or parsed_incident_id),
+                "plan_id": _as_string(item.get("plan_id") or parsed_plan_id),
+                "execution_id": _as_string(item.get("execution_id") or parsed_execution_id),
+                "occurred_at": _as_string(item.get("occurred_at") or parsed_occurred_at),
+                "raw_citation": _as_string(raw_citation),
                 "score": item.get("score"),
                 "rank": item.get("rank"),
             }
@@ -184,6 +221,8 @@ def normalize_agent_run_trace(trace: dict[str, Any] | None) -> dict[str, Any]:
         value = result.get(key)
         if value is not None:
             graph_metadata[key] = value
+    if isinstance(result.get("retrieval_trace"), dict):
+        graph_metadata["retrieval_trace"] = result["retrieval_trace"]
     execution_graph = build_execution_graph_from_trace(result, metadata=graph_metadata)
     if execution_graph is not None:
         result["execution_graph"] = execution_graph.model_dump(mode="json")

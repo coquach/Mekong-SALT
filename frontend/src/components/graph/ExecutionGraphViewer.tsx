@@ -9,6 +9,7 @@ import {
   Loader2,
   Sparkles,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
@@ -48,10 +49,6 @@ function formatDatetime(value: string | null): string {
   return date.toLocaleString("vi-VN", { hour12: false });
 }
 
-function formatNodeLabel(nodeId: string): string {
-  return nodeId.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
 function getGraphBadgeVariant(status: ExecutionGraphRead["status"]): "optimal" | "warning" | "critical" | "neutral" {
   if (status === "completed") {
     return "optimal";
@@ -66,6 +63,32 @@ function getGraphBadgeVariant(status: ExecutionGraphRead["status"]): "optimal" |
     return "critical";
   }
   return "neutral";
+}
+
+function getGraphTypeLabel(graphType: ExecutionGraphRead["graph_type"]): string {
+  if (graphType === "planning") {
+    return "Lập kế hoạch";
+  }
+  if (graphType === "execution_batch") {
+    return "Thực thi";
+  }
+  return graphType.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function getGraphStatusLabel(status: ExecutionGraphRead["status"]): string {
+  if (status === "completed") {
+    return "Hoàn tất";
+  }
+  if (status === "running") {
+    return "Đang chạy";
+  }
+  if (status === "blocked") {
+    return "Bị chặn";
+  }
+  if (status === "failed") {
+    return "Lỗi";
+  }
+  return "Đang chờ";
 }
 
 function getNodeBadgeVariant(status: ExecutionGraphNodeRead["status"]): "optimal" | "warning" | "critical" | "neutral" {
@@ -86,21 +109,48 @@ function getNodeBadgeVariant(status: ExecutionGraphNodeRead["status"]): "optimal
 
 function getNodeStatusText(status: ExecutionGraphNodeRead["status"]): string {
   if (status === "completed") {
-    return "completed";
+    return "Hoàn tất";
   }
   if (status === "active") {
-    return "active";
+    return "Đang chạy";
   }
   if (status === "blocked") {
-    return "blocked";
+    return "Bị chặn";
   }
   if (status === "failed") {
-    return "failed";
+    return "Lỗi";
   }
   if (status === "skipped") {
-    return "skipped";
+    return "Bỏ qua";
   }
-  return "pending";
+  return "Chờ xử lý";
+}
+
+function isTechnicalDetailKey(key: string): boolean {
+  return /(^|_)id$/.test(key) || key.endsWith("_id") || key === "id";
+}
+
+function formatDetailLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatDetailValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} mục`;
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length > 0 ? `${keys.length} trường chi tiết` : "Có chi tiết bổ sung";
+  }
+  return "Có chi tiết bổ sung";
 }
 
 function getNodeToneClass(status: ExecutionGraphNodeRead["status"]): string {
@@ -239,6 +289,83 @@ function getSelectedNode(graph: ExecutionGraphRead | null, selectedNodeId: strin
   return graph.nodes.find((node) => node.id === selectedNodeId) ?? graph.nodes[0] ?? null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getRetrievalTrace(graph: ExecutionGraphRead | null): Record<string, unknown> | null {
+  const metadata = graph?.metadata;
+  if (!isRecord(metadata)) {
+    return null;
+  }
+  const retrievalTrace = metadata.retrieval_trace;
+  return isRecord(retrievalTrace) ? retrievalTrace : null;
+}
+
+function formatCitationTitle(value: unknown): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Không có tiêu đề";
+    }
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      return trimmed;
+    }
+    return trimmed;
+  }
+  return "Không có tiêu đề";
+}
+
+function formatCitationSource(value: unknown): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return "unknown";
+}
+
+function formatCitationScore(value: unknown): string {
+  if (typeof value === "number") {
+    return value.toFixed(2);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return "--";
+}
+
+function getNodeSummaryText(node: ExecutionGraphNodeRead | null): string {
+  if (!node) {
+    return "Chưa có mô tả cho bước này.";
+  }
+  if (node.summary) {
+    return node.summary;
+  }
+  if (node.details && typeof node.details === "object") {
+    const details = node.details as Record<string, unknown>;
+    if (typeof details.objective === "string" && details.objective.trim().length > 0) {
+      return `Bám mục tiêu: ${details.objective}.`;
+    }
+    if (typeof details.risk_level === "string" && details.risk_level.trim().length > 0) {
+      return `Rủi ro được đánh giá ở mức ${details.risk_level}.`;
+    }
+    if (typeof details.summary === "string" && details.summary.trim().length > 0) {
+      return details.summary;
+    }
+    if (typeof details.evidence_count === "number") {
+      return `Truy xuất ${details.evidence_count} bằng chứng hỗ trợ.`;
+    }
+    if (typeof details.step_count === "number") {
+      return `Soạn kế hoạch gồm ${details.step_count} bước.`;
+    }
+    if (typeof details.is_valid === "boolean") {
+      return details.is_valid
+        ? "Kế hoạch đã được xác thực và không có lỗi nổi bật."
+        : "Kế hoạch đã được xác thực nhưng cần chỉnh sửa trước khi tiếp tục.";
+    }
+  }
+  return "Chưa có mô tả cho bước này.";
+}
+
 export function ExecutionGraphViewer({
   graph,
   title,
@@ -255,8 +382,27 @@ export function ExecutionGraphViewer({
 
   const selectedNode = useMemo(() => getSelectedNode(graph, selectedNodeId), [graph, selectedNodeId]);
   const progressPercent = useMemo(() => getProgressPercent(graph), [graph]);
-  const completedCount = graph ? graph.nodes.filter((node) => node.status === "completed" || node.status === "skipped").length : 0;
-  const currentNodeLabel = graph?.current_node ? formatNodeLabel(graph.current_node) : "--";
+  const graphStatus = graph?.status ?? "pending";
+  const graphType = graph?.graph_type ?? "planning";
+  const graphNodes = graph?.nodes ?? [];
+  const graphEdges = graph?.edges ?? [];
+  const graphStartedAt = graph?.started_at ?? null;
+  const graphCompletedAt = graph?.completed_at ?? null;
+  const completedCount = graphNodes.filter((node) => node.status === "completed" || node.status === "skipped").length;
+  const currentNodeLabel = selectedNode?.label ?? selectedNode?.summary ?? "Chưa rõ";
+  const retrievalTrace = useMemo(() => getRetrievalTrace(graph), [graph]);
+  const retrievalTopCitations = useMemo(() => {
+    const topCitations = retrievalTrace?.top_citations;
+    if (!Array.isArray(topCitations)) {
+      return [];
+    }
+    return topCitations.filter(isRecord).slice(0, 5);
+  }, [retrievalTrace]);
+  const retrievalMemoryCases = useMemo(
+    () => retrievalTopCitations.filter((citation) => citation.evidence_source === "memory_case" || citation.source === "memory_case"),
+    [retrievalTopCitations],
+  );
+  const hasGraph = Boolean(graph && graph.nodes.length > 0);
 
   const measureGraph = useCallback(() => {
     const surface = surfaceRef.current;
@@ -310,18 +456,6 @@ export function ExecutionGraphViewer({
     };
   }, [graph, measureGraph]);
 
-  if (!graph || graph.nodes.length === 0) {
-    return (
-      <div className="rounded-3xl border border-dashed border-white/15 bg-white/5 p-6 text-center space-y-3">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-mekong-cyan/20 bg-mekong-cyan/10 text-mekong-cyan">
-          <Sparkles size={20} />
-        </div>
-        <p className="text-sm font-bold text-slate-200">{emptyTitle}</p>
-        <p className="text-[12px] leading-relaxed text-slate-400">{emptyDescription}</p>
-      </div>
-    );
-  }
-
   return (
     <Card variant="navy" className="rounded-4xl border border-white/10 bg-[#00203F] p-6 shadow-2xl">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -341,34 +475,34 @@ export function ExecutionGraphViewer({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Badge variant={getGraphBadgeVariant(graph.status)} className={`px-2 py-0.5 text-[9px] font-bold ${getGraphToneClass(graph.status)}`}>
-            {graph.graph_type}
+          <Badge variant={getGraphBadgeVariant(graphStatus)} className={`px-2 py-0.5 text-[9px] font-bold ${getGraphToneClass(graphStatus)}`}>
+            {graph ? getGraphTypeLabel(graphType) : "Chờ dữ liệu"}
           </Badge>
-          <Badge variant={getGraphBadgeVariant(graph.status)} className={`px-2 py-0.5 text-[9px] font-bold ${getGraphToneClass(graph.status)}`}>
-            {graph.status}
+          <Badge variant={getGraphBadgeVariant(graphStatus)} className={`px-2 py-0.5 text-[9px] font-bold ${getGraphToneClass(graphStatus)}`}>
+            {graph ? getGraphStatusLabel(graphStatus) : "Đang chờ"}
           </Badge>
           <Badge variant="neutral" className="border-white/10 bg-white/10 px-2 py-0.5 text-[9px] font-bold text-slate-200">
-            Current: {currentNodeLabel}
+            Đang xem: {currentNodeLabel}
           </Badge>
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-5 space-y-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Nodes</p>
-          <p className="mt-2 text-sm font-black text-white">{graph.nodes.length}</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Các bước</p>
+          <p className="mt-2 text-sm font-black text-white">{graphNodes.length}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Completed</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Đã xong</p>
           <p className="mt-2 text-sm font-black text-white">{completedCount}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Progress</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Tiến độ</p>
           <p className="mt-2 text-sm font-black text-white">{progressPercent}%</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Time</p>
-          <p className="mt-2 text-sm font-black text-white">{formatTime(graph.started_at)}</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Cập nhật</p>
+          <p className="mt-2 text-sm font-black text-white">{formatTime(graphStartedAt)}</p>
         </div>
       </div>
 
@@ -378,15 +512,15 @@ export function ExecutionGraphViewer({
         />
       </div>
 
-      {graph.summary ? (
-        <div className={`mt-5 rounded-3xl border p-4 ${getGraphToneClass(graph.status)}`}>
+      {graph?.summary ? (
+        <div className={`mt-5 rounded-3xl border p-4 ${getGraphToneClass(graphStatus)}`}>
           <div className="flex items-center gap-2 text-white">
             <Clock3 size={14} />
-            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Graph summary</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Tóm tắt luồng</p>
           </div>
           <p className="mt-2 text-[13px] font-semibold leading-relaxed text-slate-100">{graph.summary}</p>
           <p className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-            Start {formatDatetime(graph.started_at)} · Finish {formatDatetime(graph.completed_at)}
+            Start {formatDatetime(graphStartedAt)} · Finish {formatDatetime(graphCompletedAt)}
           </p>
         </div>
       ) : null}
@@ -396,22 +530,23 @@ export function ExecutionGraphViewer({
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-mekong-cyan">
               <ArrowRight size={14} />
-              <p className="text-[10px] font-black uppercase tracking-[0.2em]">Node canvas</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em]">Canvas node</p>
             </div>
             <p className="text-[12px] leading-relaxed text-slate-300">
-              Edges được vẽ từ source/target thật của backend, bám theo vị trí thực của node cards.
+              {hasGraph ? "Edges được vẽ từ source/target thật của backend, bám theo vị trí thực của node cards." : emptyDescription}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="neutral" className="border-white/10 bg-white/10 px-2 py-0.5 text-[9px] font-bold text-slate-200">
-              {graph.edges.length} edges
+              {graphEdges.length} edges
             </Badge>
           </div>
         </div>
 
-        <div ref={surfaceRef} className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4">
-          <div className="relative w-full">
-            <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+        {hasGraph ? (
+          <div ref={surfaceRef} className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="relative w-full">
+              <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
               <defs>
                 <marker
                   id="graph-arrow-head"
@@ -426,7 +561,7 @@ export function ExecutionGraphViewer({
                 </marker>
               </defs>
 
-              {graph.edges.map((edge, index) => {
+                {graphEdges.map((edge, index) => {
                 const sourceBounds = nodeBounds[edge.source];
                 const targetBounds = nodeBounds[edge.target];
                 if (!sourceBounds || !targetBounds) {
@@ -475,11 +610,11 @@ export function ExecutionGraphViewer({
                     ) : null}
                   </g>
                 );
-              })}
-            </svg>
+                })}
+              </svg>
 
-            <div className="relative flex flex-wrap gap-4">
-              {graph.nodes.map((node) => {
+              <div className="relative flex flex-wrap gap-4">
+                {graphNodes.map((node) => {
                 const isSelected = selectedNode?.id === node.id;
                 return (
                   <button
@@ -523,23 +658,45 @@ export function ExecutionGraphViewer({
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{node.kind}</p>
                         <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-300 line-clamp-2">
-                          {node.summary ?? "Chưa có summary."}
+                          {getNodeSummaryText(node)}
                         </p>
                       </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">
                       <span>{formatTime(node.started_at)}</span>
-                      <span>{formatNodeLabel(node.id)}</span>
+                      <span>{node.step_index ? `Bước ${node.step_index}` : "Trong luồng"}</span>
                     </div>
                   </button>
                 );
-              })}
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-3xl border border-dashed border-white/15 bg-white/5 p-5">
+            <div className="mb-4 flex items-center gap-2 text-mekong-cyan">
+              <Sparkles size={14} />
+              <p className="text-[10px] font-black uppercase tracking-[0.2em]">{emptyTitle}</p>
+            </div>
+            <p className="mb-4 text-[12px] leading-relaxed text-slate-300">{emptyDescription}</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 4 }, (_, index) => index + 1).map((stepIndex) => (
+                <div key={stepIndex} className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Step {stepIndex}</p>
+                  <div className="mt-3 h-3 w-2/3 rounded-full bg-white/10" />
+                  <div className="mt-3 h-3 w-full rounded-full bg-white/10" />
+                  <div className="mt-2 h-3 w-5/6 rounded-full bg-white/10" />
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="h-6 w-16 rounded-full bg-white/10" />
+                    <div className="h-6 w-12 rounded-full bg-white/10" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -548,77 +705,149 @@ export function ExecutionGraphViewer({
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 text-mekong-cyan">
               <ArrowRight size={14} />
-              <p className="text-[10px] font-black uppercase tracking-[0.2em]">Node detail</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em]">Chi tiết node</p>
             </div>
             <h4 className="text-sm font-black text-white uppercase tracking-[0.08em]">
               {selectedNode?.label ?? "--"}
             </h4>
             <p className="text-[12px] leading-relaxed text-slate-300">
-              {selectedNode?.summary ?? "Chưa có summary cho node đang chọn."}
+              {getNodeSummaryText(selectedNode)}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <Badge variant={selectedNode ? getNodeBadgeVariant(selectedNode.status) : "neutral"} className="text-[8px] px-2 py-0.5 font-bold">
-              {selectedNode?.status ?? "pending"}
-            </Badge>
-            <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold">
-              {selectedNode?.kind ?? "node"}
-            </Badge>
-            <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold">
-              {selectedNode?.id ?? "--"}
-            </Badge>
-          </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Badge variant={selectedNode ? getNodeBadgeVariant(selectedNode.status) : "neutral"} className="text-[8px] px-2 py-0.5 font-bold">
+            {selectedNode?.status ?? "pending"}
+          </Badge>
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="space-y-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Started</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Bắt đầu</p>
             <p className="mt-2 text-[11px] font-bold text-white">{formatDatetime(selectedNode?.started_at ?? null)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Completed</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Hoàn tất</p>
             <p className="mt-2 text-[11px] font-bold text-white">{formatDatetime(selectedNode?.completed_at ?? null)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Step index</p>
-            <p className="mt-2 text-[11px] font-bold text-white">{selectedNode?.step_index ?? "--"}</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Thứ tự</p>
+            <p className="mt-2 text-[11px] font-bold text-white">
+              {selectedNode?.step_index ? `Bước ${selectedNode.step_index}` : "Trong luồng"}
+            </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Graph type</p>
-            <p className="mt-2 text-[11px] font-bold text-white">{graph.graph_type}</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Loại luồng</p>
+              <p className="mt-2 text-[11px] font-bold text-white">{getGraphTypeLabel(graphType)}</p>
           </div>
         </div>
 
         {selectedNode?.details && Object.keys(selectedNode.details).length > 0 ? (
           <div className="space-y-2">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Details</p>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(selectedNode.details).slice(0, 6).map(([key, value]) => (
-                <span
-                  key={key}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300"
-                >
-                  {key}: {typeof value === "string" ? value : JSON.stringify(value)}
-                </span>
-              ))}
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Chi tiết thêm</p>
+            <div className="space-y-2">
+              {Object.entries(selectedNode.details)
+                .filter(([key]) => !isTechnicalDetailKey(key))
+                .slice(0, 6)
+                .map(([key, value]) => (
+                  <div key={key} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{formatDetailLabel(key)}</p>
+                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-300">{formatDetailValue(value)}</p>
+                  </div>
+                ))}
             </div>
           </div>
         ) : null}
+
+          {selectedNode?.id === "retrieve_context" && retrievalTrace ? (
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Truy xuất ngữ cảnh</p>
+                <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold">
+                  {typeof retrievalTrace.total_evidence === "number" ? `${retrievalTrace.total_evidence} evidence` : "0 evidence"}
+                </Badge>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {isRecord(retrievalTrace.source_counts)
+                  ? Object.entries(retrievalTrace.source_counts).map(([source, count]) => (
+                      <Badge
+                        key={source}
+                        variant="neutral"
+                        className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold uppercase"
+                      >
+                        {source}: {String(count)}
+                      </Badge>
+                    ))
+                  : null}
+              </div>
+
+              {retrievalTopCitations.length > 0 ? (
+                <div className="space-y-2">
+                  {retrievalTopCitations.map((citation, index) => (
+                    <div key={`${citation.rank ?? index}-${index}`} className="rounded-2xl border border-white/10 bg-black/10 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">
+                            #{String(citation.rank ?? index + 1)} · {formatCitationSource(citation.source ?? citation.evidence_source)}
+                          </p>
+                          <p className="mt-1 text-[12px] font-black leading-relaxed text-white">
+                            {formatCitationTitle(citation.title ?? citation.citation)}
+                          </p>
+                        </div>
+                        <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold">
+                          {formatCitationScore(citation.score)}
+                        </Badge>
+                      </div>
+                      {typeof citation.source_uri === "string" && citation.source_uri.trim().length > 0 ? (
+                        <p className="mt-2 break-all text-[10px] leading-relaxed text-slate-400">
+                          {citation.source_uri}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {retrievalMemoryCases.length > 0 ? (
+                <div className="space-y-3 rounded-2xl border border-mekong-cyan/20 bg-mekong-cyan/10 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-mekong-cyan">Memory case</p>
+                    <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[8px] px-2 py-0.5 font-bold">
+                      {retrievalMemoryCases.length} mục
+                    </Badge>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-slate-300">
+                    Các memory case đã được tách sang trang riêng để xem đầy đủ ID, thời điểm và ngữ cảnh.
+                  </p>
+                  <Link
+                    to="/memory-cases"
+                    state={{
+                      sourceTitle: title,
+                      sourceSubtitle: subtitle,
+                      sourceGraphType: graph ? getGraphTypeLabel(graphType) : null,
+                      sourceGraphStatus: graph ? getGraphStatusLabel(graphStatus) : null,
+                      sourceGraphSummary: graph?.summary ?? null,
+                      memoryCases: retrievalMemoryCases,
+                    }}
+                    className="inline-flex w-full items-center justify-center rounded-xl border border-mekong-cyan/20 bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:border-mekong-cyan/40 hover:bg-white/15"
+                  >
+                    Mở trang memory case
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[9px] px-2 py-0.5 font-bold uppercase">
-            {graph.edges.length} edges
+            {graphEdges.length} edges
           </Badge>
-          {graph.metadata?.action_plan_id ? (
-            <Badge variant="neutral" className="bg-white/10 text-slate-200 border-white/10 text-[9px] px-2 py-0.5 font-bold uppercase">
-              plan {String(graph.metadata.action_plan_id).slice(0, 8)}
-            </Badge>
-          ) : null}
         </div>
         <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-          Updated {formatTime(graph.completed_at ?? graph.started_at)}
+          Cập nhật {formatTime(graphCompletedAt ?? graphStartedAt)}
         </p>
       </div>
     </Card>

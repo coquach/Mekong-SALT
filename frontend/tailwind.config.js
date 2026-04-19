@@ -18,7 +18,7 @@ export default {
           bg: "#F8FAFC",
         },
       },
-      fontFamily: { sans: ['Inter', 'sans-serif'] },
+      fontFamily: { sans: ['Inter', '"Segoe UI"', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
       boxShadow: { 'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)', 'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.1)' }
     },
   },

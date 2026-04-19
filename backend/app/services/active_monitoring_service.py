@@ -243,11 +243,14 @@ async def run_monitoring_goal_cycle(
             "source_incident_id": str(incident.id),
         },
     )
-    lifecycle_result = await advance_plan_with_lifecycle_graph(
-        session,
-        plan=plan_bundle.plan,
-        settings=resolved_settings,
-    )
+    lifecycle_kwargs: dict[str, Any] = {
+        "session": session,
+        "plan": plan_bundle.plan,
+        "settings": resolved_settings,
+    }
+    if redis_manager is not None:
+        lifecycle_kwargs["redis_manager"] = redis_manager
+    lifecycle_result = await advance_plan_with_lifecycle_graph(**lifecycle_kwargs)
     logger.info(
         "Lifecycle graph advanced plan",
         extra={

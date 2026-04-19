@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.core.responses import success_response
+from app.db.redis import RedisManager, get_redis_manager
 from app.db.session import get_db_session
 from app.models.action import ActionExecution, ExecutionBatch
 from app.repositories.action import ExecutionBatchRepository
@@ -110,6 +111,7 @@ async def execute_plan_as_batch(
     payload: ExecutionSimulateRequest,
     request: Request,
     session: AsyncSession = Depends(get_db_session),
+    redis_manager: RedisManager | None = Depends(get_redis_manager),
 ):
     """Execute one approved plan as a batch transaction."""
     bundle = await execute_simulated_plan(
@@ -119,6 +121,7 @@ async def execute_plan_as_batch(
             idempotency_key=payload.idempotency_key,
         ),
         actor_name="operator",
+        redis_manager=redis_manager,
     )
     return success_response(
         request=request,

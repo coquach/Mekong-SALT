@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.execution_policy import validate_execution_plan
 from app.core.salinity_units import dsm_to_gl
 from app.core.exceptions import AppException
+from app.db.redis import RedisManager
 from app.models.action import ActionExecution, ActionPlan, ExecutionBatch
 from app.models.audit import ActionOutcome
 from app.models.decision import DecisionLog
@@ -30,8 +31,10 @@ from app.schemas.action import (
     FeedbackEvaluation,
     SimulatedExecutionRequest,
 )
+from app.schemas.graph import build_execution_graph_from_batch
 from app.services.gate_command_driver import GATE_ACTION_TYPES, SimulatedGateCommandDriver
 from app.services.feedback.evaluation_service import evaluate_execution_feedback
+from app.services.graph_stream_service import publish_graph_transition
 
 from app.services.memory_case_vector_service import MemoryCaseVectorService
 from app.services.internal_memory_service import (
@@ -66,6 +69,7 @@ async def execute_simulated_plan(
     *,
     payload: SimulatedExecutionRequest,
     actor_name: str = "operator",
+    redis_manager: RedisManager | None = None,
 ) -> SimulatedExecutionBundle:
     """Execute a validated plan in simulated mode only."""
     logger.info(
@@ -247,6 +251,17 @@ async def execute_simulated_plan(
             summary=f"Simulated action executed: {step.action_type.value}.",
             payload=execution.result_payload,
         )
+        await _emit_execution_batch_transition(
+            redis_manager,
+            batch=batch,
+            plan=plan,
+            executions=executions,
+            node=f"step-{step.step_index}",
+            status="active",
+            summary=result_summary,
+            step_index=step.step_index,
+            plan_incident_id=plan.incident_id,
+        )
 
     feedback = await evaluate_execution_feedback(
         session,
@@ -405,6 +420,18 @@ async def execute_simulated_plan(
         )
     await session.commit()
 
+    await _emit_execution_batch_transition(
+        redis_manager,
+        batch=batch,
+        plan=plan,
+        executions=executions,
+        node="feedback",
+        status="completed",
+        summary=feedback.summary,
+        feedback=feedback,
+        plan_incident_id=plan.incident_id,
+    )
+
     for execution in executions:
         await session.refresh(execution)
     for decision_log in decision_logs:
@@ -432,6 +459,86 @@ async def execute_simulated_plan(
         feedback=feedback,
         decision_logs=decision_logs,
         outcomes=outcomes,
+    )
+
+
+async def _emit_execution_batch_transition(
+    redis_manager: RedisManager | None,
+    *,
+    batch: ExecutionBatch,
+    plan: ActionPlan,
+    executions: list[ActionExecution],
+    node: str,
+    status: str,
+    summary: str | None,
+    step_index: int | None = None,
+    feedback: FeedbackEvaluation | None = None,
+    plan_incident_id: UUID | None = None,
+) -> None:
+    """Best-effort stream update for the execution batch graph."""
+    if redis_manager is None:
+        return
+
+    batch_payload = {
+        "id": str(batch.id),
+        "plan_id": str(batch.plan_id),
+        "region_id": str(batch.region_id),
+        "status": batch.status.value,
+        "simulated": batch.simulated,
+        "requested_by": batch.requested_by,
+        "idempotency_key": batch.idempotency_key,
+        "started_at": batch.started_at.isoformat() if batch.started_at is not None else None,
+        "completed_at": batch.completed_at.isoformat() if batch.completed_at is not None else None,
+        "step_count": len(executions),
+    }
+    execution_payloads = [
+        {
+            "id": str(execution.id),
+            "created_at": execution.created_at.isoformat(),
+            "updated_at": execution.updated_at.isoformat(),
+            "plan_id": str(execution.plan_id),
+            "batch_id": str(execution.batch_id) if execution.batch_id is not None else None,
+            "region_id": str(execution.region_id),
+            "action_type": execution.action_type.value,
+            "status": execution.status.value,
+            "simulated": execution.simulated,
+            "step_index": execution.step_index,
+            "started_at": execution.started_at.isoformat() if execution.started_at is not None else None,
+            "completed_at": execution.completed_at.isoformat() if execution.completed_at is not None else None,
+            "result_summary": execution.result_summary,
+            "result_payload": execution.result_payload,
+            "idempotency_key": execution.idempotency_key,
+            "requested_by": execution.requested_by,
+        }
+        for execution in executions
+    ]
+    feedback_payload = feedback.model_dump(mode="json") if feedback is not None else None
+    graph_snapshot = build_execution_graph_from_batch(
+        batch_payload,
+        execution_payloads,
+        feedback=feedback_payload,
+        metadata={
+            "plan_id": str(plan.id),
+            "region_id": str(plan.region_id),
+            "incident_id": str(plan_incident_id) if plan_incident_id is not None else None,
+            "batch_id": str(batch.id),
+        },
+    )
+    await publish_graph_transition(
+        redis_manager,
+        graph_type="execution_batch",
+        node=node,
+        status=status,
+        details={
+            "step_index": step_index,
+            "batch_status": batch.status.value,
+            "execution_count": len(executions),
+        },
+        summary=summary,
+        plan_id=plan.id,
+        incident_id=plan_incident_id,
+        execution_batch_id=batch.id,
+        graph_snapshot=graph_snapshot,
     )
 
 

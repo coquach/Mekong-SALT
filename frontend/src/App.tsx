@@ -12,6 +12,7 @@ const ActionLogs = lazy(() => import("./pages/ActionLogs"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const History = lazy(() => import("./pages/History"));
 const RunGraphDetail = lazy(() => import("./pages/RunGraphDetail.tsx"));
+const MemoryCases = lazy(() => import("./pages/MemoryCases"));
 
 const RouteFallback = () => (
   <div className="mx-auto w-full max-w-425 px-4 py-6 lg:px-10">
@@ -70,6 +71,7 @@ function App() {
               <Route path="/map" element={<InteractiveMap />} />
               <Route path="/strategy" element={<StrategyOrchestration />} />
               <Route path="/strategy/runs/:runId" element={<RunGraphDetail />} />
+              <Route path="/memory-cases" element={<MemoryCases />} />
             <Route path="/logs" element={<ActionLogs />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/history" element={<History />} />

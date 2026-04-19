@@ -1,5 +1,14 @@
 # Mekong-SALT - Technical Report Hackathon
 
+## Cập nhật gần đây
+
+- Thêm SSE riêng cho graph tại `/api/v1/graphs/stream` để live planning/execution graph thay vì chỉ phụ thuộc vào refresh/polling.
+- `ActionLogs` và `RunGraphDetail` đã đọc graph live qua SSE, nên tiến trình thực thi nhìn gần thời gian thực hơn.
+- Hotspot cống trên bản đồ có thể gọi API để đổi trạng thái mở/đóng cống trực tiếp.
+- Bổ sung trang `MemoryCases` để xem các memory case được trích từ retrieval trace theo dạng dễ đọc hơn.
+- Tối giản cách trình bày ở các màn kế hoạch, approval và nhật ký thực thi: ưu tiên thông tin cho người đọc, hạn chế raw JSON và mã nội bộ.
+- Seed/demo hiện được chỉnh về baseline an toàn để dễ chạy lại và trình bày luồng chính.
+
 ## 1. Tổng quan dự án
 
 **Mekong-SALT** là một hệ thống hỗ trợ giám sát xâm nhập mặn và điều phối phản ứng vận hành cho hạ tầng thủy lợi. Sản phẩm kết hợp ingest dữ liệu cảm biến theo thời gian thực, đánh giá rủi ro theo ngưỡng, gợi ý kế hoạch xử lý bằng AI, duyệt bởi con người, mô phỏng thực thi, và hiển thị toàn bộ trạng thái trên dashboard bản đồ.

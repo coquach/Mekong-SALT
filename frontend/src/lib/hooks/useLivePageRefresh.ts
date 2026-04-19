@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { isPageCacheFresh, type PageCacheEntry } from "../cache/pageCache";
-
 type PageRefreshOptions = {
   signal?: AbortSignal;
   showLoading?: boolean;
 };
 
-type UsePageCacheRefreshOptions<TCache> = {
-  cacheEntry: PageCacheEntry<TCache> | null;
-  maxAgeMs: number;
+type UseLivePageRefreshOptions = {
   refresh: (options?: PageRefreshOptions) => Promise<void>;
   refreshToken?: unknown;
   refreshOnVisible?: boolean;
@@ -17,16 +13,13 @@ type UsePageCacheRefreshOptions<TCache> = {
   pollIntervalMs?: number;
 };
 
-export function usePageCacheRefresh<TCache>({
-  cacheEntry,
-  maxAgeMs,
+export function useLivePageRefresh({
   refresh,
   refreshToken,
   refreshOnVisible = true,
   refreshOnOnline = true,
   pollIntervalMs,
-}: UsePageCacheRefreshOptions<TCache>): boolean {
-  const shouldShowLoading = cacheEntry === null || !isPageCacheFresh(cacheEntry, maxAgeMs);
+}: UseLivePageRefreshOptions): void {
   const refreshRef = useRef(refresh);
   const refreshTaskRef = useRef<AbortController | null>(null);
 
@@ -58,9 +51,9 @@ export function usePageCacheRefresh<TCache>({
 
   useEffect(() => {
     runRefresh({
-      showLoading: shouldShowLoading,
+      showLoading: true,
     });
-  }, [refreshToken, shouldShowLoading, runRefresh]);
+  }, [refreshToken, runRefresh]);
 
   useEffect(() => {
     if (!refreshOnVisible) {
@@ -103,6 +96,4 @@ export function usePageCacheRefresh<TCache>({
 
     return () => window.clearInterval(intervalId);
   }, [pollIntervalMs, runRefresh]);
-
-  return shouldShowLoading;
 }

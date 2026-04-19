@@ -163,11 +163,17 @@ def evaluate_risk(inputs: RiskEvaluationInput) -> RiskEvaluationOutput:
     previous_salinity_gl = dsm_to_gl(inputs.previous_salinity_dsm)
     trend_delta_gl = dsm_to_gl(trend_delta) if trend_delta is not None else None
 
-    summary = (
-        f"Risk assessed as {final_level.value} from salinity {inputs.salinity_dsm} dS/m"
-        f" (~{salinity_gl} g/L)"
-        f" with trend {trend_direction.value}"
-        f" and confidence {confidence_level}."
+    summary = _build_summary(
+        final_level=final_level,
+        salinity_dsm=inputs.salinity_dsm,
+        salinity_gl=salinity_gl,
+        previous_salinity_dsm=inputs.previous_salinity_dsm,
+        previous_salinity_gl=previous_salinity_gl,
+        trend_direction=trend_direction,
+        trend_delta_dsm=trend_delta,
+        wind_speed_mps=inputs.wind_speed_mps,
+        tide_level_m=inputs.tide_level_m,
+        confidence_level=confidence_level,
     )
     rationale = {
         "base_level": base_level.value,
@@ -377,6 +383,68 @@ def _confidence_level(score: Decimal) -> str:
     if score >= Decimal("0.55"):
         return "medium"
     return "low"
+
+
+def _build_summary(
+    *,
+    final_level: RiskLevel,
+    salinity_dsm: Decimal,
+    salinity_gl: Decimal | None,
+    previous_salinity_dsm: Decimal | None,
+    previous_salinity_gl: Decimal | None,
+    trend_direction: TrendDirection,
+    trend_delta_dsm: Decimal | None,
+    wind_speed_mps: Decimal | None,
+    tide_level_m: Decimal | None,
+    confidence_level: str,
+) -> str:
+    risk_label = {
+        RiskLevel.SAFE: "an toàn",
+        RiskLevel.WARNING: "cảnh báo",
+        RiskLevel.DANGER: "nguy hiểm",
+        RiskLevel.CRITICAL: "rất nguy cấp",
+    }[final_level]
+    trend_label = {
+        TrendDirection.RISING: "tăng",
+        TrendDirection.FALLING: "giảm",
+        TrendDirection.STABLE: "ổn định",
+        TrendDirection.UNKNOWN: "chưa xác định",
+    }[trend_direction]
+    confidence_label = {
+        "high": "cao",
+        "medium": "trung bình",
+        "low": "thấp",
+    }.get(confidence_level, confidence_level)
+
+    detail_parts = [f"độ mặn hiện tại {salinity_dsm} dS/m"]
+    if salinity_gl is not None:
+        detail_parts[-1] = f"{detail_parts[-1]} (~{salinity_gl} g/L)"
+
+    if previous_salinity_dsm is not None:
+        previous_part = f"trước đó {previous_salinity_dsm} dS/m"
+        if previous_salinity_gl is not None:
+            previous_part = f"{previous_part} (~{previous_salinity_gl} g/L)"
+        detail_parts.append(previous_part)
+
+    if trend_direction is TrendDirection.UNKNOWN or trend_delta_dsm is None:
+        detail_parts.append("xu hướng chưa xác định")
+    else:
+        trend_part = f"xu hướng {trend_label}"
+        if trend_delta_dsm != 0:
+            trend_part = f"{trend_part} ({trend_delta_dsm:+} dS/m)"
+        detail_parts.append(trend_part)
+
+    external_context_parts = []
+    if wind_speed_mps is not None:
+        external_context_parts.append(f"gió {wind_speed_mps} m/s")
+    if tide_level_m is not None:
+        external_context_parts.append(f"triều {tide_level_m} m")
+    if external_context_parts:
+        detail_parts.append(", ".join(external_context_parts))
+
+    detail_parts.append(f"độ tin cậy {confidence_label}")
+
+    return f"Rủi ro được đánh giá ở mức {risk_label}: {'; '.join(detail_parts)}."
 
 
 def _apply_hysteresis(

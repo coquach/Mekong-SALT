@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -245,11 +246,14 @@ async def handle_replan_requested_event(
     )
     from app.orchestration.lifecycle_graph import advance_plan_with_lifecycle_graph
 
-    lifecycle_result = await advance_plan_with_lifecycle_graph(
-        session,
-        plan=plan_bundle.plan,
-        settings=resolved_settings,
-    )
+    lifecycle_kwargs: dict[str, Any] = {
+        "session": session,
+        "plan": plan_bundle.plan,
+        "settings": resolved_settings,
+    }
+    if redis_manager is not None:
+        lifecycle_kwargs["redis_manager"] = redis_manager
+    lifecycle_result = await advance_plan_with_lifecycle_graph(**lifecycle_kwargs)
     completed_event = await append_domain_event(
         session,
         event_type=REPLAN_COMPLETED_EVENT_TYPE,
