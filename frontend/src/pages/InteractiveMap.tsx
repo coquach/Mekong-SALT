@@ -1,336 +1,672 @@
-import React, { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Layers,
-  Maximize2,
   AlertTriangle,
-  Zap,
-  X,
-  TrendingUp,
-  MapPin,
-  ChevronRight,
   Eye,
-  ShieldCheck,
+  Layers,
+  MapPin,
   Navigation,
+  RefreshCcw,
+  ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
-import { Card, CardContent } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { Badge } from "../components/ui/Badge";
-import { SatelliteMap } from "../components/dashboard/SatelliteMap";
 import { useNavigate } from "react-router-dom";
 
-/**
- * TRANG 3: BẢN ĐỒ TƯƠNG TÁC (INTERACTIVE MAP) - AGENTIC VERSION
- * -----------------------------------------------------------
- * Chức năng Agentic:
- * 1. Layer Dự báo Proactive: Hiển thị vùng mặn dự kiến xâm nhập trong 45 phút tới.
- * 2. Gate Autonomy: Hiển thị trạng thái đóng/mở tự động của các cống PLC.
- * 3. Human-in-the-loop: Cho phép người dùng ghi đè (Manual Override) lệnh của AI.
- */
+import { SatelliteMap, type MapGate, type MapStation } from "../components/dashboard/SatelliteMap";
+import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { PageHeading } from "../components/ui/PageHeading";
+import { isPageCacheFresh, readPageCache, writePageCache } from "../lib/cache/pageCache";
+import { getLatestReadings, type SensorReading } from "../lib/api/dashboard";
+import {
+  getIncidents,
+  getGates,
+  getLatestRisk,
+  getStations,
+  type GateRead,
+  type IncidentRead,
+  type SensorStationRead,
+} from "../lib/api/telemetry";
+import { ApiError, type ErrorResponse } from "../lib/api/types";
+import { formatNumber as formatNumberUtil, formatTime as formatTimeUtil, toNumber as toNumberUtil } from "../lib/format";
 
-const LayerSwitch = ({ label, active, onToggle, icon: Icon }: any) => (
-  <div
-    className="flex items-center justify-between py-3 cursor-pointer group"
-    onClick={onToggle}
-  >
-    <div className="flex items-center gap-3">
-      <Icon
-        size={16}
-        className={active ? "text-mekong-teal" : "text-slate-400"}
-      />
-      <span
-        className={`text-[11px] font-black uppercase tracking-widest transition-colors ${active ? "text-mekong-navy" : "text-slate-400"}`}
-      >
-        {label}
-      </span>
-    </div>
-    <div
-      className={`w-9 h-5 rounded-full relative transition-all ${active ? "bg-mekong-mint" : "bg-slate-200"}`}
-    >
-      <div
-        className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${active ? "right-1" : "left-1"}`}
-      />
-    </div>
-  </div>
-);
+type RiskFilter = "all" | "critical" | "warning" | "safe";
 
-export const InteractiveMap = () => {
-  const [layers, setLayers] = useState({
+type InteractiveMapState = {
+  loading: boolean;
+  error: string | null;
+  stations: SensorStationRead[];
+  gates: GateRead[];
+  latestReadings: SensorReading[];
+  incidents: IncidentRead[];
+  selectedStationId: string | null;
+  selectedRisk: Awaited<ReturnType<typeof getLatestRisk>> | null;
+  lastRefreshAt: string | null;
+};
+
+type InteractiveMapCache = {
+  state: Pick<InteractiveMapState, "stations" | "gates" | "latestReadings" | "incidents" | "selectedStationId" | "selectedRisk" | "lastRefreshAt">;
+  layers: {
+    heatmap: boolean;
+    stations: boolean;
+    gates: boolean;
+    prediction: boolean;
+  };
+  riskFilter: RiskFilter;
+};
+
+const INTERACTIVE_MAP_CACHE_KEY = "mekong.cache.interactive-map";
+const INTERACTIVE_MAP_CACHE_MAX_AGE_MS = 30_000;
+
+function parseApiError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+  if (error && typeof error === "object") {
+    const maybeError = error as ErrorResponse;
+    if (typeof maybeError.message === "string") {
+      return maybeError.message;
+    }
+  }
+  return "Không tải được dữ liệu bản đồ.";
+}
+
+function toNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatValue(value: string | number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  return numeric.toFixed(digits);
+}
+
+function formatRiskLabel(riskLevel: string | null | undefined): string {
+  if (!riskLevel) {
+    return "UNKNOWN";
+  }
+  return riskLevel.toUpperCase();
+}
+
+function deriveRiskLevel(salinityGl: number | null | undefined): "critical" | "warning" | "safe" {
+  if (salinityGl === null || salinityGl === undefined) {
+    return "safe";
+  }
+  if (salinityGl >= 2) {
+    return "critical";
+  }
+  if (salinityGl >= 1) {
+    return "warning";
+  }
+  return "safe";
+}
+
+export function InteractiveMap() {
+  const cachedInteractiveMap = useMemo(() => readPageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY), []);
+  const [layers, setLayers] = useState(() => cachedInteractiveMap?.value.layers ?? {
     heatmap: true,
     stations: true,
     gates: true,
-    prediction: true, // Lớp dự báo Proactive
+    prediction: true,
   });
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>(
+    () => cachedInteractiveMap?.value.riskFilter ?? "all",
+  );
+  const [state, setState] = useState<InteractiveMapState>(() => {
+    const cachedState = cachedInteractiveMap?.value.state;
+    if (!cachedState) {
+      return {
+        loading: true,
+        error: null,
+        stations: [],
+        gates: [],
+        latestReadings: [],
+        incidents: [],
+        selectedStationId: null,
+        selectedRisk: null,
+        lastRefreshAt: null,
+      };
+    }
 
-  const navigate = useNavigate(); // Khởi tạo hàm này
+    return {
+      loading: false,
+      error: null,
+      stations: cachedState.stations,
+      gates: cachedState.gates,
+      latestReadings: cachedState.latestReadings,
+      incidents: cachedState.incidents,
+      selectedStationId: cachedState.selectedStationId,
+      selectedRisk: cachedState.selectedRisk,
+      lastRefreshAt: cachedState.lastRefreshAt,
+    };
+  });
+  const navigate = useNavigate();
+  const riskRequestIdRef = useRef(0);
+  const riskAbortControllerRef = useRef<AbortController | null>(null);
+  const selectedStationIdRef = useRef<string | null>(null);
+  const selectedRiskRef = useRef<InteractiveMapState["selectedRisk"]>(null);
+  const isBootstrapping = state.loading && state.stations.length === 0 && state.gates.length === 0;
+
+  useEffect(() => {
+    selectedStationIdRef.current = state.selectedStationId;
+  }, [state.selectedStationId]);
+
+  useEffect(() => {
+    selectedRiskRef.current = state.selectedRisk;
+  }, [state.selectedRisk]);
+
+  useEffect(() => {
+    if (state.loading) {
+      return;
+    }
+
+    writePageCache<InteractiveMapCache>(INTERACTIVE_MAP_CACHE_KEY, {
+      state: {
+        stations: state.stations,
+        gates: state.gates,
+        latestReadings: state.latestReadings,
+        incidents: state.incidents,
+        selectedStationId: state.selectedStationId,
+        selectedRisk: state.selectedRisk,
+        lastRefreshAt: state.lastRefreshAt,
+      },
+      layers,
+      riskFilter,
+    });
+  }, [
+    layers,
+    riskFilter,
+    state.gates,
+    state.incidents,
+    state.lastRefreshAt,
+    state.latestReadings,
+    state.loading,
+    state.selectedRisk,
+    state.selectedStationId,
+    state.stations,
+  ]);
+
+  const readingsByStationId = useMemo(() => {
+    const map = new Map<string, SensorReading>();
+    state.latestReadings.forEach((reading) => {
+      map.set(reading.station_id, reading);
+    });
+    return map;
+  }, [state.latestReadings]);
+
+  const requestSelectedRisk = useCallback(async (stationCode: string | null) => {
+    riskAbortControllerRef.current?.abort();
+
+    if (!stationCode) {
+      setState((previous) => ({ ...previous, selectedRisk: null }));
+      return;
+    }
+
+    const riskAbortController = new AbortController();
+    riskAbortControllerRef.current = riskAbortController;
+    const requestId = ++riskRequestIdRef.current;
+
+    try {
+      const risk = await getLatestRisk({ station_code: stationCode }, riskAbortController.signal);
+      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
+        return;
+      }
+      setState((previous) => ({
+        ...previous,
+        selectedRisk: risk,
+        error: null,
+        lastRefreshAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      if (requestId !== riskRequestIdRef.current || riskAbortController.signal.aborted) {
+        return;
+      }
+      if (error instanceof ApiError && error.statusCode === 404) {
+        setState((previous) => ({ ...previous, selectedRisk: null }));
+        return;
+      }
+      setState((previous) => ({ ...previous, error: parseApiError(error) }));
+    }
+  }, []);
+
+  const refreshData = useCallback(async (
+    options?: {
+      signal?: AbortSignal;
+      showLoading?: boolean;
+      stationIdOverride?: string | null;
+    },
+  ) => {
+    const signal = options?.signal;
+    const showLoading = options?.showLoading ?? false;
+    const stationIdOverride = options?.stationIdOverride;
+
+    if (showLoading) {
+      setState((previous) => ({ ...previous, loading: true, error: null }));
+    }
+
+    try {
+      const [stationsResult, gatesResult, latestReadingsResult, incidentsResult] = await Promise.allSettled([
+        getStations({ limit: 300 }, signal),
+        getGates({ limit: 100 }, signal),
+        getLatestReadings({ limit: 500 }, signal),
+        getIncidents({ limit: 30 }, signal),
+      ]);
+
+      const stations = stationsResult.status === "fulfilled" ? stationsResult.value : { items: [], count: 0 };
+      const gates = gatesResult.status === "fulfilled" ? gatesResult.value : { items: [], count: 0 };
+      const latestReadings =
+        latestReadingsResult.status === "fulfilled" ? latestReadingsResult.value : { items: [], count: 0 };
+      const incidents = incidentsResult.status === "fulfilled" ? incidentsResult.value : { items: [], count: 0 };
+
+      const firstFailure = [stationsResult, gatesResult, latestReadingsResult, incidentsResult].find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+
+      const selectedStationIdCandidate =
+        stationIdOverride ??
+        selectedStationIdRef.current ??
+        stations.items[0]?.id ??
+        null;
+      const selectedStation =
+        stations.items.find((station) => station.id === selectedStationIdCandidate) ??
+        stations.items[0] ??
+        null;
+      const selectedStationId = selectedStation?.id ?? null;
+      const selectedRisk =
+        selectedRiskRef.current?.assessment.station_id === selectedStationId ? selectedRiskRef.current : null;
+
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: firstFailure ? parseApiError(firstFailure.reason) : null,
+        stations: stations.items,
+        gates: gates.items,
+        latestReadings: latestReadings.items,
+        incidents: incidents.items,
+        selectedStationId,
+        selectedRisk,
+        lastRefreshAt: new Date().toISOString(),
+      }));
+
+      void requestSelectedRisk(selectedStation?.code ?? null);
+    } catch (error) {
+      if (signal?.aborted) {
+        return;
+      }
+      setState((previous) => ({
+        ...previous,
+        loading: false,
+        error: parseApiError(error),
+      }));
+    }
+  }, [requestSelectedRisk]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    const shouldSkipInitialRefresh =
+      cachedInteractiveMap !== null &&
+      isPageCacheFresh(cachedInteractiveMap, INTERACTIVE_MAP_CACHE_MAX_AGE_MS);
+
+    if (shouldSkipInitialRefresh) {
+      return () => {
+        abortController.abort();
+        riskAbortControllerRef.current?.abort();
+      };
+    }
+
+    void refreshData({ signal: abortController.signal, showLoading: true });
+    return () => {
+      abortController.abort();
+      riskAbortControllerRef.current?.abort();
+    };
+  }, [cachedInteractiveMap, refreshData]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshData({ showLoading: false });
+    }, 20_000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshData]);
+
+  const mapStations = useMemo<MapStation[]>(
+    () =>
+      state.stations.flatMap((station) => {
+        const reading = readingsByStationId.get(station.id);
+        const latestSalinityGl =
+          reading?.salinity_gl !== null && reading?.salinity_gl !== undefined
+            ? Number(reading.salinity_gl)
+            : null;
+        const derivedRisk = deriveRiskLevel(latestSalinityGl);
+        const latitude = toNumberUtil(station.latitude);
+        const longitude = toNumber(station.longitude);
+
+        if (latitude === null || longitude === null) {
+          return [] as MapStation[];
+        }
+
+        return [
+          {
+            id: station.id,
+            code: station.code,
+            name: station.name,
+            latitude,
+            longitude,
+            status: station.status,
+            stationType: station.station_type,
+            stationMetadata: station.station_metadata,
+            latestSalinityGl,
+            riskLevel:
+              state.selectedRisk?.assessment.station_id === station.id
+                ? state.selectedRisk.assessment.risk_level
+                : derivedRisk,
+          },
+        ];
+      }),
+    [state.stations, readingsByStationId, state.selectedRisk],
+  );
+
+  const mapGates = useMemo<MapGate[]>(
+    () =>
+      state.gates.flatMap((gate) => {
+          const latitude = toNumberUtil(gate.latitude);
+          const longitude = toNumber(gate.longitude);
+          if (latitude === null || longitude === null) {
+            return [] as MapGate[];
+          }
+
+          return [
+            {
+            id: gate.id,
+            code: gate.code,
+            name: gate.name,
+            latitude,
+            longitude,
+            gateType: gate.gate_type,
+            status: gate.status,
+            gateMetadata: gate.gate_metadata,
+            locationDescription: gate.location_description,
+            lastOperatedAt: gate.last_operated_at,
+            station: gate.station,
+            },
+          ];
+        }),
+    [state.gates],
+  );
+
+  const filteredMapStations = useMemo(() => {
+    if (riskFilter === "all") {
+      return mapStations;
+    }
+    return mapStations.filter((station) => {
+      const level = `${station.riskLevel ?? ""}`.toLowerCase();
+      if (riskFilter === "critical") {
+        return level === "critical" || level === "danger";
+      }
+      if (riskFilter === "warning") {
+        return level === "warning";
+      }
+      return level === "safe" || level === "";
+    });
+  }, [mapStations, riskFilter]);
+
+  const selectedStation = useMemo(
+    () => state.stations.find((station) => station.id === state.selectedStationId) ?? null,
+    [state.stations, state.selectedStationId],
+  );
+
+  const selectedReading = useMemo(
+    () => (selectedStation ? readingsByStationId.get(selectedStation.id) ?? null : null),
+    [selectedStation, readingsByStationId],
+  );
+
+  const handleSelectStation = async (stationId: string) => {
+    const station = state.stations.find((item) => item.id === stationId);
+    selectedStationIdRef.current = stationId;
+    setState((previous) => ({ ...previous, selectedStationId: stationId }));
+    if (!station) {
+      void requestSelectedRisk(null);
+      return;
+    }
+
+    void requestSelectedRisk(station.code);
+  };
+
+  const criticalIncidents = useMemo(
+    () => state.incidents.filter((item) => item.severity === "critical" && item.status !== "closed"),
+    [state.incidents],
+  );
 
   return (
-    <div className="relative w-full h-[calc(100vh-120px)] rounded-[48px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10">
-      {/* --- BẢN ĐỒ VỆ TINH TÍCH HỢP LỚP DỮ LIỆU AGENT --- */}
-      <SatelliteMap layers={layers} zoom={15} showControls={true} />
+    <div className="space-y-6">
+      <PageHeading
+        trailing={
+          <Badge variant="neutral" className="text-[9px]">
+            Đồng bộ lúc {formatTimeUtil(state.lastRefreshAt)}
+          </Badge>
+        }
+      />
 
-      {/* --- GÓC TRÊN TRÁI: ĐIỀU KHIỂN LỚP NHẬN THỨC (COGNITIVE LAYERS) --- */}
-      <div className="absolute top-8 left-8 z-20 space-y-4 w-72">
-        <Card
-          variant="glass"
-          className="p-6 rounded-[32px] border-white/40 shadow-glass backdrop-blur-2xl"
-        >
-          <div className="flex items-center gap-3 mb-6 border-b border-mekong-navy/10 pb-4">
-            <Layers size={18} className="text-mekong-navy" />
-            <h3 className="text-sm font-black text-mekong-navy uppercase tracking-widest">
-              Lớp Nhận Thức AI
-            </h3>
-          </div>
-          <div className="space-y-1">
-            <LayerSwitch
-              label="Bản đồ nhiệt mặn"
-              active={layers.heatmap}
-              icon={Eye}
-              onToggle={() =>
-                setLayers({ ...layers, heatmap: !layers.heatmap })
-              }
-            />
-            <LayerSwitch
-              label="Trạm Cảm Biến IoT"
-              active={layers.stations}
-              icon={MapPin}
-              onToggle={() =>
-                setLayers({ ...layers, stations: !layers.stations })
-              }
-            />
-            <LayerSwitch
-              label="Hạ tầng Cống PLC"
-              active={layers.gates}
-              icon={ShieldCheck}
-              onToggle={() => setLayers({ ...layers, gates: !layers.gates })}
-            />
-            <LayerSwitch
-              label="Vùng mặn dự báo (45p)"
-              active={layers.prediction}
-              icon={TrendingUp}
-              onToggle={() =>
-                setLayers({ ...layers, prediction: !layers.prediction })
-              }
-            />
-          </div>
-        </Card>
+      {state.error ? (
+        <InlineError
+          title="Lỗi dữ liệu bản đồ"
+          message={state.error}
+          onRetry={() => {
+            void refreshData({ showLoading: true });
+          }}
+        />
+      ) : null}
 
-        {/* Chú giải độ mặn bám sát Proposal */}
-        <Card
-          variant="glass"
-          className="p-3.5 rounded-2xl border-white/35 shadow-md w-64"
-        >
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 italic">
-            Chỉ số xâm nhập (g/L)
-          </p>
-          <div className="flex h-2 rounded-full overflow-hidden mb-2">
-            <div className="flex-1 bg-mekong-mint" /> {/* < 0.5 g/L */}
-            <div className="flex-1 bg-yellow-400" />
-            <div className="flex-1 bg-orange-500" />
-            <div className="flex-1 bg-mekong-critical" /> {/* > 2.0 g/L */}
-          </div>
-          <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase">
-            <span>0.5 (An toàn)</span>
-            <span>2.0 (Nguy hiểm)</span>
-          </div>
-        </Card>
-      </div>
+      {isBootstrapping ? (
+        <SkeletonCards count={3} />
+      ) : null}
 
-      {/* --- GÓC TRÊN PHẢI: HÀNH ĐỘNG TỰ TRỊ & GHI ĐÈ --- */}
-      <div className="absolute top-8 right-8 z-20 flex flex-col items-end gap-5 w-80">
-        {/* MANUAL OVERRIDE (Human-in-the-loop) */}
-        <div className="flex flex-col gap-3 w-full">
-          <button className="group flex items-center justify-between bg-white/90 backdrop-blur-md px-5 py-3.5 rounded-2xl shadow-xl hover:bg-white transition-all border border-white/20">
-            <div className="flex items-center gap-3">
-              <Maximize2
-                size={18}
-                className="text-mekong-navy group-hover:rotate-45 transition-transform"
-              />
-              <span className="text-[11px] font-black text-mekong-navy uppercase tracking-[0.2em]">
-                Ghi đè Hệ thống
-              </span>
+      <div className="relative w-full h-[calc(100vh-300px)] min-h-150 rounded-[40px] overflow-hidden bg-slate-900 shadow-2xl border border-white/10">
+        <SatelliteMap
+          layers={layers}
+          zoom={11}
+          showControls
+          stations={filteredMapStations}
+          gates={mapGates}
+          selectedStationId={state.selectedStationId}
+          onSelectStation={(stationId) => {
+            void handleSelectStation(stationId);
+          }}
+        />
+
+        {isBootstrapping ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/35 backdrop-blur-[2px]">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950/80 px-6 py-5 text-white shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 animate-pulse rounded-2xl bg-mekong-cyan/20" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Đang tải bản đồ
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-200">
+                    Station và gate đang được đồng bộ, bản đồ sẽ hiển thị marker ngay khi dữ liệu sẵn sàng.
+                  </p>
+                </div>
+              </div>
             </div>
-            <Badge variant="cyan" className="text-[9px] border-slate-200">
-              BẬT
-            </Badge>
-          </button>
+          </div>
+        ) : null}
 
-          <button className="group flex items-center gap-3 bg-mekong-critical text-white px-5 py-3.5 rounded-2xl shadow-2xl hover:bg-red-700 transition-all border border-white/10">
-            <AlertTriangle
-              size={18}
-              strokeWidth={2.5}
-              className="group-hover:animate-bounce"
-            />
-            <span className="text-[11px] font-black uppercase tracking-[0.2em]">
-              Báo lỗi cảm biến
-            </span>
-          </button>
+        <div className="absolute top-6 left-6 z-20 space-y-4 w-80">
+          <Card variant="glass" className="p-5 rounded-3xl border-white/40 shadow-glass backdrop-blur-2xl">
+            <div className="flex items-center gap-3 mb-4 border-b border-mekong-navy/10 pb-3">
+              <Layers size={17} className="text-mekong-navy" />
+              <h3 className="text-xs font-black text-mekong-navy uppercase tracking-widest">Lớp bản đồ</h3>
+            </div>
+            <div className="space-y-1">
+              {[
+                { key: "heatmap", label: "Bản đồ nhiệt mặn", icon: Eye },
+                { key: "stations", label: "Trạm cảm biến IoT", icon: MapPin },
+                { key: "gates", label: "Hạ tầng cống PLC", icon: ShieldCheck },
+                { key: "prediction", label: "Vùng mặn dự báo", icon: TrendingUp },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  className="w-full flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-white/70 transition-colors"
+                  onClick={() =>
+                    setLayers((previous) => ({
+                      ...previous,
+                      [item.key]: !previous[item.key as keyof typeof previous],
+                    }))
+                  }
+                >
+                  <div className="flex items-center gap-2.5">
+                    <item.icon size={15} className="text-mekong-teal" />
+                    <span className="text-[11px] font-black uppercase tracking-widest text-mekong-navy">{item.label}</span>
+                  </div>
+                  <Badge variant={layers[item.key as keyof typeof layers] ? "optimal" : "warning"} className="text-[9px] uppercase">
+                    {layers[item.key as keyof typeof layers] ? "bật" : "tắt"}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <Card variant="glass" className="p-4 rounded-2xl border-white/35 shadow-md">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Chú giải • {filteredMapStations.length}/{mapStations.length} trạm
+              </p>
+              <Button
+                variant="ghost"
+                className="h-7 rounded-lg px-2 text-[9px]"
+                onClick={() => {
+                  void refreshData({ showLoading: false });
+                }}
+              >
+                <RefreshCcw size={12} />
+              </Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { key: "all" as const, label: "Tất cả", badge: "neutral" as const },
+                { key: "critical" as const, label: "Nguy cấp", badge: "critical" as const },
+                { key: "warning" as const, label: "Cảnh báo", badge: "warning" as const },
+                { key: "safe" as const, label: "An toàn", badge: "optimal" as const },
+              ].map((item) => (
+                <button key={item.key} onClick={() => setRiskFilter(item.key)}>
+                  <Badge
+                    variant={riskFilter === item.key ? item.badge : "neutral"}
+                    className={riskFilter === item.key ? "ring-1 ring-mekong-navy/15" : "opacity-80"}
+                  >
+                    {item.label}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 space-y-2 max-h-28 overflow-y-auto custom-scrollbar pr-1">
+              {filteredMapStations.slice(0, 8).map((station) => (
+                <button
+                  key={station.id}
+                  className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-left text-[11px] font-bold text-mekong-navy hover:bg-white/70 hover:text-mekong-teal"
+                  onClick={() => {
+                    void handleSelectStation(station.id);
+                  }}
+                >
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{station.code} - {station.stationMetadata?.display_name ?? station.name}</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                      {station.stationMetadata?.marker?.label ?? station.stationMetadata?.operational_role ?? station.stationType}
+                    </span>
+                  </span>
+                  {state.selectedStationId === station.id ? <Navigation size={13} /> : null}
+                </button>
+              ))}
+            </div>
+          </Card>
         </div>
 
-        {/* LOGIC CỐNG TỰ ĐỘNG (AUTO-GATE STATUS) */}
-        <Card
-          variant="navy"
-          padding="none"
-          className="w-full rounded-[32px] bg-[#00203F]/95 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden group"
-        >
-          <div className="p-6 relative z-10">
-            <div className="flex items-center gap-3 mb-8 text-mekong-cyan">
-              <Zap size={20} fill="currentColor" className="animate-pulse" />
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] leading-none">
-                Trạng thái Logic Cống
-              </h3>
-            </div>
-
-            <div className="space-y-5">
-              {[
-                {
-                  label: "Cống Hai Tân",
-                  status: "ĐANG ĐÓNG",
-                  variant: "critical" as const,
-                },
-                {
-                  label: "Cống Cây Cồng",
-                  status: "SẴN SÀNG",
-                  variant: "optimal" as const,
-                },
-                {
-                  label: "Nút S-12",
-                  status: "ĐANG XẢ",
-                  variant: "warning" as const,
-                },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-[13px] font-bold text-slate-400">
-                    {item.label}
-                  </span>
-                  <Badge
-                    variant={item.variant}
-                    className="text-[9px] py-1 px-3 min-w-[100px] text-center justify-center font-black"
-                  >
-                    {item.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="h-1 w-full bg-gradient-to-r from-transparent via-mekong-cyan/20 to-transparent" />
-        </Card>
-      </div>
-
-      {/* --- DƯỚI CÙNG: CHI TIẾT ĐIỂM QUAN TRẮC (DEEP DIVE) --- */}
-      <div className="absolute bottom-5 left-8 right-32 z-30">
-        <Card
-          variant="glass"
-          className="rounded-[40px] p-10 shadow-glass border-white/60 backdrop-blur-3xl ring-1 ring-black/5 animate-in slide-in-from-bottom-10"
-        >
-          <div className="flex justify-between items-start mb-8">
-            <div className="space-y-1">
-              <div className="flex items-center gap-4">
-                <h2 className="text-4xl font-black text-mekong-navy tracking-tighter uppercase leading-none">
-                  Trạm: Hai Tân
-                </h2>
-                <Badge variant="critical" dot className="py-1.5 px-4">
-                  Cảnh báo mặn tăng nhanh
-                </Badge>
-              </div>
-              <p className="text-sm font-bold text-mekong-slate uppercase tracking-widest opacity-70">
-                Khu vực: Sông Mỹ Tho | Tọa độ: 10.352, 106.365
-              </p>
-            </div>
-            <button className="p-3 hover:bg-slate-200/50 rounded-full transition-all">
-              <X size={24} className="text-mekong-navy" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-12 gap-8 items-end">
-            {/* THÔNG SỐ THỰC ĐỊA */}
-            <div className="col-span-6 grid grid-cols-2 gap-4">
-              {[
-                {
-                  label: "Chỉ số hiện tại",
-                  val: "1",
-                  unit: "g/L",
-                  color: "text-mekong-critical",
-                },
-                {
-                  label: "Thủy triều",
-                  val: "+1.2",
-                  unit: "m",
-                  color: "text-mekong-teal",
-                },
-                {
-                  label: "Vận tốc gió",
-                  val: "Cấp 6",
-                  unit: "Gió chướng",
-                  color: "text-mekong-navy",
-                },
-                {
-                  label: "Dự báo đỉnh (45p)",
-                  val: "1.4",
-                  unit: "g/L",
-                  color: "text-mekong-critical",
-                  bg: "bg-red-50/50",
-                },
-              ].map((m, i) => (
-                <div
-                  key={i}
-                  className={`p-6 rounded-3xl border border-white/40 bg-white/40 shadow-sm ${m.bg}`}
-                >
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">
-                    {m.label}
-                  </p>
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`text-3xl font-black ${m.color} tracking-tighter`}
-                    >
-                      {m.val}
+        <div className="absolute top-6 right-6 z-20 w-80">
+          <Card variant="navy" padding="lg" className="bg-[#00203F]/95 text-white rounded-4xl border border-white/10 shadow-2xl">
+            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] mb-4">Incidents đang mở</h3>
+            <div className="space-y-3">
+              {criticalIncidents.slice(0, 3).map((incident) => (
+                <div key={incident.id} className="rounded-xl bg-white/5 border border-white/10 p-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-mekong-cyan uppercase tracking-widest">
+                      {incident.severity}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">
-                      {m.unit}
-                    </span>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">{incident.status}</span>
                   </div>
+                  <p className="text-[12px] font-semibold mt-2 line-clamp-2">{incident.title}</p>
                 </div>
               ))}
-            </div>
-
-            {/* KẾ HOẠCH HÀNH ĐỘNG CỦA AGENT CHO TRẠM NÀY */}
-            <div className="col-span-6 bg-mekong-navy p-8 rounded-[32px] border border-white/10 text-white relative overflow-hidden">
-              <div className="flex items-center gap-3 mb-6">
-                <Navigation
-                  size={20}
-                  className="text-mekong-cyan animate-bounce"
+              {criticalIncidents.length === 0 ? (
+                <EmptyState
+                  title="Không có incident critical mở"
+                  description="Map vẫn tiếp tục cập nhật mỗi 20 giây để phát hiện biến động mới."
                 />
-                <h3 className="text-sm font-black uppercase tracking-widest">
-                  Kế hoạch can thiệp của Agent
-                </h3>
-              </div>
-              <div className="space-y-4">
-                <p className="text-[13px] text-blue-100/80 leading-relaxed italic">
-                  "Dựa trên nồng độ 1 g/L và gió cấp 6, tôi sẽ kích hoạt đóng
-                  cống Hai Tân sau 20 phút nữa để chủ tàu thuyền kịp di chuyển
-                  ra khỏi vị trí nguy hiểm."
-                </p>
-                <div className="flex gap-4 pt-2">
-                  <Button
-                    variant="cyan"
-                    className="h-10 text-[10px] font-black flex-1 shadow-lg"
-                  >
-                    PHÊ DUYỆT LỘ TRÌNH
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px] font-black flex-1 border-white/20 text-white"
-                    onClick={() => navigate("/strategy")}
-                  >
-                    CHI TIẾT LOGIC
-                  </Button>
-                </div>
-              </div>
+              ) : null}
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
+
+      <Card variant="white" padding="lg" className="rounded-4xl shadow-soft border border-slate-100">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-mekong-navy uppercase tracking-tight">
+              {selectedStation
+                ? `${selectedStation.code} - ${selectedStation.station_metadata?.display_name ?? selectedStation.name}`
+                : "Chưa chọn trạm"}
+            </h3>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+              Trạng thái: {selectedStation?.status ?? "--"} • Rủi ro: {formatRiskLabel(state.selectedRisk?.assessment.risk_level)}
+            </p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              {selectedStation?.station_metadata?.marker?.label ?? selectedStation?.station_metadata?.operational_role ?? "Trạm quan trắc"}
+            </p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              {selectedStation?.station_metadata?.reference_water_body ?? "--"}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Badge variant={state.loading ? "warning" : "optimal"} className="uppercase">
+              {state.loading ? "syncing..." : "synced"}
+            </Badge>
+            <Button variant="outline" className="h-10 px-4 text-[11px]" onClick={() => navigate("/strategy")}>
+              Mở trang chiến lược
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+          {[
+            { label: "Độ mặn hiện tại", value: `${formatNumberUtil(toNumberUtil(selectedReading?.salinity_gl))} g/L` },
+            { label: "Mực nước", value: `${formatValue(selectedReading?.water_level_m)} m` },
+            { label: "Tốc độ gió", value: `${formatValue(selectedReading?.wind_speed_mps)} m/s` },
+            { label: "Xu hướng", value: state.selectedRisk?.assessment.trend_direction ?? "--" },
+          ].map((metric) => (
+            <div key={metric.label} className="rounded-2xl border border-slate-200 p-4 bg-slate-50/60">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{metric.label}</p>
+              <p className="text-[18px] font-black text-mekong-navy">{metric.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {state.selectedRisk?.assessment.summary ? (
+          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle size={18} className="text-mekong-critical mt-0.5" />
+            <p className="text-[13px] font-semibold text-red-900">{state.selectedRisk.assessment.summary}</p>
+          </div>
+        ) : null}
+      </Card>
     </div>
   );
-};
+}
 
 export default InteractiveMap;

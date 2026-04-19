@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.lifespan import lifespan
 from app.core.logging import configure_logging
-from app.core.middleware import RequestContextMiddleware
+from app.core.middleware import RequestContextMiddleware, RequestLoggingMiddleware
 from app.core.responses import success_response
 
 
@@ -25,6 +25,7 @@ def create_application() -> FastAPI:
     )
 
     application.add_middleware(RequestContextMiddleware)
+    application.add_middleware(RequestLoggingMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,

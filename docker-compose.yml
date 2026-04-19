@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: mekong_salt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mekong_salt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./backend/docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t health/check -m ping -q 0 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mekong_salt
+      REDIS_URL: redis://redis:6379/0
+      IOT_INGEST_MODE: mqtt
+      MQTT_ENABLED: "true"
+      MQTT_BROKER_URL: mqtt
+      MQTT_BROKER_PORT: 1883
+      PUBSUB_ENABLED: "false"
+      EARTH_ENGINE_ENABLED: "false"
+      ACTIVE_MONITORING_ENABLED: "true"
+      ACTIVE_MONITORING_MODE: active
+      ZALO_NOTIFICATIONS_ENABLED: "false"
+      ZALO_DELIVERY_MODE: template
+      ZALO_OA_ACCESS_TOKEN: ""
+      ZALO_OA_RECIPIENT_PHONE_NUMBER: ""
+      ZALO_OA_TEMPLATE_ID: ""
+      ZALO_OA_TEMPLATE_MESSAGE_ENDPOINT: https://openapi.zalo.me/v3.0/oa/message/template
+      ZALO_OA_MESSAGE_ENDPOINT: https://openapi.zalo.me/v3.0/oa/message/cs
+      ZALO_OA_TIMEOUT_SECONDS: "10"
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend:/app/backend
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_OPEN_METEO_WEATHER_BASE_URL: https://api.open-meteo.com/v1/forecast
+      VITE_OPEN_METEO_MARINE_BASE_URL: https://marine-api.open-meteo.com/v1/marine
+    volumes:
+      - ./frontend:/frontend
+      - frontend_node_modules:/frontend/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  mqtt_data:
+  mqtt_log:
+  frontend_node_modules:

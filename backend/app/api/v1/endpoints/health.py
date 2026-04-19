@@ -1,6 +1,8 @@
 """Health endpoints."""
 
-from fastapi import APIRouter, Request
+from typing import Literal
+
+from fastapi import APIRouter, Query, Request
 
 from app.core.responses import success_response
 from app.schemas.common import SuccessResponse
@@ -11,12 +13,20 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("", response_model=SuccessResponse[HealthPayload], summary="Health check")
-async def health_check(request: Request):
-    """Return a simple service health payload."""
-    payload = get_health_status()
+async def health_check(
+    request: Request,
+    mode: Literal["liveness", "readiness"] = Query(default="liveness"),
+):
+    """Return service health payload with liveness/readiness modes."""
+    payload = await get_health_status(mode=mode)
+    message = (
+        "Service readiness evaluated."
+        if mode == "readiness"
+        else "Service is healthy."
+    )
     return success_response(
         request=request,
-        message="Service is healthy.",
+        message=message,
         data=payload,
     )
 

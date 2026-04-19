@@ -1,4 +1,3 @@
-import React from 'react';
 import { Droplets, TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -107,6 +106,6 @@ export const SalinityCard = ({
 };
 
 // Hàm bổ trợ xử lý class
-function cn(...inputs: any[]) {
+function cn(...inputs: Array<string | false | null | undefined>) {
   return inputs.filter(Boolean).join(' ');
 }

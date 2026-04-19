@@ -44,7 +44,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   }, ref) => {
 
     // 1. Cấu trúc nền tảng của Button
-    const baseStyles = 'inline-flex items-center justify-center rounded-xl font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none select-none';
+    const baseStyles = 'group relative inline-flex items-center justify-center overflow-hidden rounded-xl font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none select-none';
 
     // 2. Định nghĩa các biến thể màu sắc (Variants)
     const variants = {
@@ -85,7 +85,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         
         {/* Hiệu ứng Shine nhẹ khi là nút Cyan (Tùy chọn tăng tính AI-Tech) */}
         {variant === 'cyan' && (
-          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />
+          <div className="pointer-events-none absolute inset-0 rounded-xl bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
         )}
       </button>
     );
