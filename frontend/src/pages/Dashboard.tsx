@@ -699,6 +699,7 @@ export function Dashboard() {
     cacheEntry: cachedDashboard,
     maxAgeMs: DASHBOARD_CACHE_MAX_AGE_MS,
     refreshToken: reloadVersion,
+    pollIntervalMs: 60_000,
     refresh: async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
       const signal = options?.signal;
       const showLoading = options?.showLoading ?? false;
@@ -709,6 +710,7 @@ export function Dashboard() {
 
       try {
         const snapshot = await fetchDashboardSnapshot(signal);
+        setSelectedStationId(null);
         setState((previous) => ({
           ...previous,
           ...snapshot,
@@ -753,6 +755,7 @@ export function Dashboard() {
             if (isDisposed) {
               return;
             }
+            setSelectedStationId(null);
             setState((previous) => ({
               ...previous,
               ...snapshot,

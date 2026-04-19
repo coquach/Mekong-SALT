@@ -197,6 +197,7 @@ export function History() {
     cacheEntry: cachedHistory,
     maxAgeMs: HISTORY_CACHE_MAX_AGE_MS,
     refresh: loadPageData,
+    pollIntervalMs: 60_000,
   });
 
   const selectedStation = useMemo(

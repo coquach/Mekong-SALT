@@ -476,7 +476,7 @@ async def _maybe_auto_reject_stale_pending_plan(
     settings: Settings,
 ) -> bool:
     """Auto-reject stale pending approvals so monitoring can continue in demo runs."""
-    if plan.status is not ActionPlanStatus.PENDING_APPROVAL:
+    if plan.status != ActionPlanStatus.PENDING_APPROVAL:
         return False
 
     timeout_minutes = max(0, int(getattr(settings, "active_monitoring_approval_timeout_minutes", 0)))

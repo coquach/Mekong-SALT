@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BrainCircuit,
@@ -17,15 +17,19 @@ import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
 import { readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { ACTION_LOGS_CACHE_KEY } from "../lib/cache/pageCacheKeys";
+import { getApiBaseUrl } from "../lib/api/http";
 import { ApiError } from "../lib/api/types";
 import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
+import { ExecutionGraphViewer } from "../components/graph/ExecutionGraphViewer";
 import {
   evaluateFeedback,
   getActionLogs,
   getActionOutcomes,
   getExecutionBatches,
+  getExecutionBatchDetail,
   getLatestFeedback,
   type ActionOutcomeRead,
+  type ExecutionBatchDetail,
   type ExecutionBatchRead,
   type FeedbackLifecycleRead,
 } from "../lib/api/operations";
@@ -40,19 +44,24 @@ type ActionLogsState = {
   plans: ActionPlanRead[];
   actionLogs: Awaited<ReturnType<typeof getActionLogs>>["items"];
   batches: ExecutionBatchRead[];
+  selectedBatchId: string | null;
+  selectedBatchDetail: ExecutionBatchDetail | null;
+  selectedBatchLoading: boolean;
+  selectedBatchError: string | null;
   outcomes: ActionOutcomeRead[];
   feedback: FeedbackLifecycleRead | null;
   lastRefreshAt: string | null;
 };
 
 type ActionLogsCache = {
-  state: Pick<ActionLogsState, "plans" | "actionLogs" | "batches" | "outcomes" | "feedback" | "lastRefreshAt">;
+  state: Pick<ActionLogsState, "plans" | "actionLogs" | "batches" | "outcomes" | "feedback" | "lastRefreshAt" | "selectedBatchId">;
 };
 
 const ACTION_LOGS_CACHE_MAX_AGE_MS = 30_000;
 
 export function ActionLogs() {
   const cachedActionLogs = useMemo(() => readPageCache<ActionLogsCache>(ACTION_LOGS_CACHE_KEY), []);
+  const backendBaseUrl = getApiBaseUrl();
   const [state, setState] = useState<ActionLogsState>(() => {
     const cachedState = cachedActionLogs?.value.state;
     if (!cachedState) {
@@ -63,6 +72,10 @@ export function ActionLogs() {
         plans: [],
         actionLogs: [],
         batches: [],
+        selectedBatchId: null,
+        selectedBatchDetail: null,
+        selectedBatchLoading: false,
+        selectedBatchError: null,
         outcomes: [],
         feedback: null,
         lastRefreshAt: null,
@@ -76,12 +89,82 @@ export function ActionLogs() {
       plans: cachedState.plans,
       actionLogs: cachedState.actionLogs,
       batches: cachedState.batches,
+      selectedBatchId: cachedState.selectedBatchId ?? cachedState.batches[0]?.id ?? null,
+      selectedBatchDetail: null,
+      selectedBatchLoading: false,
+      selectedBatchError: null,
       outcomes: cachedState.outcomes,
       feedback: cachedState.feedback,
       lastRefreshAt: cachedState.lastRefreshAt,
     };
   });
   const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const selectedBatchRequestIdRef = useRef(0);
+
+  const refreshSelectedBatch = useCallback(
+    async (batchId: string | null, options?: { signal?: AbortSignal; showLoading?: boolean }) => {
+      const signal = options?.signal;
+      const showLoading = options?.showLoading ?? false;
+      const requestId = ++selectedBatchRequestIdRef.current;
+
+      if (!batchId) {
+        setState((previous) => ({
+          ...previous,
+          selectedBatchId: null,
+          selectedBatchDetail: null,
+          selectedBatchLoading: false,
+          selectedBatchError: null,
+          feedback: null,
+        }));
+        return;
+      }
+
+      if (showLoading) {
+        setState((previous) => ({
+          ...previous,
+          selectedBatchId: batchId,
+          selectedBatchLoading: true,
+          selectedBatchError: null,
+        }));
+      }
+
+      try {
+        const [detailResponse, feedbackResponse] = await Promise.all([
+          getExecutionBatchDetail(batchId, signal),
+          getLatestFeedback(batchId, signal).catch((error) => {
+            if (error instanceof ApiError && error.statusCode === 404) {
+              return null;
+            }
+            throw error;
+          }),
+        ]);
+
+        if (signal?.aborted || requestId !== selectedBatchRequestIdRef.current) {
+          return;
+        }
+
+        setState((previous) => ({
+          ...previous,
+          selectedBatchId: batchId,
+          selectedBatchDetail: detailResponse,
+          selectedBatchLoading: false,
+          selectedBatchError: null,
+          feedback: feedbackResponse,
+        }));
+      } catch (error) {
+        if (signal?.aborted || requestId !== selectedBatchRequestIdRef.current) {
+          return;
+        }
+        setState((previous) => ({
+          ...previous,
+          selectedBatchId: batchId,
+          selectedBatchLoading: false,
+          selectedBatchError: getApiErrorMessage(error, "Không tải được graph thực thi."),
+        }));
+      }
+    },
+    [],
+  );
 
   const refreshData = async (options?: { signal?: AbortSignal; showLoading?: boolean }) => {
     const signal = options?.signal;
@@ -98,17 +181,8 @@ export function ActionLogs() {
         getActionOutcomes({ limit: 50 }, signal),
       ]);
 
-      let feedback: FeedbackLifecycleRead | null = null;
-      const latestBatch = batches.items[0];
-      if (latestBatch) {
-        try {
-          feedback = await getLatestFeedback(latestBatch.id, signal);
-        } catch (error) {
-          if (!(error instanceof ApiError && error.statusCode === 404)) {
-            throw error;
-          }
-        }
-      }
+      const selectedBatchId =
+        batches.items.find((batch) => batch.id === state.selectedBatchId)?.id ?? batches.items[0]?.id ?? null;
 
       setState((previous) => ({
         ...previous,
@@ -117,8 +191,12 @@ export function ActionLogs() {
         plans,
         actionLogs: actionLogs.items,
         batches: batches.items,
+        selectedBatchId,
+        selectedBatchDetail: null,
+        selectedBatchLoading: false,
+        selectedBatchError: null,
         outcomes: outcomes.items,
-        feedback,
+        feedback: null,
         lastRefreshAt: new Date().toISOString(),
       }));
 
@@ -127,8 +205,9 @@ export function ActionLogs() {
           plans,
           actionLogs: actionLogs.items,
           batches: batches.items,
+          selectedBatchId,
           outcomes: outcomes.items,
-          feedback,
+          feedback: null,
           lastRefreshAt: new Date().toISOString(),
         },
       });
@@ -148,9 +227,30 @@ export function ActionLogs() {
     cacheEntry: cachedActionLogs,
     maxAgeMs: ACTION_LOGS_CACHE_MAX_AGE_MS,
     refresh: refreshData,
+    pollIntervalMs: 30_000,
   });
 
+  useEffect(() => {
+    if (state.batches.length === 0) {
+      return;
+    }
+    const selectedBatch = state.batches.find((batch) => batch.id === state.selectedBatchId) ?? state.batches[0];
+    if (!selectedBatch) {
+      return;
+    }
+    if (state.selectedBatchLoading || state.selectedBatchError) {
+      return;
+    }
+    if (state.selectedBatchDetail?.batch.id === selectedBatch.id) {
+      return;
+    }
+    void refreshSelectedBatch(selectedBatch.id, { showLoading: true });
+  }, [refreshSelectedBatch, state.batches, state.selectedBatchDetail?.batch.id, state.selectedBatchError, state.selectedBatchId, state.selectedBatchLoading]);
+
   const latestBatch = state.batches[0] ?? null;
+  const selectedBatchApiUrl = (state.selectedBatchDetail?.batch.id ?? state.selectedBatchId)
+    ? `${backendBaseUrl}/execution-batches/${state.selectedBatchDetail?.batch.id ?? state.selectedBatchId}`
+    : null;
   const successfulActions = useMemo(
     () => state.actionLogs.filter((item) => item.execution.status === "succeeded").length,
     [state.actionLogs],
@@ -168,12 +268,13 @@ export function ActionLogs() {
   }, [state.actionLogs, state.searchText]);
 
   const handleEvaluateFeedback = async () => {
-    if (!latestBatch) {
+    const activeBatch = state.batches.find((batch) => batch.id === state.selectedBatchId) ?? latestBatch;
+    if (!activeBatch) {
       return;
     }
     setFeedbackBusy(true);
     try {
-      const feedback = await evaluateFeedback(latestBatch.id);
+      const feedback = await evaluateFeedback(activeBatch.id);
       const nextLastRefreshAt = new Date().toISOString();
       setState((previous) => ({
         ...previous,
@@ -186,6 +287,7 @@ export function ActionLogs() {
           plans: state.plans,
           actionLogs: state.actionLogs,
           batches: state.batches,
+          selectedBatchId: state.selectedBatchId,
           outcomes: state.outcomes,
           feedback,
           lastRefreshAt: nextLastRefreshAt,
@@ -207,6 +309,72 @@ export function ActionLogs() {
           </Badge>
         }
       />
+
+      <Card variant="white" className="rounded-4xl border border-slate-200 p-5 shadow-soft">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2 max-w-3xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Execution graph</p>
+            <h3 className="text-lg font-black text-mekong-navy">
+              Màn này cho biết state graph thật của từng batch, thay vì chỉ đọc danh sách step.
+            </h3>
+            <p className="text-sm font-semibold leading-relaxed text-slate-600">
+              Chọn một batch gần đây để xem node, edge, trạng thái hiện tại và metadata phản hồi.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="optimal" className="text-[9px] uppercase">
+              {state.selectedBatchId ? state.selectedBatchId.slice(0, 8) : "no batch"}
+            </Badge>
+            <Badge variant="neutral" className="text-[9px] uppercase">
+              {state.selectedBatchLoading ? "loading" : state.selectedBatchDetail?.execution_graph?.status ?? "pending"}
+            </Badge>
+          </div>
+        </div>
+
+        {state.selectedBatchError ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] font-semibold text-red-800">
+            {state.selectedBatchError}
+          </div>
+        ) : null}
+
+        <div className="mt-5">
+          {state.selectedBatchLoading && !state.selectedBatchDetail ? (
+            <div className="h-72 animate-pulse rounded-4xl bg-slate-100" />
+          ) : (
+            <ExecutionGraphViewer
+              graph={state.selectedBatchDetail?.execution_graph ?? null}
+              title="Batch Execution Graph"
+              subtitle="Graph from execution batch detail"
+              emptyTitle="Chưa có graph batch"
+              emptyDescription="Khi backend trả về execution_graph, viewer này sẽ hiển thị luồng thực thi của batch đang chọn."
+            />
+          )}
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-mekong-cyan/20 bg-mekong-cyan/5 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-mekong-cyan">Backend source</p>
+              <p className="text-sm font-semibold text-slate-700">
+                Màn này gọi thẳng backend execution-batch detail để lấy executions, feedback và execution_graph.
+              </p>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                GET {selectedBatchApiUrl ?? "--"}
+              </p>
+            </div>
+            {selectedBatchApiUrl ? (
+              <a
+                href={selectedBatchApiUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-xl border border-mekong-cyan/20 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-mekong-navy transition-all hover:border-mekong-cyan/40 hover:text-mekong-teal"
+              >
+                Mở JSON backend
+              </a>
+            ) : null}
+          </div>
+        </div>
+      </Card>
 
       {state.error ? (
         <InlineError
@@ -288,12 +456,18 @@ export function ActionLogs() {
                     {state.feedback?.evaluation.outcome_class ?? "inconclusive"}
                   </Badge>
                   <span className="text-[10px] font-black text-slate-400">
-                    {latestBatch ? formatDateTimeUtil(latestBatch.started_at) : "--"}
+                    {state.batches.find((batch) => batch.id === state.selectedBatchId)
+                      ? formatDateTimeUtil(
+                          state.batches.find((batch) => batch.id === state.selectedBatchId)?.started_at ?? null,
+                        )
+                      : latestBatch
+                        ? formatDateTimeUtil(latestBatch.started_at)
+                        : "--"}
                   </span>
                 </div>
                 <button
                   className="text-[10px] font-black text-mekong-teal uppercase tracking-widest disabled:opacity-50"
-                  disabled={!latestBatch || feedbackBusy}
+                  disabled={!(state.batches.find((batch) => batch.id === state.selectedBatchId) ?? latestBatch) || feedbackBusy}
                   onClick={() => void handleEvaluateFeedback()}
                 >
                   {feedbackBusy ? "Đang cập nhật..." : "Xem kết quả sau chạy"}
@@ -350,8 +524,19 @@ export function ActionLogs() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
-              {state.batches.slice(0, 4).map((batch) => (
-                <div key={batch.id} className="p-6 rounded-3xl bg-slate-50/50 border border-slate-100 flex flex-col justify-between">
+              {state.batches.slice(0, 4).map((batch) => {
+                const isSelected = state.selectedBatchId === batch.id;
+                return (
+                <button
+                  key={batch.id}
+                  type="button"
+                  onClick={() => void refreshSelectedBatch(batch.id, { showLoading: true })}
+                  className={`p-6 rounded-3xl border flex flex-col justify-between text-left transition-all duration-300 ${
+                    isSelected
+                      ? "bg-white border-mekong-cyan/30 shadow-xl shadow-mekong-cyan/10"
+                      : "bg-slate-50/50 border-slate-100 hover:bg-white hover:shadow-xl"
+                  }`}
+                >
                   <div>
                     <div className="flex justify-between items-start mb-5">
                       <h5 className="text-[12px] font-black text-mekong-navy uppercase tracking-[0.2em]">
@@ -368,8 +553,9 @@ export function ActionLogs() {
                       Bắt đầu: {formatDateTimeUtil(batch.started_at)}
                     </p>
                   </div>
-                </div>
-              ))}
+                </button>
+                );
+              })}
             </div>
           </Card>
         </div>

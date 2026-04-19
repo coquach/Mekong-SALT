@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, apiPost } from "./http";
+import type { ExecutionGraphRead } from "./graph";
 
 export interface GoalThresholds {
   warning_threshold_dsm: number | null;
@@ -109,6 +110,7 @@ export interface AgentRunRead {
   incident_id: string | null;
   action_plan_id: string | null;
   observation_snapshot: ObservationSnapshotRead | null;
+  execution_graph: ExecutionGraphRead | null;
 }
 
 export interface AgentRunCollection {
@@ -168,6 +170,10 @@ export function getAgentRuns(
   signal?: AbortSignal,
 ): Promise<AgentRunCollection> {
   return apiGet<AgentRunCollection>("/agent/runs", { query, signal });
+}
+
+export function getAgentRun(runId: string, signal?: AbortSignal): Promise<AgentRunRead> {
+  return apiGet<AgentRunRead>(`/agent/runs/${runId}`, { signal });
 }
 
 export function updateGoal(

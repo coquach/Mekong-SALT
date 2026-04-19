@@ -82,7 +82,7 @@ async def approval_gate_node(
     """Apply approval policy with explicit HITL gate for high risk plans."""
     plan: ActionPlan = state.get("approved_plan") or state["plan"]
 
-    if plan.status is not ActionPlanStatus.PENDING_APPROVAL:
+    if plan.status != ActionPlanStatus.PENDING_APPROVAL:
         reason = f"Plan status is {plan.status.value}; approval gate skipped."
         return {
             "approved_plan": plan,
@@ -140,7 +140,7 @@ async def execute_node(
     """Execute approved plans when auto-execution policy permits it."""
     plan: ActionPlan = state.get("approved_plan") or state["plan"]
 
-    if plan.status is not ActionPlanStatus.APPROVED:
+    if plan.status != ActionPlanStatus.APPROVED:
         reason = f"Plan status is {plan.status.value}; execution skipped."
         return {
             "executed_plan": plan,

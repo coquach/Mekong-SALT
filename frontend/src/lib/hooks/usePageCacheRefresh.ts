@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { isPageCacheFresh, type PageCacheEntry } from "../cache/pageCache";
 
@@ -13,6 +13,8 @@ type UsePageCacheRefreshOptions<TCache> = {
   refresh: (options?: PageRefreshOptions) => Promise<void>;
   refreshToken?: unknown;
   refreshOnVisible?: boolean;
+  refreshOnOnline?: boolean;
+  pollIntervalMs?: number;
 };
 
 export function usePageCacheRefresh<TCache>({
@@ -21,24 +23,44 @@ export function usePageCacheRefresh<TCache>({
   refresh,
   refreshToken,
   refreshOnVisible = true,
+  refreshOnOnline = true,
+  pollIntervalMs,
 }: UsePageCacheRefreshOptions<TCache>): boolean {
   const shouldShowLoading = cacheEntry === null || !isPageCacheFresh(cacheEntry, maxAgeMs);
   const refreshRef = useRef(refresh);
+  const refreshTaskRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
 
   useEffect(() => {
-    const abortController = new AbortController();
+    return () => {
+      refreshTaskRef.current?.abort();
+    };
+  }, []);
+
+  const runRefresh = useCallback((options?: PageRefreshOptions) => {
+    refreshTaskRef.current?.abort();
+
+    const controller = new AbortController();
+    refreshTaskRef.current = controller;
 
     void refreshRef.current({
-      signal: abortController.signal,
+      signal: controller.signal,
+      showLoading: options?.showLoading ?? false,
+    }).finally(() => {
+      if (refreshTaskRef.current === controller) {
+        refreshTaskRef.current = null;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    runRefresh({
       showLoading: shouldShowLoading,
     });
-
-    return () => abortController.abort();
-  }, [refreshToken, shouldShowLoading]);
+  }, [refreshToken, shouldShowLoading, runRefresh]);
 
   useEffect(() => {
     if (!refreshOnVisible) {
@@ -47,13 +69,40 @@ export function usePageCacheRefresh<TCache>({
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshRef.current({ showLoading: false });
+        runRefresh({ showLoading: false });
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [refreshOnVisible]);
+  }, [refreshOnVisible, runRefresh]);
+
+  useEffect(() => {
+    if (!refreshOnOnline) {
+      return;
+    }
+
+    const handleOnline = () => {
+      runRefresh({ showLoading: false });
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [refreshOnOnline, runRefresh]);
+
+  useEffect(() => {
+    if (pollIntervalMs === undefined || pollIntervalMs <= 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        runRefresh({ showLoading: false });
+      }
+    }, pollIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [pollIntervalMs, runRefresh]);
 
   return shouldShowLoading;
 }

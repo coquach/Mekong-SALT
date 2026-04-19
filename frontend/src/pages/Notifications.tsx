@@ -133,6 +133,7 @@ export function Notifications() {
     cacheEntry: cachedNotifications,
     maxAgeMs: NOTIFICATIONS_CACHE_MAX_AGE_MS,
     refresh: refreshData,
+    pollIntervalMs: 30_000,
   });
 
   const totalCount = state.items.length;

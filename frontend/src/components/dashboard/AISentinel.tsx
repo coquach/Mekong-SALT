@@ -3,6 +3,8 @@ import { BrainCircuit, CheckCircle2, Clock3, Loader2, Sparkles, Terminal } from 
 import { Badge } from "../ui/Badge";
 import { Card } from "../ui/Card";
 import { type AgentRunRead } from "../../lib/api/strategy";
+import { type ExecutionGraphRead } from "../../lib/api/graph";
+import { ExecutionGraphViewer } from "../graph/ExecutionGraphViewer";
 
 type StreamStatus = "connecting" | "connected" | "disconnected";
 
@@ -31,9 +33,12 @@ type PlanningTrace = {
       rank?: number;
     }>;
   };
+  execution_graph?: ExecutionGraphRead | null;
   planning_transition_log?: Array<{
     node?: string;
     status?: string;
+    at?: string;
+    details?: Record<string, unknown>;
   }>;
 };
 
@@ -262,8 +267,19 @@ function getProgressWidthClass(progressPercent: number): string {
   return "w-full";
 }
 
+function getGraphStageState(status: string | undefined): PlanningStageState {
+  if (status === "completed" || status === "skipped") {
+    return "completed";
+  }
+  if (status === "active") {
+    return "active";
+  }
+  return "pending";
+}
+
 export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReasoningPanelProps) => {
   const trace = getPlanningTrace(agentRun);
+  const executionGraph = trace?.execution_graph ?? agentRun?.execution_graph ?? null;
   const transitions = Array.isArray(trace?.planning_transition_log) ? trace.planning_transition_log : [];
   const retrievalTrace = trace?.retrieval_trace;
   const evidenceCount = retrievalTrace?.total_evidence ?? 0;
@@ -279,17 +295,21 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
   const validationWarnings = getStringList(planDecision?.validation?.warnings);
   const statusLabel = agentRun ? `Run ${agentRun.status}` : "Awaiting agent run";
   const runAt = agentRun?.finished_at ?? agentRun?.started_at ?? null;
+  const graphNodes = executionGraph?.nodes ?? [];
   const completedNodes = new Set(
-    transitions
-      .map((step) => step.node)
+    (executionGraph?.nodes ?? transitions)
+      .map((step) => ("id" in step ? step.id : step.node))
       .filter((node): node is string => typeof node === "string" && node.length > 0),
   );
-  const lastCompletedNode = transitions[transitions.length - 1]?.node ?? null;
+  const graphCompletedCount = executionGraph
+    ? graphNodes.filter((node) => node.status === "completed" || node.status === "skipped").length
+    : completedNodes.size;
+  const lastCompletedNode = executionGraph?.current_node ?? transitions[transitions.length - 1]?.node ?? null;
   const isTerminalRun = Boolean(
     agentRun && /succeeded|failed|cancelled|canceled|completed/i.test(agentRun.status),
   );
   const completionPercent = Math.round(
-    (Math.min(completedNodes.size, PLANNING_STAGES.length) / PLANNING_STAGES.length) * 100,
+    (graphCompletedCount / Math.max(executionGraph ? graphNodes.length : PLANNING_STAGES.length, 1)) * 100,
   );
   const decisionTone = getDecisionTone(planDecision);
   const decisionHeadline =
@@ -311,7 +331,9 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
   const visualStages = PLANNING_STAGES.map((stage, index) => ({
     ...stage,
     index: index + 1,
-    state: getStageState(stage.node, completedNodes, lastCompletedNode, isTerminalRun),
+    state: executionGraph
+      ? getGraphStageState(executionGraph.nodes.find((node) => node.id === stage.node)?.status)
+      : getStageState(stage.node, completedNodes, lastCompletedNode, isTerminalRun),
   }));
 
   return (
@@ -360,7 +382,9 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Bước hoàn tất</p>
-              <p className="mt-2 text-lg font-black text-white">{completedNodes.size}/{PLANNING_STAGES.length}</p>
+              <p className="mt-2 text-lg font-black text-white">
+                {graphCompletedCount}/{executionGraph ? graphNodes.length : PLANNING_STAGES.length}
+              </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">Tiến độ</p>
@@ -467,65 +491,77 @@ export const AISentinel = ({ agentRun, streamStatus, lastStreamAt }: AgentReason
         ) : null}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar space-y-3">
-          {visualStages.map((stage, index) => (
-            <div
-              key={stage.node}
-              className={`group relative overflow-hidden rounded-3xl border p-4 transition-all ${getStageCardClass(stage.state)}`}
-            >
-              <div className="absolute left-0 top-0 h-full w-1 bg-linear-to-b from-mekong-cyan/20 via-mekong-teal/20 to-transparent" />
-              <div className="flex items-start gap-4 pl-2">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${getStageDotClass(stage.state)}`}>
-                  {stage.state === "completed" ? (
-                    <CheckCircle2 size={18} />
-                  ) : stage.state === "active" ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <span className="text-[11px] font-black">{stage.index}</span>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-black text-white tracking-tight">{stage.title}</h4>
-                        <Badge className={`text-[9px] px-2 py-0.5 font-bold ${getStageStatusClass(stage.state)}`}>
-                          {getStageStatusText(stage.state)}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-[12px] text-slate-300 leading-relaxed">
-                        {stage.subtitle}
-                      </p>
+          {executionGraph ? (
+            <ExecutionGraphViewer
+              graph={executionGraph}
+              title="Execution Graph"
+              subtitle="Planning trace từ backend contract mới"
+              emptyTitle="Chưa có execution graph"
+              emptyDescription="Khi backend trả về graph snapshot, viewer sẽ tự hiển thị node, edge và trạng thái hiện tại."
+            />
+          ) : (
+            <>
+              {visualStages.map((stage, index) => (
+                <div
+                  key={stage.node}
+                  className={`group relative overflow-hidden rounded-3xl border p-4 transition-all ${getStageCardClass(stage.state)}`}
+                >
+                  <div className="absolute left-0 top-0 h-full w-1 bg-linear-to-b from-mekong-cyan/20 via-mekong-teal/20 to-transparent" />
+                  <div className="flex items-start gap-4 pl-2">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${getStageDotClass(stage.state)}`}>
+                      {stage.state === "completed" ? (
+                        <CheckCircle2 size={18} />
+                      ) : stage.state === "active" ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <span className="text-[11px] font-black">{stage.index}</span>
+                      )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">
-                        Node
-                      </p>
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-mekong-cyan">
-                        {getNodeLabel(stage.node)}
-                      </p>
+
+                    <div className="flex-1 min-w-0 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-black text-white tracking-tight">{stage.title}</h4>
+                            <Badge className={`text-[9px] px-2 py-0.5 font-bold ${getStageStatusClass(stage.state)}`}>
+                              {getStageStatusText(stage.state)}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-[12px] text-slate-300 leading-relaxed">
+                            {stage.subtitle}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">
+                            Node
+                          </p>
+                          <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-mekong-cyan">
+                            {getNodeLabel(stage.node)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {index < visualStages.length - 1 ? (
+                        <div className="h-px w-full bg-linear-to-r from-white/10 via-white/5 to-transparent" />
+                      ) : null}
                     </div>
                   </div>
-
-                  {index < visualStages.length - 1 ? (
-                    <div className="h-px w-full bg-linear-to-r from-white/10 via-white/5 to-transparent" />
-                  ) : null}
                 </div>
-              </div>
-            </div>
-          ))}
+              ))}
 
-          {transitions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-center space-y-3">
-              <div className="mx-auto w-12 h-12 rounded-2xl bg-mekong-cyan/10 text-mekong-cyan border border-mekong-cyan/20 flex items-center justify-center">
-                <Sparkles size={20} />
-              </div>
-              <p className="text-sm font-bold text-slate-200">Chưa có trace mới</p>
-              <p className="text-[12px] text-slate-400 leading-relaxed">
-                Khi sensor stream tạo run mới, từng node của agent sẽ xuất hiện ở dạng timeline.
-              </p>
-            </div>
-          ) : null}
+              {transitions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-center space-y-3">
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-mekong-cyan/10 text-mekong-cyan border border-mekong-cyan/20 flex items-center justify-center">
+                    <Sparkles size={20} />
+                  </div>
+                  <p className="text-sm font-bold text-slate-200">Chưa có trace mới</p>
+                  <p className="text-[12px] text-slate-400 leading-relaxed">
+                    Khi sensor stream tạo run mới, từng node của agent sẽ xuất hiện ở dạng timeline.
+                  </p>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">

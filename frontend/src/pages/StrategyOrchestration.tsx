@@ -11,16 +11,20 @@ import {
   Quote,
   Terminal,
   Zap,
+  ArrowUpRight,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { EmptyState, InlineError, SkeletonCards } from "../components/ui/AsyncState";
 import { AISentinelPanel } from "../components/dashboard/AISentinelPanel";
+import { ExecutionGraphViewer } from "../components/graph/ExecutionGraphViewer";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageHeading } from "../components/ui/PageHeading";
 import { readPageCache, writePageCache } from "../lib/cache/pageCache";
 import { STRATEGY_CACHE_KEY, invalidateOperationalPageCaches } from "../lib/cache/pageCacheKeys";
+import { getApiBaseUrl } from "../lib/api/http";
 import { ApiError, type ErrorResponse } from "../lib/api/types";
 import { usePageCacheRefresh } from "../lib/hooks/usePageCacheRefresh";
 import {
@@ -370,6 +374,7 @@ export function StrategyOrchestration() {
     cacheEntry: cachedStrategy,
     maxAgeMs: STRATEGY_CACHE_MAX_AGE_MS,
     refresh: refreshData,
+    pollIntervalMs: 15_000,
   });
 
   const reviewablePlans = useMemo(
@@ -387,18 +392,30 @@ export function StrategyOrchestration() {
     [state.goals],
   );
 
-  const latestRuns = useMemo(() => state.runs.slice(0, 8), [state.runs]);
+  const sortedRuns = useMemo(
+    () =>
+      [...state.runs].sort((left, right) => {
+        const leftTime = new Date(left.started_at ?? left.created_at).getTime();
+        const rightTime = new Date(right.started_at ?? right.created_at).getTime();
+        return rightTime - leftTime;
+      }),
+    [state.runs],
+  );
+  const latestRuns = useMemo(() => sortedRuns.slice(0, 8), [sortedRuns]);
   const latestPlanningRun = useMemo(
     () =>
       (selectedPlan
-        ? state.runs.find(
+        ? sortedRuns.find(
             (run) => run.run_type === "plan_generation" && run.action_plan_id === selectedPlan.id,
           )
-        : null) ?? state.runs.find((run) => run.run_type === "plan_generation") ?? latestRuns[0] ?? null,
-    [latestRuns, selectedPlan, state.runs],
+        : null) ?? sortedRuns.find((run) => run.run_type === "plan_generation") ?? latestRuns[0] ?? null,
+    [latestRuns, selectedPlan, sortedRuns],
   );
   const reasoningStreamStatus = state.loading ? "connecting" : "connected";
   const planningTrace = useMemo(() => getPlanningTrace(latestPlanningRun), [latestPlanningRun]);
+  const latestExecutionGraph = latestPlanningRun?.execution_graph ?? null;
+  const backendBaseUrl = getApiBaseUrl();
+  const latestPlanningRunApiUrl = latestPlanningRun ? `${backendBaseUrl}/agent/runs/${latestPlanningRun.id}` : null;
   const observationSnapshot = useMemo(() => {
     const payload = latestPlanningRun?.observation_snapshot?.payload;
     return isRecord(payload) ? payload : null;
@@ -542,6 +559,40 @@ export function StrategyOrchestration() {
           lastStreamAt={state.lastRefreshAt}
         />
       </div>
+
+      <div className={`${isBootstrapping ? "hidden" : ""}`}>
+        <ExecutionGraphViewer
+          graph={latestExecutionGraph}
+          title="Planning Execution Graph"
+          subtitle="Graph snapshot của run gần nhất"
+          emptyTitle="Chưa có execution graph"
+          emptyDescription="Khi backend trả về execution_graph cho run kế hoạch, biểu đồ node/edge sẽ hiện ở đây."
+        />
+      </div>
+
+      <Card variant="white" className={`rounded-4xl border border-slate-200 p-5 shadow-soft ${isBootstrapping ? "hidden" : ""}`}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-mekong-cyan">Backend source</p>
+            <p className="text-sm font-semibold text-slate-700">
+              Graph phía FE này lấy trực tiếp từ field execution_graph của agent run detail ở backend.
+            </p>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+              GET {latestPlanningRunApiUrl ?? "--"}
+            </p>
+          </div>
+          {latestPlanningRunApiUrl ? (
+            <a
+              href={latestPlanningRunApiUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-xl border border-mekong-cyan/20 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-mekong-navy transition-all hover:border-mekong-cyan/40 hover:text-mekong-teal"
+            >
+              Mở JSON backend
+            </a>
+          ) : null}
+        </div>
+      </Card>
 
       <Card variant="white" className={`rounded-4xl border border-slate-200 p-6 shadow-soft ${isBootstrapping ? "hidden" : ""}`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -993,6 +1044,13 @@ export function StrategyOrchestration() {
                     <span>{formatDatetime(run.started_at)}</span>
                     <span>{run.id.slice(0, 8)}</span>
                   </div>
+                  <Link
+                    to={`/strategy/runs/${run.id}`}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-mekong-cyan transition-colors hover:text-white"
+                  >
+                    Mở chi tiết graph
+                    <ArrowUpRight size={12} />
+                  </Link>
                 </div>
               ))}
               {latestRuns.length === 0 ? (

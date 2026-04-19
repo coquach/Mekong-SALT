@@ -50,14 +50,7 @@ interface NotificationCollection {
   count: number;
 }
 
-const regions = [
-  "Tiền Giang",
-  "Bến Tre",
-  "Sóc Trăng",
-  "Long An",
-  "Trà Vinh",
-  "Tất cả khu vực",
-];
+const regions = ["Tiền Giang", "Bến Tre", "Sóc Trăng", "Long An", "Trà Vinh", "Tất cả khu vực"];
 
 export const Header = () => {
   const navigate = useNavigate();
@@ -68,17 +61,21 @@ export const Header = () => {
   const [notificationCount, setNotificationCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationRead[]>([]);
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const refreshControllerRef = useRef<AbortController | null>(null);
 
   const routeMeta = getRouteMeta(pathname);
   const breadcrumb = useMemo(() => buildBreadcrumb(pathname), [pathname]);
 
   useEffect(() => {
     let mounted = true;
-    const controller = new AbortController();
 
     const loadNotifications = async () => {
+      refreshControllerRef.current?.abort();
+      const controller = new AbortController();
+      refreshControllerRef.current = controller;
+
       try {
-        const [summary, notificationCollection] = await Promise.all([
+        const [summaryResult, notificationResult] = await Promise.allSettled([
           getDashboardSummary(controller.signal),
           apiGet<NotificationCollection>("/notifications", {
             query: { limit: 5 },
@@ -86,24 +83,48 @@ export const Header = () => {
           }),
         ]);
 
-        if (!mounted) {
+        if (!mounted || controller.signal.aborted) {
           return;
         }
 
-        setNotificationCount(summary.active_notifications ?? notificationCollection.count ?? 0);
-        setNotifications(notificationCollection.items);
-      } catch {
-        if (mounted) {
-          setNotificationCount(0);
-          setNotifications([]);
+        const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+        const notificationCollection = notificationResult.status === "fulfilled" ? notificationResult.value : null;
+
+        if (summary !== null) {
+          setNotificationCount(summary.active_notifications ?? 0);
+        } else if (notificationCollection !== null) {
+          setNotificationCount(notificationCollection.count ?? 0);
+        }
+
+        if (notificationCollection !== null) {
+          setNotifications(notificationCollection.items);
+        }
+      } finally {
+        if (refreshControllerRef.current === controller) {
+          refreshControllerRef.current = null;
         }
       }
     };
 
     void loadNotifications();
+
+    const refreshIntervalId = window.setInterval(() => {
+      void loadNotifications();
+    }, 45_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadNotifications();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       mounted = false;
-      controller.abort();
+      refreshControllerRef.current?.abort();
+      window.clearInterval(refreshIntervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -299,6 +320,7 @@ export const Header = () => {
                 {regions.map((region) => (
                   <button
                     key={region}
+                    type="button"
                     onClick={() => handleRegionSelect(region)}
                     className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-black uppercase tracking-[0.14em] transition-colors ${
                       selectedRegion === region

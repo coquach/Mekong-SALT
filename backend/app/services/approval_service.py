@@ -39,7 +39,7 @@ async def decide_plan(
             code="action_plan_not_found",
             message=f"Action plan '{plan_id}' was not found.",
         )
-    if plan.status is not ActionPlanStatus.PENDING_APPROVAL:
+    if plan.status != ActionPlanStatus.PENDING_APPROVAL:
         raise AppException(
             status_code=HTTPStatus.CONFLICT,
             code="action_plan_not_pending_approval",

@@ -41,12 +41,6 @@ services:
       timeout: 5s
       retries: 5
 
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-
   backend:
     build:
       context: .
@@ -64,15 +58,6 @@ services:
       EARTH_ENGINE_ENABLED: "false"
       ACTIVE_MONITORING_ENABLED: "true"
       ACTIVE_MONITORING_MODE: active
-      EMAIL_NOTIFICATIONS_ENABLED: "true"
-      EMAIL_SMTP_HOST: mailpit
-      EMAIL_SMTP_PORT: "1025"
-      EMAIL_SMTP_USERNAME: ""
-      EMAIL_SMTP_PASSWORD: ""
-      EMAIL_FROM_ADDRESS: "Mekong-SALT <noreply@mekongsalt.local>"
-      EMAIL_USE_TLS: "false"
-      EMAIL_USE_SSL: "false"
-      EMAIL_TIMEOUT_SECONDS: "10"
       ZALO_NOTIFICATIONS_ENABLED: "false"
       ZALO_DELIVERY_MODE: template
       ZALO_OA_ACCESS_TOKEN: ""

@@ -51,7 +51,7 @@ async def advance_plan_reactively(
     settings: Settings,
 ) -> ReactiveAdvanceResult:
     """Advance a freshly generated plan without waiting for API triggers."""
-    if plan.status is not ActionPlanStatus.PENDING_APPROVAL:
+    if plan.status != ActionPlanStatus.PENDING_APPROVAL:
         return ReactiveAdvanceResult(
             status="skipped_not_pending",
             plan=plan,

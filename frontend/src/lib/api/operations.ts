@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from "./http";
 import type { ActionLogCollection } from "./dashboard";
+import type { ExecutionGraphRead } from "./graph";
 
 export interface ExecutionBatchRead {
   id: string;
@@ -39,6 +40,7 @@ export interface ExecutionBatchDetail {
   batch: ExecutionBatchRead;
   executions: ActionExecutionRead[];
   count: number;
+  execution_graph: ExecutionGraphRead | null;
 }
 
 export interface ActionOutcomeRead {
@@ -137,6 +139,7 @@ export function simulateExecutionBatch(
   batch: ExecutionBatchRead;
   executions: ActionExecutionRead[];
   idempotent_replay: boolean;
+  execution_graph: ExecutionGraphRead | null;
 }> {
   return apiPost(`/execution-batches/plans/${planId}/simulate`, payload ?? {}, { signal });
 }

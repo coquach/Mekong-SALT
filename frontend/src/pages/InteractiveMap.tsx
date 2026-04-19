@@ -316,6 +316,7 @@ export function InteractiveMap() {
     cacheEntry: cachedInteractiveMap,
     maxAgeMs: INTERACTIVE_MAP_CACHE_MAX_AGE_MS,
     refresh: refreshData,
+    pollIntervalMs: 30_000,
   });
 
   const mapStations = useMemo<MapStation[]>(
